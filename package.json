@@ -1,0 +1,16 @@
+{
+  "name": "seavaig-agricultural-procurement-billing-monorepo",
+  "version": "1.0.0",
+  "description": "Enterprise Multi-Tenant Agricultural Procurement & Billing System",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run start:dev",
+    "dev:web": "npm --prefix web run dev",
+    "dev:mobile": "cd farmer_mobile_app && flutter run -d chrome --web-port 8080",
+    "build:backend": "npm --prefix backend run build",
+    "build:web": "npm --prefix web run build",
+    "build": "npm run build:backend && npm run build:web"
+  },
+  "keywords": [],
+  "author": "SEAVAIG STUDIOS",
+  "license": "ISC"
+}

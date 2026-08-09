@@ -1,0 +1,423 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  ACCOUNTANT
+  FARMER
+}
+
+enum FarmerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+}
+
+enum SupplierGrade {
+  A_GRADE
+  B_GRADE
+  C_GRADE
+  PREMIUM
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CHEQUE
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum PaymentType {
+  PURCHASE_SETTLEMENT
+  ADVANCE_PAYOUT
+  GENERAL_PAYOUT
+}
+
+model Tenant {
+  id              String       @id @default(uuid())
+  companyCode     String       @unique // Unique Company ID e.g. COMP-101
+  companyName     String
+  ownerName       String
+  ownerEmail      String       @unique
+  ownerPhone      String
+  passportOrGovId String?
+  status          TenantStatus @default(ACTIVE)
+  logoUrl         String?
+  signatureUrl    String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model User {
+  id              String   @id @default(uuid())
+  staffIdCode     String?  @unique // Unique Staff Identity Card Code e.g. STAFF-2026-01
+  email           String   @unique
+  password        String
+  name            String
+  phone           String?
+  passportOrGovId String?
+  role            Role     @default(MANAGER)
+  tenantId        String   @default("tenant_default")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  auditLogs AuditLog[]
+}
+
+model Crop {
+  id          String   @id @default(uuid())
+  name        String   // English Name e.g. Strawberry, Grape, Tomato
+  nameMr      String?  // Marathi Name e.g. स्ट्रॉबेरी, द्राक्षे, टोमॅटो
+  category    String   @default("BERRY")
+  defaultRate Float    @default(0)
+  unit        String   @default("KG")
+  tenantId    String   @default("tenant_default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Farmer {
+  id                String        @id @default(uuid())
+  farmerIdCode      String        @unique // e.g. FAR-10001
+  name              String
+  phone             String
+  village           String
+  taluka            String
+  district          String
+  aadhaarNumber     String?
+  bankName          String?
+  accountNumber     String?
+  ifscCode          String?
+  avatarUrl         String?
+  grade             SupplierGrade @default(A_GRADE)
+  status            FarmerStatus  @default(ACTIVE)
+  totalPurchase     Float         @default(0)
+  totalPaid         Float         @default(0)
+  outstandingAmount Float         @default(0)
+  tenantId          String        @default("tenant_default")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  purchases         Purchase[]
+  payments          Payment[]
+  ledgers           FarmerLedger[]
+  materialPurchases FarmerMaterialPurchase[]
+
+  @@index([village])
+  @@index([status])
+  @@index([farmerIdCode])
+}
+
+model Purchase {
+  id             String        @id @default(uuid())
+  purchaseNo     String        @unique // PUR-2026-1052
+  farmerId       String
+  farmer         Farmer        @relation(fields: [farmerId], references: [id])
+  totalWeight    Float         // KG or Quantity
+  totalAmount    Float
+  paidAmount     Float         @default(0)
+  advanceApplied Float         @default(0)
+  dueAmount      Float         @default(0)
+  paymentStatus  PaymentStatus @default(UNPAID)
+  purchaseDate   DateTime      @default(now())
+  tenantId       String        @default("tenant_default")
+  createdAt      DateTime      @default(now())
+
+  items    PurchaseItem[]
+  payments Payment[]
+}
+
+model PurchaseItem {
+  id                String        @id @default(uuid())
+  purchaseId        String
+  purchase          Purchase      @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  cropName          String        // Strawberry (A Grade), Grapes, etc.
+  grade             SupplierGrade
+  weightKg          Float
+  ratePerKg         Float
+  unit              String        @default("KG") // KG | QUINTAL | TON | CARRET | BOX | BUNDLE_10 | BUNDLE_100 | CUSTOM
+  packagingCategory String?       // e.g. कॅरेट, बॉक्स, बंडल, पोते
+  totalAmount       Float
+}
+
+model Payment {
+  id          String      @id @default(uuid())
+  paymentNo   String      @unique // PAY-2026-0852
+  farmerId    String
+  farmer      Farmer      @relation(fields: [farmerId], references: [id])
+  purchaseId  String?
+  purchase    Purchase?   @relation(fields: [purchaseId], references: [id])
+  paymentType PaymentType @default(GENERAL_PAYOUT)
+  amount      Float
+  paymentMode PaymentMode @default(UPI)
+  paymentDate DateTime    @default(now())
+  notes       String?
+  tenantId    String      @default("tenant_default")
+  createdAt   DateTime    @default(now())
+}
+
+model FarmerLedger {
+  id          String   @id @default(uuid())
+  farmerId    String
+  farmer      Farmer   @relation(fields: [farmerId], references: [id])
+  date        DateTime @default(now())
+  description String
+  debit       Float    @default(0)
+  credit      Float    @default(0)
+  balance     Float
+  referenceNo String?
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Customer {
+  id                String         @id @default(uuid())
+  customerIdCode    String         @unique
+  name              String
+  contactPerson     String?
+  phone             String
+  email             String?
+  gstNumber         String?
+  address           String?
+  totalSales        Float          @default(0)
+  totalReceived     Float          @default(0)
+  outstandingAmount Float          @default(0)
+  status            CustomerStatus @default(ACTIVE)
+  tenantId          String         @default("tenant_default")
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  sales Sale[]
+}
+
+model Sale {
+  id                String        @id @default(uuid())
+  invoiceNo         String        @unique
+  customerId        String
+  customer          Customer      @relation(fields: [customerId], references: [id])
+  totalWeight       Float         @default(0)
+  totalAmount       Float         @default(0)
+  paidAmount        Float         @default(0)
+  dueAmount         Float         @default(0)
+  paymentStatus     PaymentStatus @default(UNPAID)
+  saleDate          DateTime      @default(now())
+  vehicleNo         String?
+  vehicleType       String?
+  driverName        String?
+  driverPhone       String?
+  ownerName         String?
+  ownerPhone        String?
+  vehiclePhotoUrl   String?
+  driverSignature   String?
+  ownerSignature    String?
+  traceabilityLotId String?
+  tenantId          String        @default("tenant_default")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  items SaleItem[]
+}
+
+model SaleItem {
+  id                String        @id @default(uuid())
+  saleId            String
+  sale              Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  cropName          String
+  grade             SupplierGrade
+  weightKg          Float
+  ratePerKg         Float
+  unit              String        @default("KG")
+  packagingCategory String?
+  totalAmount       Float
+}
+
+model Expense {
+  id          String      @id @default(uuid())
+  expenseNo   String      @unique
+  category    String
+  amount      Float
+  date        DateTime    @default(now())
+  notes       String?
+  paymentMode PaymentMode @default(CASH)
+  tenantId    String      @default("tenant_default")
+  createdAt   DateTime    @default(now())
+}
+
+model InventoryLog {
+  id          String        @id @default(uuid())
+  cropName    String
+  grade       SupplierGrade
+  type        String
+  quantityKg  Float
+  referenceNo String?
+  date        DateTime      @default(now())
+  tenantId    String        @default("tenant_default")
+  createdAt   DateTime      @default(now())
+}
+
+enum WorkerRole {
+  LABOUR
+  PACKER
+  LOADER
+  DRIVER
+  SUPERVISOR
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+}
+
+model DailyWorker {
+  id                 String     @id @default(uuid())
+  workerCode         String     @unique
+  name               String
+  phone              String
+  role               WorkerRole @default(LABOUR)
+  dailyRate          Float      @default(0)
+  status             String     @default("ACTIVE")
+  totalEarned        Float      @default(0)
+  totalPaid          Float      @default(0)
+  outstandingBalance Float      @default(0)
+  tenantId           String     @default("tenant_default")
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  attendances WorkerAttendance[]
+  payments    WorkerPayment[]
+}
+
+model WorkerAttendance {
+  id              String           @id @default(uuid())
+  workerId        String
+  worker          DailyWorker      @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  date            DateTime         @default(now())
+  checkInTime     String           @default("08:00 AM")
+  checkOutTime    String           @default("05:00 PM")
+  hoursWorked     Float            @default(8)
+  dailyWageAmount Float            @default(0)
+  overtimeAmount  Float            @default(0)
+  totalWageForDay Float            @default(0)
+  status          AttendanceStatus @default(PRESENT)
+  notes           String?
+  tenantId        String           @default("tenant_default")
+  createdAt       DateTime         @default(now())
+}
+
+model WorkerPayment {
+  id          String      @id @default(uuid())
+  receiptNo   String      @unique
+  workerId    String
+  worker      DailyWorker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  amount      Float
+  paymentType PaymentType @default(GENERAL_PAYOUT)
+  paymentMode PaymentMode @default(CASH)
+  date        DateTime    @default(now())
+  notes       String?
+  tenantId    String      @default("tenant_default")
+  createdAt   DateTime    @default(now())
+}
+
+model Trader {
+  id             String   @id @default(uuid())
+  traderCode     String   @unique
+  name           String
+  businessName   String
+  phone          String
+  email          String?
+  gstNumber      String?
+  address        String?
+  totalPurchased Float    @default(0)
+  totalPaid      Float    @default(0)
+  dueAmount      Float    @default(0)
+  tenantId       String   @default("tenant_default")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  purchases TraderPurchase[]
+}
+
+model TraderPurchase {
+  id            String        @id @default(uuid())
+  billNo        String        @unique
+  traderId      String
+  trader        Trader        @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  itemName      String
+  category      String        @default("PACKAGING")
+  quantity      Float         @default(1)
+  unit          String        @default("QTY")
+  rate          Float         @default(0)
+  totalAmount   Float         @default(0)
+  paidAmount    Float         @default(0)
+  dueAmount     Float         @default(0)
+  paymentStatus PaymentStatus @default(UNPAID)
+  vehicleNo     String?
+  notes         String?
+  date          DateTime      @default(now())
+  tenantId      String        @default("tenant_default")
+  createdAt     DateTime      @default(now())
+}
+
+model FarmerMaterialPurchase {
+  id                 String   @id @default(uuid())
+  farmerId           String
+  farmer             Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  itemName           String
+  quantity           Float    @default(1)
+  unit               String   @default("QTY")
+  unitPrice          Float    @default(0)
+  totalAmount        Float    @default(0)
+  notes              String?
+  date               DateTime @default(now())
+  isDeductedFromBill Boolean  @default(false)
+  purchaseBillId     String?
+  tenantId           String   @default("tenant_default")
+  createdAt          DateTime @default(now())
+}
+
+model DailyCropRate {
+  id        String   @id @default(uuid())
+  cropName  String
+  grade     String   @default("A_GRADE")
+  unit      String   @default("PER_KG")
+  rate      Float    @default(0)
+  date      DateTime @default(now())
+  updatedBy String   @default("CLIENT")
+  tenantId  String   @default("tenant_default")
+  createdAt DateTime @default(now())
+}

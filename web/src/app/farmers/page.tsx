@@ -1,0 +1,307 @@
+"use client";
+
+import React, { useState, useEffect } from 'react';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { Header } from '@/components/layout/Header';
+import { AddFarmerModal } from '@/components/farmers/AddFarmerModal';
+import { EditFarmerModal } from '@/components/farmers/EditFarmerModal';
+import { FarmerDetailSidebar } from '@/components/farmers/FarmerDetailSidebar';
+import { AddFarmerMaterialModal } from '@/components/farmers/AddFarmerMaterialModal';
+import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
+import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
+import { useLanguage } from '@/context/LanguageContext';
+import { apiGetFarmers } from '@/lib/api';
+import {
+  Users,
+  Search,
+  Filter,
+  Download,
+  Database,
+  Edit3,
+  UserPlus,
+  Inbox,
+  Eye
+} from 'lucide-react';
+
+export default function FarmersPage() {
+  const { t } = useLanguage();
+  const [farmers, setFarmers] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingFarmer, setEditingFarmer] = useState<any>(null);
+  const [isLiveSynced, setIsLiveSynced] = useState(false);
+
+  // Detail Drawer & Material Modal State
+  const [selectedDetailFarmerId, setSelectedDetailFarmerId] = useState<string | null>(null);
+  const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
+
+  // Category Modal State
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [categoryModalTitle, setCategoryModalTitle] = useState('');
+  const [categoryType, setCategoryType] = useState<'ADVANCE' | 'PAID' | 'UNPAID' | 'OUTSTANDING'>('PAID');
+  const [categoryModalFarmers, setCategoryModalFarmers] = useState<any[]>([]);
+
+  useEffect(() => {
+    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setFarmers(parsed);
+        }
+      } catch {}
+    }
+
+    async function loadData() {
+      const response = await apiGetFarmers();
+      if (response) {
+        const list = response.data && Array.isArray(response.data) ? response.data : (Array.isArray(response) ? response : null);
+        if (list && list.length > 0) {
+          setFarmers(list);
+          setIsLiveSynced(true);
+          localStorage.setItem('seavaig_farmers_cache', JSON.stringify(list));
+        }
+      }
+    }
+    loadData();
+  }, []);
+
+  const handleAddFarmer = (newFarmer: any) => {
+    const updated = [newFarmer, ...farmers];
+    setFarmers(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updated));
+    }
+  };
+
+  const handleSaveFarmer = (updatedFarmer: any) => {
+    const updated = farmers.map((f) => (f.id === updatedFarmer.id ? updatedFarmer : f));
+    setFarmers(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updated));
+    }
+  };
+
+  // Dynamic Financial Metrics Calculation
+  const totalAdvance = farmers.reduce((acc, f) => acc + (f.advanceBalance || 0), 0);
+  const totalPaid = farmers.reduce((acc, f) => acc + (f.totalPaid || 0), 0);
+  const paidFarmersCount = farmers.filter((f) => (f.totalPaid || 0) > 0).length;
+
+  const totalUnpaid = farmers.reduce((acc, f) => acc + (f.outstandingAmount || 0), 0);
+  const unpaidFarmersCount = farmers.filter((f) => (f.outstandingAmount || 0) > 0).length;
+
+  const totalOutstanding = farmers.reduce((acc, f) => acc + (f.outstandingAmount || 0), 0);
+  const outstandingFarmersCount = farmers.filter((f) => (f.outstandingAmount || 0) > 0).length;
+
+  const handleTimelineChange = (filter: TimelineFilter, startDate?: string, endDate?: string) => {
+    console.log('Timeline changed to:', filter, startDate, endDate);
+  };
+
+  const handleCategoryClick = (category: 'ADVANCE' | 'PAID' | 'UNPAID' | 'OUTSTANDING') => {
+    setCategoryType(category);
+    if (category === 'ADVANCE') {
+      setCategoryModalTitle('Farmers with Active Advance Credit (अ‍ॅडव्हान्स शेतकरी)');
+      setCategoryModalFarmers(farmers.filter((f) => (f.advanceBalance || 0) > 0));
+    } else if (category === 'PAID') {
+      setCategoryModalTitle(`Fully / Partially Paid Farmers (${paidFarmersCount} Farmers)`);
+      setCategoryModalFarmers(farmers.filter((f) => (f.totalPaid || 0) > 0));
+    } else if (category === 'UNPAID') {
+      setCategoryModalTitle(`Farmers with Unpaid Bills (${unpaidFarmersCount} Farmers)`);
+      setCategoryModalFarmers(farmers.filter((f) => (f.outstandingAmount || 0) > 0));
+    } else if (category === 'OUTSTANDING') {
+      setCategoryModalTitle(`Farmers with Outstanding Balance (${outstandingFarmersCount} Farmers)`);
+      setCategoryModalFarmers(farmers.filter((f) => (f.outstandingAmount || 0) > 0));
+    }
+    setIsCategoryModalOpen(true);
+  };
+
+  const filteredFarmers = farmers.filter(
+    (f) =>
+      f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (f.farmerIdCode && f.farmerIdCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (f.phone && f.phone.includes(searchQuery)) ||
+      (f.village && f.village.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  return (
+    <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 antialiased selection:bg-blue-500 selection:text-white">
+      <Sidebar />
+
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <Header />
+
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+          {/* Top Banner Header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
+                  {t.farmers || 'शेतकरी नोंदणी व खाते पुस्तक'}
+                </h1>
+                <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Database className="w-3 h-3" />
+                  Live Database Connected
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-slate-500 mt-1">
+                Manage Farmer Profiles, Bank Accounts, Advance Credit & Financial Passbooks
+              </p>
+            </div>
+
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold rounded-xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition-all hover:scale-102"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Register New Farmer</span>
+            </button>
+          </div>
+
+          {/* FINANCIAL SUMMARY BAR WITH TIMELINE FILTER & DRILL-DOWN */}
+          <FinancialSummaryBar
+            totalAdvance={totalAdvance}
+            totalPaid={totalPaid}
+            paidFarmersCount={paidFarmersCount}
+            totalUnpaid={totalUnpaid}
+            unpaidFarmersCount={unpaidFarmersCount}
+            totalOutstanding={totalOutstanding}
+            outstandingFarmersCount={outstandingFarmersCount}
+            onTimelineChange={handleTimelineChange}
+            onCategoryClick={handleCategoryClick}
+          />
+
+          {/* Farmers Directory Table */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search farmer name, phone, code or village..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 border border-slate-200">
+                  <Filter className="w-3.5 h-3.5" />
+                  Filter
+                </button>
+                <button className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 border border-slate-200">
+                  <Download className="w-3.5 h-3.5" />
+                  Export Roster
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-extrabold tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th className="py-3.5 px-4">Farmer Code</th>
+                    <th className="py-3.5 px-4">Farmer Name</th>
+                    <th className="py-3.5 px-4">Location</th>
+                    <th className="py-3.5 px-4">Grade & Status</th>
+                    <th className="py-3.5 px-4">Total Purchases</th>
+                    <th className="py-3.5 px-4">Total Paid</th>
+                    <th className="py-3.5 px-4">Outstanding Due</th>
+                    <th className="py-3.5 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  {filteredFarmers.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center">
+                        <Inbox className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+                        <p className="text-sm font-bold text-slate-800">No Farmers Registered Yet</p>
+                        <p className="text-xs text-slate-500 mt-1">Click "Register New Farmer" above to add your first supplier.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredFarmers.map((f, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3.5 px-4 font-black text-blue-600">{f.farmerIdCode || f.id}</td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-slate-900">{f.name}</div>
+                          <div className="text-[10px] text-slate-500">{f.phone}</div>
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600">{f.village}, {f.taluka}</td>
+                        <td className="py-3.5 px-4">
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                            {f.grade || 'A Grade'}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 font-bold text-slate-900">₹{(f.totalPurchase || 0).toLocaleString('en-IN')}</td>
+                        <td className="py-3.5 px-4 font-extrabold text-emerald-600">₹{(f.totalPaid || 0).toLocaleString('en-IN')}</td>
+                        <td className="py-3.5 px-4 font-extrabold text-amber-600">₹{(f.outstandingAmount || 0).toLocaleString('en-IN')}</td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => setSelectedDetailFarmerId(f.id)}
+                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-[11px] font-bold border border-blue-100 flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Passbook</span>
+                            </button>
+                            <button
+                              onClick={() => setEditingFarmer(f)}
+                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold border border-slate-200 flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit3 className="w-3 h-3 text-slate-500" />
+                              <span>Edit</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      <AddFarmerModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onAddFarmer={handleAddFarmer}
+      />
+
+      <EditFarmerModal
+        isOpen={!!editingFarmer}
+        onClose={() => setEditingFarmer(null)}
+        farmer={editingFarmer}
+        onSaveFarmer={handleSaveFarmer}
+      />
+
+      <FarmerCategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        title={categoryModalTitle}
+        categoryType={categoryType}
+        farmers={categoryModalFarmers}
+      />
+
+      <FarmerDetailSidebar
+        farmerId={selectedDetailFarmerId}
+        onClose={() => setSelectedDetailFarmerId(null)}
+        onOpenMaterialModal={(fId) => {
+          setSelectedDetailFarmerId(fId);
+          setIsMaterialModalOpen(true);
+        }}
+      />
+
+      <AddFarmerMaterialModal
+        isOpen={isMaterialModalOpen}
+        onClose={() => setIsMaterialModalOpen(false)}
+        farmerId={selectedDetailFarmerId}
+        onSuccess={() => {
+          setIsMaterialModalOpen(false);
+        }}
+      />
+    </div>
+  );
+}
