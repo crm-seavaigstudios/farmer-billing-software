@@ -57,15 +57,15 @@ export default function InventoryPage() {
     }
 
     async function loadData() {
-      const res = await apiGetInventory();
-      if (res) {
+      const res: any = await apiGetInventory();
+      if (res && !Array.isArray(res)) {
         setMetrics({
           totalStockKg: res.totalStockKg || 1200,
           totalStockValue: res.totalStockValue || '₹2,32,000',
           capacityUtilization: res.capacityUtilization || '68%',
           spoilageRate: res.spoilageRate || '0.8%',
           temperature: res.temperature || '2.4°C',
-          gradesAStock: res.grades?.find((g: any) => g.grade.includes('A Grade') || g.grade.includes('A_GRADE'))?.stockKg || 300,
+          gradesAStock: res.grades?.find((g: any) => g.grade?.includes('A Grade') || g.grade?.includes('A_GRADE'))?.stockKg || 300,
         });
 
         if (res.grades && Array.isArray(res.grades) && res.grades.length > 0) {
