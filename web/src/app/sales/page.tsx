@@ -35,17 +35,22 @@ export default function SalesPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const loadData = async () => {
+    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) setSales(parsed);
+      } catch {}
+    }
+
     const res = await apiGetSales();
     if (res) {
-      if (res.data && Array.isArray(res.data)) {
-        setSales(res.data);
-        setMetrics({
-          totalSalesThisMonth: res.totalSalesThisMonth || '₹0',
-          totalVolumeSold: res.totalVolumeSold || '0 KG',
-          pendingInvoicesCount: res.pendingInvoicesCount || 0
-        });
-      } else if (Array.isArray(res)) {
-        setSales(res);
+      const list = res.data && Array.isArray(res.data) ? res.data : (Array.isArray(res) ? res : null);
+      if (list && list.length > 0) {
+        setSales(list);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('seavaig_sales_cache', JSON.stringify(list));
+        }
       }
     }
   };
@@ -53,6 +58,14 @@ export default function SalesPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleAddSale = (newSale: any) => {
+    const updated = [newSale, ...sales];
+    setSales(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_sales_cache', JSON.stringify(updated));
+    }
+  };
 
   const openPrintModal = (row: any) => {
     setActiveReceipt({

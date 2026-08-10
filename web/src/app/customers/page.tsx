@@ -27,10 +27,18 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([]);
 
   useEffect(() => {
+    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_customers_cache') : null;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) setCustomers(parsed);
+      } catch {}
+    }
+
     async function loadData() {
       const res = await apiGetCustomers();
-      if (res && Array.isArray(res)) {
-        setCustomers(res.map((c: any) => ({
+      if (res && Array.isArray(res) && res.length > 0) {
+        const formatted = res.map((c: any) => ({
           id: c.customerIdCode || c.id,
           company: c.name,
           phone: c.phone,
@@ -39,18 +47,27 @@ export default function CustomersPage() {
           address: c.address || 'N/A',
           outstanding: `₹${(c.outstandingAmount || 0).toLocaleString('en-IN')}`,
           totalPurchases: `₹${(c.totalSales || 0).toLocaleString('en-IN')}`,
-          creditLimit: '₹0', // Add to model later if needed
-        })));
+          creditLimit: '₹0',
+        }));
+        setCustomers(formatted);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('seavaig_customers_cache', JSON.stringify(formatted));
+        }
       }
     }
     loadData();
   }, []);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
 
   const handleAddCustomer = (newCust: any) => {
-    setCustomers([newCust, ...customers]);
+    const updated = [newCust, ...customers];
+    setCustomers(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_customers_cache', JSON.stringify(updated));
+    }
   };
 
   const handleExportCSV = () => {

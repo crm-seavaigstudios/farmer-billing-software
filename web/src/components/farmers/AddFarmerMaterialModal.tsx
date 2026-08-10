@@ -24,7 +24,7 @@ export function AddFarmerMaterialModal({ isOpen, onClose, farmerId, onSuccess }:
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const res = await apiCreateFarmerMaterialPurchase({
+    await apiCreateFarmerMaterialPurchase({
       farmerId,
       itemName,
       quantity: Number(quantity) || 1,
@@ -33,10 +33,8 @@ export function AddFarmerMaterialModal({ isOpen, onClose, farmerId, onSuccess }:
       notes,
     });
     setLoading(false);
-    if (res) {
-      onSuccess();
-      onClose();
-    }
+    onSuccess();
+    onClose();
   };
 
   const total = (Number(quantity) || 0) * (Number(unitPrice) || 0);

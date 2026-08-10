@@ -53,30 +53,38 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
       if (dbCrops && Array.isArray(dbCrops) && dbCrops.length > 0) {
         setCrops(dbCrops);
       }
+
+      // Check local cache first for instant zero-data-loss farmer list
+      const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+      let cachedFarmers: any[] = [];
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) cachedFarmers = parsed;
+        } catch {}
+      }
+
       const dbFarmersRes = await apiGetFarmers();
-      let farmerList: any[] = [];
+      let farmerList: any[] = cachedFarmers;
       if (dbFarmersRes) {
-        if (dbFarmersRes.data && Array.isArray(dbFarmersRes.data)) {
-          farmerList = dbFarmersRes.data;
-        } else if (Array.isArray(dbFarmersRes)) {
-          farmerList = dbFarmersRes;
-        }
+        const list = dbFarmersRes.data && Array.isArray(dbFarmersRes.data) ? dbFarmersRes.data : (Array.isArray(dbFarmersRes) ? dbFarmersRes : null);
+        if (list && list.length > 0) farmerList = list;
       }
 
       if (farmerList.length > 0) {
         const formatted = farmerList.map((f: any) => ({
           id: f.id,
-          farmerIdCode: f.farmerIdCode || 'FAR-10000',
+          farmerIdCode: f.farmerIdCode || f.code || 'FAR-10000',
           name: f.name,
-          phone: f.phone,
-          village: f.village,
-          advanceBalance: Math.max(0, (f.totalPaid || 0) - (f.totalPurchase || 0)),
+          phone: f.phone || '',
+          village: f.village || '',
+          advanceBalance: f.advanceBalance ?? Math.max(0, (f.totalPaid || 0) - (f.totalPurchase || 0)),
         }));
         setFarmers(formatted);
         setSelectedFarmer(formatted[0]);
       }
     }
-    loadData();
+    if (isOpen) loadData();
   }, [isOpen]);
 
   if (!isOpen) return null;

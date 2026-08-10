@@ -64,17 +64,38 @@ export default function TradersPage() {
   }, []);
 
   async function loadData() {
+    const cachedTraders = typeof window !== 'undefined' ? localStorage.getItem('seavaig_traders_cache') : null;
+    const cachedPurchases = typeof window !== 'undefined' ? localStorage.getItem('seavaig_trader_purchases_cache') : null;
+
+    if (cachedTraders) {
+      try {
+        const parsed = JSON.parse(cachedTraders);
+        if (Array.isArray(parsed) && parsed.length > 0) setTraders(parsed);
+      } catch {}
+    }
+    if (cachedPurchases) {
+      try {
+        const parsed = JSON.parse(cachedPurchases);
+        if (Array.isArray(parsed) && parsed.length > 0) setPurchases(parsed);
+      } catch {}
+    }
+
     const [tRes, pRes] = await Promise.all([apiGetTraders(), apiGetTraderPurchases()]);
-    if (tRes && Array.isArray(tRes)) {
+    if (tRes && Array.isArray(tRes) && tRes.length > 0) {
       setTraders(tRes);
       if (tRes.length > 0) setSelectedTraderId(tRes[0].id);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('seavaig_traders_cache', JSON.stringify(tRes));
+      }
     }
     if (pRes) {
-      if (pRes.data && Array.isArray(pRes.data)) {
-        setPurchases(pRes.data);
+      const list = pRes.data && Array.isArray(pRes.data) ? pRes.data : (Array.isArray(pRes) ? pRes : null);
+      if (list && list.length > 0) {
+        setPurchases(list);
         if (pRes.summary) setSummary(pRes.summary);
-      } else if (Array.isArray(pRes)) {
-        setPurchases(pRes);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('seavaig_trader_purchases_cache', JSON.stringify(list));
+        }
       }
     }
   }
@@ -82,13 +103,25 @@ export default function TradersPage() {
   const handleCreateTrader = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const res = await apiCreateTrader({ name, businessName, phone, gstNumber });
+    const newTrader = {
+      id: `trd-${Date.now()}`,
+      name,
+      businessName: businessName || name,
+      phone,
+      gstNumber
+    };
+    await apiCreateTrader(newTrader);
     setLoading(false);
-    if (res) {
-      setIsAddTraderOpen(false);
-      setName('');
-      loadData();
+    const updated = [newTrader, ...traders];
+    setTraders(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_traders_cache', JSON.stringify(updated));
     }
+    setIsAddTraderOpen(false);
+    setName('');
+    setBusinessName('');
+    setPhone('');
+    setGstNumber('');
   };
 
   const handleCreatePurchase = async (e: React.FormEvent) => {

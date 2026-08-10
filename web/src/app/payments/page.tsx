@@ -30,8 +30,22 @@ export default function PaymentsPage() {
   const [selectedPayment, setSelectedPayment] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  useEffect(() => {
+    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_payments_cache') : null;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) setPayments(parsed);
+      } catch {}
+    }
+  }, []);
+
   const handleAddPayment = (newPay: any) => {
-    setPayments([newPay, ...payments]);
+    const updated = [newPay, ...payments];
+    setPayments(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_payments_cache', JSON.stringify(updated));
+    }
   };
 
   const openPrintModal = (row: any) => {

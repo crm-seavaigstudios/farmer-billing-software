@@ -23,10 +23,18 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<any[]>([]);
   
   useEffect(() => {
+    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_expenses_cache') : null;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) setExpenses(parsed);
+      } catch {}
+    }
+
     async function loadData() {
       const res = await apiGetExpenses();
-      if (res && Array.isArray(res)) {
-        setExpenses(res.map((e: any) => ({
+      if (res && Array.isArray(res) && res.length > 0) {
+        const formatted = res.map((e: any) => ({
           id: e.expenseNo,
           title: e.notes || 'Expense',
           category: e.category,
@@ -34,7 +42,11 @@ export default function ExpensesPage() {
           amount: `₹${e.amount.toLocaleString('en-IN')}`,
           date: new Date(e.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
           loggedBy: 'Admin'
-        })));
+        }));
+        setExpenses(formatted);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('seavaig_expenses_cache', JSON.stringify(formatted));
+        }
       }
     }
     loadData();
@@ -44,7 +56,11 @@ export default function ExpensesPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const handleAddExpense = (newExp: any) => {
-    setExpenses([newExp, ...expenses]);
+    const updated = [newExp, ...expenses];
+    setExpenses(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_expenses_cache', JSON.stringify(updated));
+    }
   };
 
   const handleExportCSV = () => {

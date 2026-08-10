@@ -70,13 +70,23 @@ export default function WorkersPage() {
   }, []);
 
   async function loadData() {
+    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_workers_cache') : null;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) setWorkers(parsed);
+      } catch {}
+    }
+
     const res = await apiGetWorkers();
     if (res) {
-      if (res.data && Array.isArray(res.data)) {
-        setWorkers(res.data);
+      const list = res.data && Array.isArray(res.data) ? res.data : (Array.isArray(res) ? res : null);
+      if (list && list.length > 0) {
+        setWorkers(list);
         if (res.summary) setSummary(res.summary);
-      } else if (Array.isArray(res)) {
-        setWorkers(res);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('seavaig_workers_cache', JSON.stringify(list));
+        }
       }
     }
   }
@@ -84,18 +94,27 @@ export default function WorkersPage() {
   const handleCreateWorker = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const res = await apiCreateWorker({
+    const newWrk = {
+      id: `wrk-${Date.now()}`,
+      workerIdCode: `WRK-${Math.floor(1000 + Math.random() * 9000)}`,
       name: newWorkerName,
       phone: newWorkerPhone,
       role: newWorkerRole,
       dailyRate: Number(newWorkerRate) || 500,
-    });
+      totalEarned: 0,
+      totalPaid: 0,
+      outstandingBalance: 0
+    };
+    await apiCreateWorker(newWrk);
     setLoading(false);
-    if (res) {
-      setIsAddWorkerOpen(false);
-      setNewWorkerName('');
-      loadData();
+    const updated = [newWrk, ...workers];
+    setWorkers(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_workers_cache', JSON.stringify(updated));
     }
+    setIsAddWorkerOpen(false);
+    setNewWorkerName('');
+    setNewWorkerPhone('');
   };
 
   const handleRecordAttendance = async (e: React.FormEvent) => {
