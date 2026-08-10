@@ -117,22 +117,6 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
     onSuccess();
     onClose();
   };
-      ownerName,
-      ownerPhone,
-      vehiclePhotoUrl,
-      driverSignature,
-      ownerSignature,
-      items: items.map(item => ({
-        ...item,
-        totalAmount: Number(item.weightKg) * Number(item.ratePerKg)
-      }))
-    });
-    setLoading(false);
-    if (res) {
-      onSuccess();
-      onClose();
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center p-4 animate-in fade-in overflow-y-auto">
