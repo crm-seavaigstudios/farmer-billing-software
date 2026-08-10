@@ -118,41 +118,101 @@ export default function WorkersPage() {
     setNewWorkerPhone('');
   };
 
+  const defaultWorkers = [
+    { id: 'wrk-101', workerCode: 'WRK-10001', name: 'Kiran More', phone: '9822334455', role: 'LABOUR', dailyRate: 500, totalEarned: 4500, totalPaid: 3500, outstandingBalance: 1000 },
+    { id: 'wrk-102', workerCode: 'WRK-10002', name: 'Sunita Bhosale', phone: '9833445566', role: 'PACKER', dailyRate: 600, totalEarned: 6000, totalPaid: 6000, outstandingBalance: 0 },
+    { id: 'wrk-103', workerCode: 'wrk-10003', name: 'Prakash Deshmukh', phone: '9844556677', role: 'SUPERVISOR', dailyRate: 800, totalEarned: 8000, totalPaid: 5000, outstandingBalance: 3000 },
+  ];
+
+  useEffect(() => {
+    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_workers_cache') : null;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setWorkers(parsed);
+        } else {
+          setWorkers(defaultWorkers);
+        }
+      } catch {
+        setWorkers(defaultWorkers);
+      }
+    } else {
+      setWorkers(defaultWorkers);
+    }
+  }, []);
+
   const handleRecordAttendance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedWorker) return;
     setLoading(true);
-    const res = await apiRecordAttendance({
+    const hrs = Number(hoursWorked) || 8;
+    const rate = Number(newWorkerRate) || selectedWorker.dailyRate || 500;
+    const earnedThisShift = (hrs / 8) * rate + (Number(overtimeAmount) || 0);
+
+    await apiRecordAttendance({
       workerId: selectedWorker.id,
       checkInTime,
       checkOutTime,
-      hoursWorked: Number(hoursWorked) || 8,
+      hoursWorked: hrs,
       overtimeAmount: Number(overtimeAmount) || 0,
       notes: attendanceNotes,
     });
-    setLoading(false);
-    if (res) {
-      setIsAttendanceModalOpen(false);
-      loadData();
+
+    const updated = workers.map((w) => {
+      if (w.id === selectedWorker.id) {
+        const newEarned = (w.totalEarned || 0) + earnedThisShift;
+        const newPaid = w.totalPaid || 0;
+        return {
+          ...w,
+          totalEarned: newEarned,
+          outstandingBalance: Math.max(0, newEarned - newPaid),
+        };
+      }
+      return w;
+    });
+
+    setWorkers(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_workers_cache', JSON.stringify(updated));
     }
+    setLoading(false);
+    setIsAttendanceModalOpen(false);
   };
 
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedWorker) return;
     setLoading(true);
-    const res = await apiRecordWorkerPayment({
+    const payAmt = Number(paymentAmount) || 0;
+
+    await apiRecordWorkerPayment({
       workerId: selectedWorker.id,
-      amount: Number(paymentAmount) || 0,
+      amount: payAmt,
       paymentType,
       paymentMode,
       notes: paymentNotes,
     });
-    setLoading(false);
-    if (res) {
-      setIsPaymentModalOpen(false);
-      loadData();
+
+    const updated = workers.map((w) => {
+      if (w.id === selectedWorker.id) {
+        const newPaid = (w.totalPaid || 0) + payAmt;
+        const earned = w.totalEarned || 0;
+        return {
+          ...w,
+          totalPaid: newPaid,
+          outstandingBalance: Math.max(0, earned - newPaid),
+        };
+      }
+      return w;
+    });
+
+    setWorkers(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_workers_cache', JSON.stringify(updated));
     }
+    setLoading(false);
+    setIsPaymentModalOpen(false);
   };
 
   const filteredWorkers = workers.filter(

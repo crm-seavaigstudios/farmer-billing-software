@@ -302,27 +302,46 @@ export default function TradersPage() {
                         </td>
                       </tr>
                     ) : (
-                      purchases.map((p) => (
-                        <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3.5 px-4 font-black text-blue-600">{p.id}</td>
-                          <td className="py-3.5 px-4 font-extrabold text-slate-900">{p.traderName}</td>
-                          <td className="py-3.5 px-4 font-semibold text-slate-700">
-                            {p.itemName}
-                            <span className="text-[10px] text-blue-600 font-bold block">{p.category}</span>
-                          </td>
-                          <td className="py-3.5 px-4 text-slate-600">{p.quantity} @ {p.rate}</td>
-                          <td className="py-3.5 px-4 font-black text-slate-900">{p.totalAmount}</td>
-                          <td className="py-3.5 px-4 font-bold text-amber-600">{p.dueAmount}</td>
-                          <td className="py-3.5 px-4">
-                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
-                              p.paymentStatus === 'PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                            }`}>
-                              {p.paymentStatus}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4 text-right text-slate-400 text-[11px]">{p.date}</td>
-                        </tr>
-                      ))
+                      purchases.map((p) => {
+                        const totalNum = typeof p.totalAmount === 'number' ? p.totalAmount : Number(String(p.totalAmount).replace(/\D/g, '')) || 0;
+                        const paidNum = typeof p.paidAmount === 'number' ? p.paidAmount : Number(String(p.paidAmount).replace(/\D/g, '')) || 0;
+                        const dueNum = Math.max(0, totalNum - paidNum);
+                        const statusStr = dueNum === 0 ? 'PAID' : (paidNum > 0 ? 'PARTIAL' : 'UNPAID');
+
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3.5 px-4 font-black text-blue-600">{p.id}</td>
+                            <td className="py-3.5 px-4 font-extrabold text-slate-900">{p.traderName}</td>
+                            <td className="py-3.5 px-4 font-semibold text-slate-700">
+                              {p.itemName}
+                              <span className="text-[10px] text-blue-600 font-bold block">{p.category}</span>
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-600">{p.quantity} @ ₹{p.rate || 0}</td>
+                            <td className="py-3.5 px-4 font-black text-slate-900">₹{totalNum.toLocaleString('en-IN')}</td>
+                            <td className="py-3.5 px-4 font-bold text-amber-600">₹{dueNum.toLocaleString('en-IN')}</td>
+                            <td className="py-3.5 px-4">
+                              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                                statusStr === 'PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : statusStr === 'PARTIAL' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                              }`}>
+                                {statusStr}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <button
+                                onClick={() => {
+                                  const updated = purchases.filter((item) => item.id !== p.id);
+                                  setPurchases(updated);
+                                  if (typeof window !== 'undefined') localStorage.setItem('seavaig_trader_purchases_cache', JSON.stringify(updated));
+                                }}
+                                className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                title="Delete Supply Bill"
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -336,22 +355,31 @@ export default function TradersPage() {
                       <th className="py-3.5 px-4">Name & Business</th>
                       <th className="py-3.5 px-4">Phone</th>
                       <th className="py-3.5 px-4">GSTIN ID</th>
-                      <th className="py-3.5 px-4 text-right">Total Purchased</th>
-                      <th className="py-3.5 px-4 text-right">Outstanding Due</th>
+                      <th className="py-3.5 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                     {traders.map((t) => (
                       <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3.5 px-4 font-black text-blue-600">{t.traderCode}</td>
+                        <td className="py-3.5 px-4 font-black text-blue-600">{t.traderCode || `TRD-${t.id.slice(0, 5)}`}</td>
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-900">{t.name}</div>
                           <div className="text-[10px] text-slate-400">{t.businessName}</div>
                         </td>
                         <td className="py-3.5 px-4 font-bold text-slate-800">{t.phone}</td>
                         <td className="py-3.5 px-4 font-medium text-slate-500">{t.gstNumber || 'N/A'}</td>
-                        <td className="py-3.5 px-4 text-right font-black text-slate-900">₹{(t.totalPurchased || 0).toLocaleString('en-IN')}</td>
-                        <td className="py-3.5 px-4 text-right font-black text-amber-600">₹{(t.dueAmount || 0).toLocaleString('en-IN')}</td>
+                        <td className="py-3.5 px-4 text-right">
+                          <button
+                            onClick={() => {
+                              const updated = traders.filter((item) => item.id !== t.id);
+                              setTraders(updated);
+                              if (typeof window !== 'undefined') localStorage.setItem('seavaig_traders_cache', JSON.stringify(updated));
+                            }}
+                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg text-xs font-extrabold cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

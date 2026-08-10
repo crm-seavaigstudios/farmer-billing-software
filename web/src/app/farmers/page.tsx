@@ -6,7 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { AddFarmerModal } from '@/components/farmers/AddFarmerModal';
 import { EditFarmerModal } from '@/components/farmers/EditFarmerModal';
 import { FarmerDetailSidebar } from '@/components/farmers/FarmerDetailSidebar';
-import { AddFarmerMaterialModal } from '@/components/farmers/AddFarmerMaterialModal';
+import { AddFarmerAdvanceModal } from '@/components/farmers/AddFarmerAdvanceModal';
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
@@ -20,7 +20,8 @@ import {
   Edit3,
   UserPlus,
   Inbox,
-  Eye
+  Eye,
+  DollarSign
 } from 'lucide-react';
 
 export default function FarmersPage() {
@@ -31,9 +32,10 @@ export default function FarmersPage() {
   const [editingFarmer, setEditingFarmer] = useState<any>(null);
   const [isLiveSynced, setIsLiveSynced] = useState(false);
 
-  // Detail Drawer & Material Modal State
+  // Detail Drawer, Material & Advance Modal State
   const [selectedDetailFarmerId, setSelectedDetailFarmerId] = useState<string | null>(null);
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
+  const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
 
   // Category Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -300,6 +302,28 @@ export default function FarmersPage() {
         farmerId={selectedDetailFarmerId}
         onSuccess={() => {
           setIsMaterialModalOpen(false);
+          const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+          if (cached) {
+            try {
+              setFarmers(JSON.parse(cached));
+            } catch {}
+          }
+        }}
+      />
+
+      <AddFarmerAdvanceModal
+        isOpen={isAdvanceModalOpen}
+        onClose={() => setIsAdvanceModalOpen(false)}
+        farmerId={selectedDetailFarmerId}
+        farmerName={farmers.find((f) => f.id === selectedDetailFarmerId)?.name}
+        onSuccess={() => {
+          setIsAdvanceModalOpen(false);
+          const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+          if (cached) {
+            try {
+              setFarmers(JSON.parse(cached));
+            } catch {}
+          }
         }}
       />
     </div>

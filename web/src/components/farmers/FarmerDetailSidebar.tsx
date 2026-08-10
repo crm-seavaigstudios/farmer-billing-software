@@ -25,9 +25,10 @@ interface FarmerDetailSidebarProps {
   farmerId: string | null;
   onClose: () => void;
   onOpenMaterialModal: (farmerId: string) => void;
+  onOpenAdvanceModal?: (farmerId: string) => void;
 }
 
-export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal }: FarmerDetailSidebarProps) {
+export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, onOpenAdvanceModal }: FarmerDetailSidebarProps) {
   const [farmer, setFarmer] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'SUMMARY' | 'BILLS' | 'MATERIALS' | 'LEDGER'>('SUMMARY');
