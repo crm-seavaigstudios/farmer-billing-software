@@ -358,3 +358,60 @@ export const apiCreateTrader = async (data: any) => {
   setLocalCache('seavaig_traders_cache', updated);
   return data;
 };
+
+export const apiGetTraderPurchases = async () => getLocalCache('seavaig_trader_purchases_cache', []);
+export const apiCreateTraderPurchase = async (data: any) => {
+  const current = getLocalCache('seavaig_trader_purchases_cache', []);
+  const updated = [data, ...current];
+  setLocalCache('seavaig_trader_purchases_cache', updated);
+  return data;
+};
+
+export const apiRecordAttendance = async (data: any) => {
+  const current = getLocalCache('seavaig_attendance_cache', []);
+  const updated = [data, ...current];
+  setLocalCache('seavaig_attendance_cache', updated);
+  return data;
+};
+
+export const apiRecordWorkerPayment = async (data: any) => {
+  const current = getLocalCache('seavaig_worker_payments_cache', []);
+  const updated = [data, ...current];
+  setLocalCache('seavaig_worker_payments_cache', updated);
+  return data;
+};
+
+export const apiGetWorkerHistory = async (id: string) => {
+  const current = getLocalCache('seavaig_worker_payments_cache', []);
+  return current.filter((item: any) => item.workerId === id);
+};
+
+export const apiGetInventory = async () => getLocalCache('seavaig_inventory_cache', [
+  { item: 'Plastic Crates (Empty)', total: 500, inUse: 320, available: 180 },
+  { item: 'Organic Fertilizer (Bags)', total: 100, inUse: 40, available: 60 },
+  { item: 'Strawberry A Grade (Chamber 1)', total: 1200, inUse: 0, available: 1200 },
+]);
+
+export const apiGetCrops = async () => [
+  { id: 'crop-1', name: 'Strawberry (A Grade)', pricePerKg: 350 },
+  { id: 'crop-2', name: 'Strawberry (B Grade)', pricePerKg: 200 },
+  { id: 'crop-3', name: 'Pomegranate (Anar)', pricePerKg: 180 },
+];
+export const apiCreateCrop = async (data: any) => data;
+export const apiDeleteCrop = async (id: string) => true;
+
+export const apiGetUsers = async () => [
+  { id: 'usr-1', name: 'Admin Manager', role: 'ADMIN', email: 'admin@seavaig.com' }
+];
+export const apiRegisterTenant = async (data: any) => data;
+export const apiRegisterStaff = async (data: any) => data;
+
+export const apiCheckFarmerNetwork = async (phone: string) => ({ found: false });
+export const apiImportFarmerFromNetwork = async (data: any) => data;
+
+export const apiGetDailyRates = async () => [
+  { crop: 'Strawberry A Grade', rate: 350, date: 'Today' },
+  { crop: 'Pomegranate', rate: 180, date: 'Today' }
+];
+export const apiVerifyPin = async (pin: string) => ({ success: pin === '1234' });
+export const apiUpdateDailyRate = async (data: any) => data;

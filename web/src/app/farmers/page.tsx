@@ -72,13 +72,10 @@ export default function FarmersPage() {
 
     async function loadData() {
       const response = await apiGetFarmers();
-      if (response) {
-        const list = response.data && Array.isArray(response.data) ? response.data : (Array.isArray(response) ? response : null);
-        if (list && list.length > 0) {
-          setFarmers(list);
-          setIsLiveSynced(true);
-          localStorage.setItem('seavaig_farmers_cache', JSON.stringify(list));
-        }
+      if (response && Array.isArray(response) && response.length > 0) {
+        setFarmers(response);
+        setIsLiveSynced(true);
+        localStorage.setItem('seavaig_farmers_cache', JSON.stringify(response));
       }
     }
     loadData();
