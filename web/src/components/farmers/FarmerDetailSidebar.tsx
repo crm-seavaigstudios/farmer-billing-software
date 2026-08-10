@@ -128,6 +128,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
   const purchases = farmer?.purchases || [];
   const materials = farmer?.materialPurchases || [];
   const payments = farmer?.payments || [];
+  const ledgers = farmer?.ledgers || farmer?.payments || [];
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-2xs flex justify-end animate-in fade-in">
