@@ -295,6 +295,10 @@ export default function FarmersPage() {
           setSelectedDetailFarmerId(fId);
           setIsMaterialModalOpen(true);
         }}
+        onOpenAdvanceModal={(fId) => {
+          setSelectedDetailFarmerId(fId);
+          setIsAdvanceModalOpen(true);
+        }}
       />
 
       <AddFarmerMaterialModal

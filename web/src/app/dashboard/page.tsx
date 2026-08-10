@@ -54,19 +54,19 @@ export default function DashboardPage() {
       const calcPayments = payments.reduce((acc: number, p: any) => acc + (p.amount || 0), 0);
 
       const initialStats = {
-        todaysPurchase: `₹${(calcPurchase || 124500).toLocaleString('en-IN')}`,
-        todaysSales: `₹${(calcSales || 185000).toLocaleString('en-IN')}`,
-        todaysPayment: `₹${(calcPayments || 95000).toLocaleString('en-IN')}`,
-        pendingAmount: `₹${(calcDue || 432000).toLocaleString('en-IN')}`,
-        totalFarmers: farmers.length || 148,
-        activeFarmers: farmers.filter((f: any) => f.status !== 'INACTIVE').length || 132,
-        inventoryValue: '₹3,45,000',
+        todaysPurchase: `₹${calcPurchase.toLocaleString('en-IN')}`,
+        todaysSales: `₹${calcSales.toLocaleString('en-IN')}`,
+        todaysPayment: `₹${calcPayments.toLocaleString('en-IN')}`,
+        pendingAmount: `₹${calcDue.toLocaleString('en-IN')}`,
+        totalFarmers: farmers.length,
+        activeFarmers: farmers.filter((f: any) => f.status !== 'INACTIVE').length || farmers.length,
+        inventoryValue: `₹${(calcPurchase * 0.4).toLocaleString('en-IN')}`,
       };
       setStats(initialStats);
 
       // Fetch live API if available
       const apiRes = await apiGetDashboardStats();
-      if (apiRes) {
+      if (apiRes && apiRes.totalFarmers) {
         setStats((prev: any) => ({ ...prev, ...apiRes }));
       }
     }
