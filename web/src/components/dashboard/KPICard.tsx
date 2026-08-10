@@ -7,7 +7,7 @@ interface KPICardProps {
   title: string;
   value: string;
   change: string;
-  changeType: 'up' | 'down';
+  changeType: 'up' | 'down' | 'neutral';
   comparison: string;
   icon: LucideIcon;
   iconBgColor: string;
@@ -29,6 +29,7 @@ export const KPICard: React.FC<KPICardProps> = ({
   sparklinePath,
 }) => {
   const isUp = changeType === 'up';
+  const isDown = changeType === 'down';
 
   return (
     <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-subtle hover:shadow-card transition-all duration-200 flex flex-col justify-between">
@@ -43,8 +44,8 @@ export const KPICard: React.FC<KPICardProps> = ({
         <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">{value}</h3>
 
         <div className="flex items-center justify-between pt-1">
-          <div className={`flex items-center gap-1 text-[11px] font-bold ${isUp ? 'text-emerald-600' : 'text-amber-600'}`}>
-            {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+          <div className={`flex items-center gap-1 text-[11px] font-bold ${isUp ? 'text-emerald-600' : isDown ? 'text-amber-600' : 'text-teal-600'}`}>
+            {isUp ? <TrendingUp className="w-3 h-3" /> : isDown ? <TrendingDown className="w-3 h-3" /> : null}
             <span>{change}</span>
             <span className="text-slate-400 font-normal text-[10px] ml-0.5">{comparison}</span>
           </div>
