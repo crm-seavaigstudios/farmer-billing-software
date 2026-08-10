@@ -93,13 +93,26 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
         } catch {}
       }
 
+      const defaultPurchases = [
+        { id: 'PUR-2026-104', crop: 'Strawberry (A Grade)', weight: '120 KG', rate: '₹350/KG', amount: '₹42,000', paidAmount: '₹35,000', dueAmount: '₹7,000', paymentStatus: 'PARTIAL', date: '08 Aug 2026' },
+        { id: 'PUR-2026-102', crop: 'Strawberry (B Grade)', weight: '80 KG', rate: '₹200/KG', amount: '₹16,000', paidAmount: '₹16,000', dueAmount: '₹0', paymentStatus: 'PAID', date: '04 Aug 2026' },
+      ];
+
+      const defaultPayments = [
+        { id: 'PAY-2026-901', method: 'UPI / GPay', amount: '₹25,000', date: '09 Aug 2026', notes: 'Harvest Payout Settlement' },
+        { id: 'PAY-2026-880', method: 'CASH Payout', amount: '₹10,000', date: '02 Aug 2026', notes: 'Pre-Harvest Advance Disbursement' },
+      ];
+
+      const defaultMaterials = [
+        { id: 'MAT-2026-55', itemName: 'Empty Packaging Crates (कॅरेट)', quantity: 20, unitPrice: 500, totalPrice: 10000, date: '05 Aug 2026' },
+        { id: 'MAT-2026-42', itemName: 'Organic Fertilizer Bags (खते)', quantity: 5, unitPrice: 1200, totalPrice: 6000, date: '28 Jul 2026' },
+      ];
+
       setFarmer({
         ...targetFarmer,
-        purchases: farmerPurchases.length > 0 ? farmerPurchases : (targetFarmer.purchases || []),
-        payments: farmerPayments.length > 0 ? farmerPayments : (targetFarmer.payments || []),
-        materialPurchases: targetFarmer.materialPurchases || [
-          { id: 'mat-01', itemName: 'Empty Crates (कॅरेट)', quantity: 10, unitPrice: 500, totalPrice: 5000, date: '10 Aug 2026' }
-        ],
+        purchases: farmerPurchases.length > 0 ? farmerPurchases : (targetFarmer.purchases || defaultPurchases),
+        payments: farmerPayments.length > 0 ? farmerPayments : (targetFarmer.payments || defaultPayments),
+        materialPurchases: targetFarmer.materialPurchases || defaultMaterials,
       });
       setLoading(false);
     }

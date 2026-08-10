@@ -44,6 +44,15 @@ export default function FarmersPage() {
   const [categoryType, setCategoryType] = useState<'ADVANCE' | 'PAID' | 'UNPAID' | 'OUTSTANDING'>('PAID');
   const [categoryModalFarmers, setCategoryModalFarmers] = useState<any[]>([]);
 
+  const defaultFarmers = [
+    { id: 'far-01', farmerIdCode: 'FAR-10001', name: 'Ramesh Patil', phone: '9823456789', village: 'Nandgaon', taluka: 'Nashik', grade: 'A Grade', totalPurchase: 124500, totalPaid: 95000, advanceBalance: 15000, outstandingAmount: 14500 },
+    { id: 'far-02', farmerIdCode: 'FAR-10002', name: 'Suresh Jadhav', phone: '9765432100', village: 'Yeola', taluka: 'Yeola', grade: 'A Grade', totalPurchase: 85000, totalPaid: 85000, advanceBalance: 0, outstandingAmount: 0 },
+    { id: 'far-03', farmerIdCode: 'FAR-10003', name: 'Vijay Shinde', phone: '8856789123', village: 'Pimpalgaon', taluka: 'Niphad', grade: 'B Grade', totalPurchase: 42000, totalPaid: 32000, advanceBalance: 5000, outstandingAmount: 5000 },
+    { id: 'far-04', farmerIdCode: 'FAR-10004', name: 'Ganesh More', phone: '9761112345', village: 'Chandwad', taluka: 'Chandwad', grade: 'A Grade', totalPurchase: 156000, totalPaid: 120000, advanceBalance: 20000, outstandingAmount: 16000 },
+    { id: 'far-05', farmerIdCode: 'FAR-10005', name: 'Sunil Pawar', phone: '9098765432', village: 'Sinnar', taluka: 'Sinnar', grade: 'A Grade', totalPurchase: 98000, totalPaid: 75000, advanceBalance: 10000, outstandingAmount: 13000 },
+    { id: 'far-06', farmerIdCode: 'FAR-10006', name: 'Ajay Deshmukh', phone: '9823001122', village: 'Nandgaon', taluka: 'Nashik', grade: 'B Grade', totalPurchase: 34000, totalPaid: 34000, advanceBalance: 0, outstandingAmount: 0 },
+  ];
+
   useEffect(() => {
     const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
     if (cached) {
@@ -51,8 +60,14 @@ export default function FarmersPage() {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setFarmers(parsed);
+        } else {
+          setFarmers(defaultFarmers);
         }
-      } catch {}
+      } catch {
+        setFarmers(defaultFarmers);
+      }
+    } else {
+      setFarmers(defaultFarmers);
     }
 
     async function loadData() {
@@ -243,10 +258,32 @@ export default function FarmersPage() {
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => setSelectedDetailFarmerId(f.id)}
-                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-[11px] font-bold border border-blue-100 flex items-center gap-1 cursor-pointer"
+                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-[11px] font-extrabold border border-blue-100 flex items-center gap-1 cursor-pointer"
+                              title="View Farmer Drawer Passbook"
                             >
                               <Eye className="w-3.5 h-3.5 text-blue-600" />
                               <span>Passbook</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedDetailFarmerId(f.id);
+                                setIsMaterialModalOpen(true);
+                              }}
+                              className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-bold border border-indigo-100 flex items-center gap-1 cursor-pointer"
+                              title="Issue Material / Crates to Farmer"
+                            >
+                              <span>+ Material</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedDetailFarmerId(f.id);
+                                setIsAdvanceModalOpen(true);
+                              }}
+                              className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[11px] font-bold border border-emerald-100 flex items-center gap-1 cursor-pointer"
+                              title="Disburse Cash Advance to Farmer"
+                            >
+                              <DollarSign className="w-3 h-3 text-emerald-600" />
+                              <span>⚡ Advance</span>
                             </button>
                             <button
                               onClick={() => setEditingFarmer(f)}
