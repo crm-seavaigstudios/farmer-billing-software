@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { AddFarmerModal } from '@/components/farmers/AddFarmerModal';
 import { EditFarmerModal } from '@/components/farmers/EditFarmerModal';
 import { FarmerDetailSidebar } from '@/components/farmers/FarmerDetailSidebar';
+import { AddFarmerMaterialModal } from '@/components/farmers/AddFarmerMaterialModal';
 import { AddFarmerAdvanceModal } from '@/components/farmers/AddFarmerAdvanceModal';
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';

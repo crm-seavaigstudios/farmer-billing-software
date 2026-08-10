@@ -52,6 +52,14 @@ export const apiGetDashboardStats = async () => {
 };
 
 // Farmers API (Direct Supabase Database)
+export const apiGetFarmerDetails = async (id: string) => {
+  try {
+    const { data } = await supabase.from('farmers').select('*').eq('id', id).single();
+    if (data) return data;
+  } catch {}
+  return await fetchApi(`/farmers/${id}`);
+};
+
 export const apiGetFarmers = async () => {
   try {
     const { data, error } = await supabase.from('farmers').select('*').order('created_at', { ascending: false });
