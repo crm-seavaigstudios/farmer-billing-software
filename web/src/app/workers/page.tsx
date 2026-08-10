@@ -94,9 +94,10 @@ export default function WorkersPage() {
   const handleCreateWorker = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const nextNum = 10001 + workers.length;
     const newWrk = {
       id: `wrk-${Date.now()}`,
-      workerIdCode: `WRK-${Math.floor(1000 + Math.random() * 9000)}`,
+      workerIdCode: `WRK-${nextNum}`,
       name: newWorkerName,
       phone: newWorkerPhone,
       role: newWorkerRole,

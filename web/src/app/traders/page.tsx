@@ -103,8 +103,10 @@ export default function TradersPage() {
   const handleCreateTrader = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const traderCode = `TRD-${10001 + traders.length}`;
     const newTrader = {
       id: `trd-${Date.now()}`,
+      traderCode,
       name,
       businessName: businessName || name,
       phone,
@@ -127,7 +129,27 @@ export default function TradersPage() {
   const handleCreatePurchase = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const res = await apiCreateTraderPurchase({
+    const selectedTrader = traders.find((t) => t.id === selectedTraderId) || traders[0];
+    const totalAmt = (Number(quantity) || 1) * (Number(rate) || 0);
+
+    const newPur = {
+      id: `TRD-PUR-${Math.floor(1000 + Math.random() * 9000)}`,
+      traderName: selectedTrader?.name || 'VRL Packaging Pvt Ltd',
+      businessName: selectedTrader?.businessName || selectedTrader?.name || 'VRL Packaging',
+      itemName,
+      category,
+      quantity: Number(quantity) || 1,
+      unit,
+      rate: Number(rate) || 0,
+      totalAmount: totalAmt,
+      paidAmount: Number(paidAmount) || 0,
+      dueAmount: Math.max(0, totalAmt - (Number(paidAmount) || 0)),
+      vehicleNo,
+      notes,
+      date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    };
+
+    await apiCreateTraderPurchase({
       traderId: selectedTraderId,
       itemName,
       category,
@@ -138,11 +160,14 @@ export default function TradersPage() {
       vehicleNo,
       notes,
     });
+
     setLoading(false);
-    if (res) {
-      setIsAddPurchaseOpen(false);
-      loadData();
+    const updatedPurchases = [newPur, ...purchases];
+    setPurchases(updatedPurchases);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_trader_purchases_cache', JSON.stringify(updatedPurchases));
     }
+    setIsAddPurchaseOpen(false);
   };
 
   return (

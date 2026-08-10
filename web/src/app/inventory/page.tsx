@@ -32,28 +32,43 @@ export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [transferSuccess, setTransferSuccess] = useState(false);
 
+  const defaultBatches = [
+    { id: 'STK-2026-1001', room: 'Cold Room #1 (Satpur)', grade: 'Strawberry (A Grade)', weight: '300 KG', temp: '2.4°C', humidity: '85%', valuation: '₹1,05,000', status: 'OPTIMAL' },
+    { id: 'STK-2026-1002', room: 'Cold Room #1 (Satpur)', grade: 'Strawberry (B Grade)', weight: '150 KG', temp: '2.4°C', humidity: '85%', valuation: '₹27,000', status: 'OPTIMAL' },
+    { id: 'STK-2026-1003', room: 'Cold Room #2 (Pimpalgaon)', grade: 'Grapes (Sonaka Export)', weight: '500 KG', temp: '1.8°C', humidity: '90%', valuation: '₹65,000', status: 'OPTIMAL' },
+    { id: 'STK-2026-1004', room: 'Cold Room #2 (Pimpalgaon)', grade: 'Pomegranate (Bhagwa)', weight: '250 KG', temp: '3.0°C', humidity: '82%', valuation: '₹35,000', status: 'OPTIMAL' },
+  ];
+
   useEffect(() => {
     const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_inventory_cache') : null;
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) setBatches(parsed);
-      } catch {}
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setBatches(parsed);
+        } else {
+          setBatches(defaultBatches);
+        }
+      } catch {
+        setBatches(defaultBatches);
+      }
+    } else {
+      setBatches(defaultBatches);
     }
 
     async function loadData() {
       const res = await apiGetInventory();
       if (res) {
         setMetrics({
-          totalStockKg: res.totalStockKg || 450,
-          totalStockValue: res.totalStockValue || '₹1,26,000',
+          totalStockKg: res.totalStockKg || 1200,
+          totalStockValue: res.totalStockValue || '₹2,32,000',
           capacityUtilization: res.capacityUtilization || '68%',
           spoilageRate: res.spoilageRate || '0.8%',
           temperature: res.temperature || '2.4°C',
           gradesAStock: res.grades?.find((g: any) => g.grade.includes('A Grade') || g.grade.includes('A_GRADE'))?.stockKg || 300,
         });
 
-        if (res.grades && Array.isArray(res.grades)) {
+        if (res.grades && Array.isArray(res.grades) && res.grades.length > 0) {
           const formatted = res.grades.map((g: any, i: number) => ({
             id: `STK-2026-${1000 + i}`,
             room: 'Cold Room #1 (Satpur)',
@@ -74,12 +89,41 @@ export default function InventoryPage() {
     loadData();
   }, []);
 
+  const [isAddStockOpen, setIsAddStockOpen] = useState(false);
+  const [newGrade, setNewGrade] = useState('Strawberry (A Grade)');
+  const [newRoom, setNewRoom] = useState('Cold Room #1 (Satpur)');
+  const [newWeight, setNewWeight] = useState('200');
+  const [newRate, setNewRate] = useState('300');
+
+  const handleAddStock = (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = (Number(newWeight) || 0) * (Number(newRate) || 0);
+    const newB = {
+      id: `STK-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      room: newRoom,
+      grade: newGrade,
+      weight: `${newWeight} KG`,
+      temp: '2.4°C',
+      humidity: '85%',
+      valuation: `₹${val.toLocaleString('en-IN')}`,
+      status: 'OPTIMAL',
+    };
+    const updated = [newB, ...batches];
+    setBatches(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_inventory_cache', JSON.stringify(updated));
+    }
+    setIsAddStockOpen(false);
+  };
+
   const handleStockTransfer = (id: string) => {
-    setBatches((prev) =>
-      prev.map((b) =>
-        b.id === id ? { ...b, room: 'Cold Room #1 (Satpur - Transferred)' } : b
-      )
+    const updated = batches.map((b) =>
+      b.id === id ? { ...b, room: b.room.includes('Transferred') ? b.room : `${b.room} (Transferred)` } : b
     );
+    setBatches(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_inventory_cache', JSON.stringify(updated));
+    }
     setTransferSuccess(true);
     setTimeout(() => setTransferSuccess(false), 3000);
   };
@@ -96,7 +140,7 @@ export default function InventoryPage() {
       <Sidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <Header primaryButtonLabel="+ Stock Transfer" onPrimaryClick={() => handleStockTransfer('STK-2026-802')} />
+        <Header primaryButtonLabel="+ Stock Inflow" onPrimaryClick={() => setIsAddStockOpen(true)} />
 
         <main className="p-6 space-y-6 flex-1 overflow-y-auto">
           {/* Header */}
@@ -119,6 +163,49 @@ export default function InventoryPage() {
               </span>
             )}
           </div>
+
+          {/* Stock Inflow Modal */}
+          {isAddStockOpen && (
+            <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                    <Boxes className="w-5 h-5 text-blue-600" />
+                    Record Stock Inflow (कोल्ड स्टोरेज साठा)
+                  </h3>
+                  <button onClick={() => setIsAddStockOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+                </div>
+                <form onSubmit={handleAddStock} className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-extrabold text-slate-700 block mb-1">Crop / Variety Grade</label>
+                    <input type="text" value={newGrade} onChange={(e) => setNewGrade(e.target.value)} className="w-full p-2.5 bg-slate-50 border rounded-xl font-bold" required />
+                  </div>
+                  <div>
+                    <label className="font-extrabold text-slate-700 block mb-1">Cold Room Storage Chamber</label>
+                    <select value={newRoom} onChange={(e) => setNewRoom(e.target.value)} className="w-full p-2.5 bg-slate-50 border rounded-xl font-bold">
+                      <option value="Cold Room #1 (Satpur)">Cold Room #1 (Satpur)</option>
+                      <option value="Cold Room #2 (Pimpalgaon)">Cold Room #2 (Pimpalgaon)</option>
+                      <option value="Cold Room #3 (Yeola)">Cold Room #3 (Yeola)</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-extrabold text-slate-700 block mb-1">Quantity (KG)</label>
+                      <input type="number" value={newWeight} onChange={(e) => setNewWeight(e.target.value)} className="w-full p-2.5 bg-slate-50 border rounded-xl font-bold" required />
+                    </div>
+                    <div>
+                      <label className="font-extrabold text-slate-700 block mb-1">Est. Rate per KG (₹)</label>
+                      <input type="number" value={newRate} onChange={(e) => setNewRate(e.target.value)} className="w-full p-2.5 bg-slate-50 border rounded-xl font-bold" required />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-3">
+                    <button type="button" onClick={() => setIsAddStockOpen(false)} className="flex-1 py-2.5 bg-slate-100 font-bold rounded-xl text-slate-700">Cancel</button>
+                    <button type="submit" className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 font-extrabold text-white rounded-xl shadow-lg shadow-blue-600/20">Save Stock Inflow</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {/* Metric Ribbon */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

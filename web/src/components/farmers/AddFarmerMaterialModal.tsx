@@ -24,6 +24,8 @@ export function AddFarmerMaterialModal({ isOpen, onClose, farmerId, onSuccess }:
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const materialTotal = total;
+
     await apiCreateFarmerMaterialPurchase({
       farmerId,
       itemName,
@@ -32,6 +34,27 @@ export function AddFarmerMaterialModal({ isOpen, onClose, farmerId, onSuccess }:
       unitPrice: Number(unitPrice) || 0,
       notes,
     });
+
+    // Instantly update farmer advance balance in local cache
+    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+    if (cached) {
+      try {
+        const farmersList = JSON.parse(cached);
+        if (Array.isArray(farmersList)) {
+          const updated = farmersList.map((f: any) => {
+            if (f.id === farmerId) {
+              return {
+                ...f,
+                advanceBalance: (f.advanceBalance || 0) + materialTotal,
+              };
+            }
+            return f;
+          });
+          localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updated));
+        }
+      } catch {}
+    }
+
     setLoading(false);
     onSuccess();
     onClose();
