@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useTenant } from '@/context/TenantContext';
+import { initProductionData } from '@/lib/seedData';
 import {
   Search,
   Plus,
@@ -86,14 +87,15 @@ export const Header: React.FC<HeaderProps> = ({
               localStorage.removeItem('seavaig_inventory_cache');
               localStorage.removeItem('seavaig_customers_cache');
               localStorage.removeItem('seavaig_expenses_cache');
+              initProductionData();
               window.location.reload();
             }
           }}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs font-black text-emerald-700 transition-all cursor-pointer shadow-2xs"
-          title="Clear local browser cache and fetch live Supabase database"
+          title="Clear local browser cache, re-seed production master data, and sync Supabase"
         >
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-          <span>⚡ Sync Supabase</span>
+          <span>⚡ Sync & Seed Data</span>
         </button>
 
         {/* Language Toggle Switcher */}
