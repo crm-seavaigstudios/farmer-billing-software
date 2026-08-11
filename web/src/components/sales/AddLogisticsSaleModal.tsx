@@ -47,7 +47,7 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
       const res = await apiGetCustomers();
       let list: any[] = cachedList;
       if (res) {
-        const fetched = res.data && Array.isArray(res.data) ? res.data : (Array.isArray(res) ? res : null);
+        const fetched = Array.isArray(res) ? res : ((res as any)?.data || []);
         if (fetched && fetched.length > 0) list = fetched;
       }
 

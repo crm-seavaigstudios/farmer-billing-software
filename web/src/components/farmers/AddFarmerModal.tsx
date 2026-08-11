@@ -38,8 +38,8 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
 
     if (val.replace(/\D/g, '').length === 10) {
       const res = await apiCheckFarmerNetwork(val);
-      if (res && res.exists && res.farmer) {
-        setNetworkMatch(res.farmer);
+      if (res && (res as any).exists && (res as any).farmer) {
+        setNetworkMatch((res as any).farmer);
         setShowNetworkModal(true);
       }
     }

@@ -67,7 +67,7 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
       const dbFarmersRes = await apiGetFarmers();
       let farmerList: any[] = cachedFarmers;
       if (dbFarmersRes) {
-        const list = dbFarmersRes.data && Array.isArray(dbFarmersRes.data) ? dbFarmersRes.data : (Array.isArray(dbFarmersRes) ? dbFarmersRes : null);
+        const list = Array.isArray(dbFarmersRes) ? dbFarmersRes : ((dbFarmersRes as any)?.data || []);
         if (list && list.length > 0) farmerList = list;
       }
 
@@ -142,7 +142,7 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     const savedPurchase = await apiCreatePurchase(payload);
 
     const newPurchase = {
-      id: savedPurchase?.purchaseNo || `PUR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: (savedPurchase as any)?.purchaseNo || (savedPurchase as any)?.purchaseBillNo || `PUR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
       farmerName: selectedFarmer?.name || 'Ramesh Patil',
       farmerId: selectedFarmer?.id || 'far-01',
       phone: selectedFarmer?.phone || '9823456789',

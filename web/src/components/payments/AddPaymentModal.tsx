@@ -43,7 +43,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
       const res = await apiGetFarmers();
       let list: any[] = cachedList;
       if (res) {
-        const fetched = res.data && Array.isArray(res.data) ? res.data : (Array.isArray(res) ? res : null);
+        const fetched = Array.isArray(res) ? res : ((res as any)?.data || []);
         if (fetched && fetched.length > 0) list = fetched;
       }
 
