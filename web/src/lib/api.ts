@@ -132,6 +132,32 @@ export const apiCreateFarmer = async (farmerData: any) => {
   return farmerObj;
 };
 
+export const apiGetFarmerMaterials = async (farmerId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('material_supplies')
+      .select('*')
+      .eq('farmer_id', farmerId)
+      .order('created_at', { ascending: false });
+
+    if (!error && data && data.length > 0) {
+      const mapped = data.map((m: any) => ({
+        id: m.id,
+        farmerId: m.farmer_id,
+        itemName: m.item_name || m.itemName,
+        quantity: m.quantity || 1,
+        unitPrice: m.unit_price || m.unitPrice || 0,
+        totalPrice: m.total_price || m.totalPrice || 0,
+        date: m.created_at ? new Date(m.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today',
+      }));
+      return mapped;
+    }
+  } catch {}
+
+  const cache = getLocalCache('seavaig_material_supplies_cache', []);
+  return cache.filter((m: any) => m.farmerId === farmerId);
+};
+
 export const apiCreateFarmerMaterialPurchase = async (matData: any) => {
   const matObj = {
     id: `mat-${Date.now()}`,
@@ -152,6 +178,9 @@ export const apiCreateFarmerMaterialPurchase = async (matData: any) => {
       total_price: matObj.totalPrice,
     }]);
   } catch {}
+
+  const matCache = getLocalCache('seavaig_material_supplies_cache', []);
+  setLocalCache('seavaig_material_supplies_cache', [matObj, ...matCache]);
 
   // Update farmer advance balance
   const farmers = getLocalCache('seavaig_farmers_cache', []);

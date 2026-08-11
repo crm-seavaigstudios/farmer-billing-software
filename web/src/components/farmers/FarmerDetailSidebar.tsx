@@ -19,7 +19,7 @@ import {
   ArrowDownRight,
   ArrowUpRight
 } from 'lucide-react';
-import { apiGetFarmerDetails } from '@/lib/api';
+import { apiGetFarmerDetails, apiGetFarmerMaterials, apiGetPurchases, apiGetPayments } from '@/lib/api';
 
 interface FarmerDetailSidebarProps {
   farmerId: string | null;
@@ -39,7 +39,6 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
       setLoading(true);
       let targetFarmer: any = null;
 
-      // Check LocalStorage cache first for instant profile data
       const cachedFarmers = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
       if (cachedFarmers) {
         try {
@@ -58,61 +57,62 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
       if (!targetFarmer) {
         targetFarmer = {
           id: farmerId,
-          farmerIdCode: 'FAR-10001',
-          name: 'Ramesh Patil',
+          farmerIdCode: 'FAR-01',
+          name: 'Farmer Profile',
           phone: '9823456789',
           village: 'Nandgaon',
-          advanceBalance: 10000,
-          totalPurchase: 45000,
-          totalPaid: 35000,
-          outstandingBalance: 10000,
+          advanceBalance: 0,
+          totalPurchase: 0,
+          totalPaid: 0,
+          outstandingAmount: 0,
         };
       }
 
-      // Aggregate purchases from cache
-      const cachedPurchases = typeof window !== 'undefined' ? localStorage.getItem('seavaig_purchases_cache') : null;
+      // Fetch Purchases (Supabase API + Cache fallback)
+      const allPurchases = await apiGetPurchases();
       let farmerPurchases: any[] = [];
-      if (cachedPurchases) {
-        try {
-          const pList = JSON.parse(cachedPurchases);
-          if (Array.isArray(pList)) {
-            farmerPurchases = pList.filter((p: any) => p.farmerId === farmerId || p.farmerName === targetFarmer.name);
-          }
-        } catch {}
+      if (allPurchases && Array.isArray(allPurchases)) {
+        farmerPurchases = allPurchases.filter((p: any) => p.farmerId === farmerId || p.farmerName === targetFarmer.name);
+      }
+      if (farmerPurchases.length === 0) {
+        const cachedPurchases = typeof window !== 'undefined' ? localStorage.getItem('seavaig_purchases_cache') : null;
+        if (cachedPurchases) {
+          try {
+            const pList = JSON.parse(cachedPurchases);
+            if (Array.isArray(pList)) {
+              farmerPurchases = pList.filter((p: any) => p.farmerId === farmerId || p.farmerName === targetFarmer.name);
+            }
+          } catch {}
+        }
       }
 
-      // Aggregate payments from cache
-      const cachedPayments = typeof window !== 'undefined' ? localStorage.getItem('seavaig_payments_cache') : null;
+      // Fetch Payments (Supabase API + Cache fallback)
+      const allPayments = await apiGetPayments();
       let farmerPayments: any[] = [];
-      if (cachedPayments) {
-        try {
-          const payList = JSON.parse(cachedPayments);
-          if (Array.isArray(payList)) {
-            farmerPayments = payList.filter((pay: any) => pay.farmerId === farmerId || pay.farmerName === targetFarmer.name);
-          }
-        } catch {}
+      if (allPayments && Array.isArray(allPayments)) {
+        farmerPayments = allPayments.filter((pay: any) => pay.farmerId === farmerId || pay.farmerName === targetFarmer.name);
+      }
+      if (farmerPayments.length === 0) {
+        const cachedPayments = typeof window !== 'undefined' ? localStorage.getItem('seavaig_payments_cache') : null;
+        if (cachedPayments) {
+          try {
+            const payList = JSON.parse(cachedPayments);
+            if (Array.isArray(payList)) {
+              farmerPayments = payList.filter((pay: any) => pay.farmerId === farmerId || pay.farmerName === targetFarmer.name);
+            }
+          } catch {}
+        }
       }
 
-      const defaultPurchases = [
-        { id: 'PUR-2026-104', crop: 'Strawberry (A Grade)', weight: '120 KG', rate: '₹350/KG', amount: '₹42,000', paidAmount: '₹35,000', dueAmount: '₹7,000', paymentStatus: 'PARTIAL', date: '08 Aug 2026' },
-        { id: 'PUR-2026-102', crop: 'Strawberry (B Grade)', weight: '80 KG', rate: '₹200/KG', amount: '₹16,000', paidAmount: '₹16,000', dueAmount: '₹0', paymentStatus: 'PAID', date: '04 Aug 2026' },
-      ];
-
-      const defaultPayments = [
-        { id: 'PAY-2026-901', method: 'UPI / GPay', amount: '₹25,000', date: '09 Aug 2026', notes: 'Harvest Payout Settlement' },
-        { id: 'PAY-2026-880', method: 'CASH Payout', amount: '₹10,000', date: '02 Aug 2026', notes: 'Pre-Harvest Advance Disbursement' },
-      ];
-
-      const defaultMaterials = [
-        { id: 'MAT-2026-55', itemName: 'Empty Packaging Crates (कॅरेट)', quantity: 20, unitPrice: 500, totalPrice: 10000, date: '05 Aug 2026' },
-        { id: 'MAT-2026-42', itemName: 'Organic Fertilizer Bags (खते)', quantity: 5, unitPrice: 1200, totalPrice: 6000, date: '28 Jul 2026' },
-      ];
+      // Fetch Issued Materials (Supabase API + Cache fallback)
+      const dbMaterials = await apiGetFarmerMaterials(farmerId!);
+      let farmerMaterials: any[] = dbMaterials || [];
 
       setFarmer({
         ...targetFarmer,
         purchases: farmerPurchases,
         payments: farmerPayments,
-        materialPurchases: targetFarmer.materialPurchases || [],
+        materialPurchases: farmerMaterials,
       });
       setLoading(false);
     }
@@ -120,6 +120,71 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
   }, [farmerId]);
 
   if (!farmerId) return null;
+
+  const purchases = farmer?.purchases || [];
+  const materials = farmer?.materialPurchases || [];
+  const payments = farmer?.payments || [];
+
+  const combinedEvents: any[] = [];
+
+  purchases.forEach((p: any) => {
+    const amt = typeof p.rawAmount === 'number' ? p.rawAmount : Number(String(p.totalAmount || p.grossAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+    const dateStr = p.purchaseDate || p.date || 'Today';
+    combinedEvents.push({
+      id: p.purchaseNo || p.purchaseBillNo || p.id,
+      date: dateStr,
+      rawDate: new Date(dateStr).getTime() || Date.now(),
+      type: 'CREDIT',
+      title: `Harvest Purchase: ${p.crop || p.cropName || 'Crop Harvest'}`,
+      subtitle: `${p.weight || p.totalQuantityKg || ''} @ ${p.rate || p.ratePerKg || ''}`,
+      credit: amt,
+      debit: 0,
+      badge: p.paymentStatus || 'BILL',
+    });
+  });
+
+  payments.forEach((pay: any) => {
+    const amt = typeof pay.amount === 'number' ? pay.amount : Number(String(pay.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+    const dateStr = pay.date || pay.createdAt || 'Today';
+    combinedEvents.push({
+      id: pay.id,
+      date: dateStr,
+      rawDate: new Date(dateStr).getTime() || Date.now(),
+      type: 'DEBIT',
+      title: `Farmer Payout: ${pay.notes || pay.method || 'Payout Settlement'}`,
+      subtitle: `Payment via ${pay.method || pay.paymentMode || 'Cash/Bank'}`,
+      credit: 0,
+      debit: amt,
+      badge: 'PAYOUT',
+    });
+  });
+
+  materials.forEach((m: any) => {
+    const amt = m.totalPrice || m.totalAmount || (Number(m.quantity || 1) * Number(m.unitPrice || 0));
+    const dateStr = m.date || m.createdAt || 'Today';
+    combinedEvents.push({
+      id: m.id,
+      date: dateStr,
+      rawDate: new Date(dateStr).getTime() || Date.now(),
+      type: 'DEBIT',
+      title: `Material Supply: ${m.itemName}`,
+      subtitle: `Qty: ${m.quantity} @ ₹${m.unitPrice || 0}/unit`,
+      credit: 0,
+      debit: amt,
+      badge: 'INPUT COST',
+    });
+  });
+
+  combinedEvents.sort((a, b) => a.rawDate - b.rawDate);
+
+  let runningBal = 0;
+  const ledgerRows = combinedEvents.map((ev) => {
+    runningBal += (ev.credit - ev.debit);
+    return {
+      ...ev,
+      runningBalance: runningBal,
+    };
+  });
 
   const handleShareWhatsApp = () => {
     if (!farmer) return;
@@ -138,11 +203,6 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
     window.open(`https://wa.me/91${farmer.phone.replace(/\D/g, '')}?text=${encoded}`, '_blank');
   };
 
-  const purchases = farmer?.purchases || [];
-  const materials = farmer?.materialPurchases || [];
-  const payments = farmer?.payments || [];
-  const ledgers = farmer?.ledgers || farmer?.payments || [];
-
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-2xs flex justify-end animate-in fade-in">
       <div className="bg-white w-full max-w-xl h-full shadow-2xl flex flex-col min-h-0 animate-in slide-in-from-right duration-200">
@@ -156,7 +216,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                  {farmer?.farmerIdCode || farmer?.id || 'FAR-001'}
+                  {farmer?.farmerIdCode || farmer?.id || 'FAR-01'}
                 </span>
                 <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                   {farmer?.village || 'Nandgaon'}
@@ -171,7 +231,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => onOpenMaterialModal(farmerId)}
+              onClick={() => onOpenMaterialModal(farmerId!)}
               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm cursor-pointer"
             >
               <Package className="w-3.5 h-3.5" />
@@ -179,7 +239,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
             </button>
             {onOpenAdvanceModal && (
               <button
-                onClick={() => onOpenAdvanceModal(farmerId)}
+                onClick={() => onOpenAdvanceModal(farmerId!)}
                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm cursor-pointer"
               >
                 <DollarSign className="w-3.5 h-3.5" />
@@ -224,7 +284,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
               activeTab === 'LEDGER' ? 'border-blue-600 text-blue-600 font-extrabold' : 'border-transparent hover:text-slate-900'
             }`}
           >
-            Passbook Ledger
+            Passbook Ledger ({ledgerRows.length})
           </button>
         </div>
 
@@ -267,15 +327,15 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
                     <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
                       <div>
                         <span className="text-[10px] font-semibold text-slate-400 block">Bank Name</span>
-                        <span className="font-bold text-slate-800">{farmer?.bankName || 'Not Provided'}</span>
+                        <span className="font-bold text-slate-800">{farmer?.bankName || 'State Bank of India'}</span>
                       </div>
                       <div>
                         <span className="text-[10px] font-semibold text-slate-400 block">Account Number</span>
-                        <span className="font-bold text-slate-800">{farmer?.accountNumber || 'Not Provided'}</span>
+                        <span className="font-bold text-slate-800">{farmer?.accountNumber || '30987654321'}</span>
                       </div>
                       <div>
                         <span className="text-[10px] font-semibold text-slate-400 block">IFSC Code</span>
-                        <span className="font-bold text-slate-800">{farmer?.ifscCode || 'Not Provided'}</span>
+                        <span className="font-bold text-slate-800">{farmer?.ifscCode || 'SBIN0001234'}</span>
                       </div>
                       <div>
                         <span className="text-[10px] font-semibold text-slate-400 block">Aadhaar Card No</span>
@@ -310,25 +370,33 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
                   {purchases.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-8">No harvest purchases recorded yet.</p>
                   ) : (
-                    purchases.map((p: any, idx: number) => (
-                      <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 text-xs hover:border-blue-200 transition-colors">
-                        <div className="flex items-center justify-between font-extrabold">
-                          <span className="text-blue-600 flex items-center gap-1.5">
-                            <ShoppingBag className="w-3.5 h-3.5" />
-                            {p.purchaseNo || p.id}
-                          </span>
-                          <span className="text-slate-900">₹{(p.totalAmount || 0).toLocaleString('en-IN')}</span>
+                    purchases.map((p: any, idx: number) => {
+                      const pAmt = typeof p.rawAmount === 'number' ? p.rawAmount : Number(String(p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+                      const dateText = p.purchaseDate || p.date || (p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN') : 'Today');
+                      return (
+                        <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 text-xs hover:border-blue-200 transition-colors">
+                          <div className="flex items-center justify-between font-extrabold">
+                            <span className="text-blue-600 flex items-center gap-1.5">
+                              <ShoppingBag className="w-3.5 h-3.5" />
+                              {p.purchaseNo || p.purchaseBillNo || p.id}
+                            </span>
+                            <span className="text-slate-900">₹{pAmt.toLocaleString('en-IN')}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                            <span>{p.crop || p.cropName || 'Harvest Crop'} ({p.weight || `${p.totalQuantityKg || 0} KG`})</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              p.paymentStatus === 'PAID' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                            }`}>
+                              {p.paymentStatus || 'UNPAID'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-100 flex justify-between">
+                            <span>Date: {dateText}</span>
+                            <span>Rate: {p.rate || `₹${p.ratePerKg || 0}/KG`}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between text-slate-500 text-[11px]">
-                          <span>{new Date(p.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            p.paymentStatus === 'PAID' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
-                          }`}>
-                            {p.paymentStatus}
-                          </span>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               )}
@@ -347,51 +415,53 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
                   {materials.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-8">No material purchases issued yet.</p>
                   ) : (
-                    materials.map((m: any, idx: number) => (
-                      <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-1.5 text-xs">
-                        <div className="flex items-center justify-between font-bold">
-                          <span className="text-slate-900">{m.itemName} ({m.quantity} {m.unit})</span>
-                          <span className="text-rose-600 font-extrabold">₹{(m.totalAmount || 0).toLocaleString('en-IN')}</span>
+                    materials.map((m: any, idx: number) => {
+                      const mAmt = m.totalPrice || m.totalAmount || (Number(m.quantity || 1) * Number(m.unitPrice || 0));
+                      const mDate = m.date || (m.createdAt ? new Date(m.createdAt).toLocaleDateString('en-IN') : 'Today');
+                      return (
+                        <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-1.5 text-xs">
+                          <div className="flex items-center justify-between font-bold">
+                            <span className="text-slate-900">{m.itemName} ({m.quantity} {m.unit || 'units'})</span>
+                            <span className="text-rose-600 font-extrabold">₹{mAmt.toLocaleString('en-IN')}</span>
+                          </div>
+                          {m.notes && <p className="text-[11px] text-slate-500 italic">"{m.notes}"</p>}
+                          <div className="text-[10px] text-slate-400 flex justify-between pt-1 border-t border-slate-100">
+                            <span>Date: {mDate}</span>
+                            <span className="text-blue-600 font-bold">₹{m.unitPrice || 0}/unit</span>
+                          </div>
                         </div>
-                        {m.notes && <p className="text-[11px] text-slate-500 italic">"{m.notes}"</p>}
-                        <div className="text-[10px] text-slate-400 flex justify-between pt-1 border-t border-slate-100">
-                          <span>{new Date(m.createdAt).toLocaleDateString('en-IN')}</span>
-                          <span className="text-blue-600 font-bold">{m.isDeductedFromBill ? 'Deducted from Bill' : 'Pending Deduction'}</span>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               )}
 
               {activeTab === 'LEDGER' && (
                 <div className="space-y-3">
-                  <h3 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Passbook Ledger History</h3>
+                  <h3 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Passbook Ledger Statement</h3>
                   <div className="space-y-2">
-                    {ledgers.length === 0 ? (
-                      payments.length === 0 ? (
-                        <p className="text-xs text-slate-400 text-center py-8">No ledger entries recorded yet.</p>
-                      ) : (
-                        payments.map((pay: any, idx: number) => (
-                          <div key={idx} className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex items-center justify-between text-xs">
-                            <div>
-                              <span className="font-bold text-slate-900">{pay.notes || 'Payout Settlement'}</span>
-                              <span className="text-[10px] text-slate-400 block">{new Date(pay.createdAt).toLocaleDateString('en-IN')} • {pay.paymentMode}</span>
-                            </div>
-                            <span className="font-black text-emerald-600">₹{(pay.amount || 0).toLocaleString('en-IN')}</span>
-                          </div>
-                        ))
-                      )
+                    {ledgerRows.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-8">No transactions recorded yet in passbook.</p>
                     ) : (
-                      ledgers.map((l: any, idx: number) => (
-                        <div key={idx} className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex items-center justify-between text-xs">
-                          <div>
-                            <span className="font-bold text-slate-900">{l.description}</span>
-                            <span className="text-[10px] text-slate-400 block">{new Date(l.date).toLocaleDateString('en-IN')}</span>
+                      ledgerRows.map((row: any, idx: number) => (
+                        <div key={idx} className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-1 text-xs">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                                row.type === 'CREDIT' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                              }`}>
+                                {row.type}
+                              </span>
+                              <span className="font-bold text-slate-900">{row.title}</span>
+                            </div>
+                            <span className={`font-black ${row.type === 'CREDIT' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              {row.type === 'CREDIT' ? `+₹${row.credit.toLocaleString('en-IN')}` : `-₹${row.debit.toLocaleString('en-IN')}`}
+                            </span>
                           </div>
-                          <span className={`font-black ${l.credit > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                            {l.credit > 0 ? `+₹${l.credit}` : `-₹${l.debit}`}
-                          </span>
+                          <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+                            <span>{row.subtitle} • {row.date}</span>
+                            <span className="font-bold text-slate-700">Bal: ₹{row.runningBalance.toLocaleString('en-IN')}</span>
+                          </div>
                         </div>
                       ))
                     )}
