@@ -89,10 +89,10 @@ export default function TradersPage() {
       }
     }
     if (pRes) {
-      const list = pRes.data && Array.isArray(pRes.data) ? pRes.data : (Array.isArray(pRes) ? pRes : null);
+      const list = Array.isArray(pRes) ? pRes : ((pRes as any)?.data || []);
       if (list && list.length > 0) {
         setPurchases(list);
-        if (pRes.summary) setSummary(pRes.summary);
+        if ((pRes as any)?.summary) setSummary((pRes as any).summary);
         if (typeof window !== 'undefined') {
           localStorage.setItem('seavaig_trader_purchases_cache', JSON.stringify(list));
         }
