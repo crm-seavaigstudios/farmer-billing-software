@@ -44,13 +44,10 @@ export default function SalesPage() {
     }
 
     const res = await apiGetSales();
-    if (res) {
-      const list = res.data && Array.isArray(res.data) ? res.data : (Array.isArray(res) ? res : null);
-      if (list && list.length > 0) {
-        setSales(list);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('seavaig_sales_cache', JSON.stringify(list));
-        }
+    if (res && Array.isArray(res) && res.length > 0) {
+      setSales(res);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('seavaig_sales_cache', JSON.stringify(res));
       }
     }
   };
