@@ -153,9 +153,9 @@ export default function ReportsPage() {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (
-        item.partyName.toLowerCase().includes(q) ||
-        item.refNo.toLowerCase().includes(q) ||
-        item.category.toLowerCase().includes(q)
+        (item.partyName || '').toLowerCase().includes(q) ||
+        (item.refNo || '').toLowerCase().includes(q) ||
+        (item.category || '').toLowerCase().includes(q)
       );
     }
     return true;

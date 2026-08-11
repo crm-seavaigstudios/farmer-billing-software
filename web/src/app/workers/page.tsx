@@ -217,9 +217,9 @@ export default function WorkersPage() {
 
   const filteredWorkers = workers.filter(
     (w) =>
-      w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.workerCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.role.toLowerCase().includes(searchQuery.toLowerCase())
+      (w.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (w.workerCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (w.role || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (

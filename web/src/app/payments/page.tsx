@@ -45,6 +45,23 @@ export default function PaymentsPage() {
     setPayments(updated);
     if (typeof window !== 'undefined') {
       localStorage.setItem('seavaig_payments_cache', JSON.stringify(updated));
+
+      const farmersCache = localStorage.getItem('seavaig_farmers_cache');
+      if (farmersCache) {
+        try {
+          const farmers = JSON.parse(farmersCache);
+          const payAmt = Number(String(newPay.amount).replace(/[^0-9.-]+/g, '')) || 0;
+          const updatedFarmers = farmers.map((f: any) => {
+            if (f.id === newPay.farmerId || f.name === newPay.farmerName) {
+              const newTotalPaid = (f.totalPaid || 0) + payAmt;
+              const newDue = Math.max(0, (f.totalPurchase || 0) - newTotalPaid);
+              return { ...f, totalPaid: newTotalPaid, outstandingAmount: newDue };
+            }
+            return f;
+          });
+          localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updatedFarmers));
+        } catch {}
+      }
     }
   };
 
@@ -66,9 +83,9 @@ export default function PaymentsPage() {
 
   const filtered = payments.filter(
     (p) =>
-      p.farmerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.method.toLowerCase().includes(searchQuery.toLowerCase())
+      (p.farmerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.method || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (

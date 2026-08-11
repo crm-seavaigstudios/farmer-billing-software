@@ -85,6 +85,24 @@ export default function PurchasesPage() {
     setPurchases(updated);
     if (typeof window !== 'undefined') {
       localStorage.setItem('seavaig_purchases_cache', JSON.stringify(updated));
+
+      const farmersCache = localStorage.getItem('seavaig_farmers_cache');
+      if (farmersCache) {
+        try {
+          const farmers = JSON.parse(farmersCache);
+          const purAmt = Number(String(newPurchase.amount || newPurchase.rawAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          const dueAmt = Number(String(newPurchase.dueAmount || newPurchase.rawDue || purAmt).replace(/[^0-9.-]+/g, '')) || purAmt;
+          const updatedFarmers = farmers.map((f: any) => {
+            if (f.id === newPurchase.farmerId || f.name === newPurchase.farmerName) {
+              const newTotalPurchase = (f.totalPurchase || 0) + purAmt;
+              const newDue = (f.outstandingAmount || 0) + dueAmt;
+              return { ...f, totalPurchase: newTotalPurchase, outstandingAmount: newDue };
+            }
+            return f;
+          });
+          localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updatedFarmers));
+        } catch {}
+      }
     }
   };
 
@@ -162,10 +180,10 @@ export default function PurchasesPage() {
 
   const filteredPurchases = purchases.filter(
     (p) =>
-      p.farmerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.village.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.crop.toLowerCase().includes(searchQuery.toLowerCase())
+      (p.farmerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.village || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.crop || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (

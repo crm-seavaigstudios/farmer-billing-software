@@ -78,8 +78,8 @@ export default function ExpensesPage() {
 
   const filtered = expenses.filter((e) => {
     const matchesSearch =
-      e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.id.toLowerCase().includes(searchQuery.toLowerCase());
+      (e.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (e.id || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = categoryFilter === 'ALL' || e.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });

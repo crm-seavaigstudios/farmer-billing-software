@@ -89,7 +89,7 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
     const savedFarmer = await apiCreateFarmer(newFarmer);
     const resultFarmer = savedFarmer || {
       id: `far-${Date.now()}`,
-      farmerIdCode: `FAR-${Math.floor(10000 + Math.random() * 90000)}`,
+      farmerIdCode: `FAR-01`,
       ...newFarmer,
       totalPurchase: 0,
       totalPaid: 0,

@@ -105,10 +105,10 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
 
   const filteredFarmers = farmers.filter(
     (f) =>
-      f.name.toLowerCase().includes(farmerSearch.toLowerCase()) ||
-      f.phone.includes(farmerSearch) ||
-      f.village.toLowerCase().includes(farmerSearch.toLowerCase()) ||
-      f.farmerIdCode.toLowerCase().includes(farmerSearch.toLowerCase())
+      (f.name || '').toLowerCase().includes(farmerSearch.toLowerCase()) ||
+      (f.phone || '').includes(farmerSearch) ||
+      (f.village || '').toLowerCase().includes(farmerSearch.toLowerCase()) ||
+      (f.farmerIdCode || '').toLowerCase().includes(farmerSearch.toLowerCase())
   );
 
   const handleSaveCustomCrop = async () => {

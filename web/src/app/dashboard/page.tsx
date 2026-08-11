@@ -48,10 +48,16 @@ export default function DashboardPage() {
       const sales = salesCache ? JSON.parse(salesCache) : [];
       const payments = paymentsCache ? JSON.parse(paymentsCache) : [];
 
-      const calcPurchase = purchases.reduce((acc: number, p: any) => acc + (p.rawAmount || p.totalAmount || 0), 0);
-      const calcDue = purchases.reduce((acc: number, p: any) => acc + (p.rawDue || p.dueAmount || 0), 0);
-      const calcSales = sales.reduce((acc: number, s: any) => acc + (s.totalAmount || 0), 0);
-      const calcPayments = payments.reduce((acc: number, p: any) => acc + (p.amount || 0), 0);
+      const parseNum = (val: any): number => {
+        if (typeof val === 'number') return val;
+        if (!val) return 0;
+        return Number(String(val).replace(/[^0-9.-]+/g, '')) || 0;
+      };
+
+      const calcPurchase = purchases.reduce((acc: number, p: any) => acc + parseNum(p.totalAmount || p.grossAmount || p.netAmount || p.rawAmount), 0);
+      const calcDue = purchases.reduce((acc: number, p: any) => acc + parseNum(p.dueAmount || p.rawDue), 0);
+      const calcSales = sales.reduce((acc: number, s: any) => acc + parseNum(s.totalAmount), 0);
+      const calcPayments = payments.reduce((acc: number, p: any) => acc + parseNum(p.amount), 0);
 
       const initialStats = {
         todaysPurchase: `₹${calcPurchase.toLocaleString('en-IN')}`,
@@ -60,7 +66,7 @@ export default function DashboardPage() {
         pendingAmount: `₹${calcDue.toLocaleString('en-IN')}`,
         totalFarmers: farmers.length,
         activeFarmers: farmers.filter((f: any) => f.status !== 'INACTIVE').length || farmers.length,
-        inventoryValue: `₹${(calcPurchase * 0.4).toLocaleString('en-IN')}`,
+        inventoryValue: `₹${Math.round(calcPurchase * 0.4).toLocaleString('en-IN')}`,
       };
       setStats(initialStats);
 

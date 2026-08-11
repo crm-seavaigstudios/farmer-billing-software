@@ -132,10 +132,10 @@ export default function FarmersPage() {
 
   const filteredFarmers = farmers.filter(
     (f) =>
-      f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (f.farmerIdCode && f.farmerIdCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (f.phone && f.phone.includes(searchQuery)) ||
-      (f.village && f.village.toLowerCase().includes(searchQuery.toLowerCase()))
+      (f.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (f.farmerIdCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (f.phone || '').includes(searchQuery) ||
+      (f.village || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (

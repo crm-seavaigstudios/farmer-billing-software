@@ -63,10 +63,10 @@ export default function UsersPage() {
       (u.tenantId === activeTenantId || !u.tenantId) &&
       u.role !== 'SUPER_ADMIN' &&
       u.role !== 'AGENCY_ADMIN' &&
-      (u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.staffIdCode && u.staffIdCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        u.role.toLowerCase().includes(searchQuery.toLowerCase()))
+      ((u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (u.email || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (u.staffIdCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (u.role || '').toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (

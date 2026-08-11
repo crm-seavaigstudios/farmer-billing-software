@@ -81,8 +81,8 @@ export default function SalesPage() {
 
   const filtered = sales.filter(
     (s) =>
-      s.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.id.toLowerCase().includes(searchQuery.toLowerCase())
+      (s.customerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.id || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (

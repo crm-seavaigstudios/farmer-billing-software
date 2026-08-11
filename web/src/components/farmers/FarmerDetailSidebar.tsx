@@ -110,9 +110,9 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
 
       setFarmer({
         ...targetFarmer,
-        purchases: farmerPurchases.length > 0 ? farmerPurchases : (targetFarmer.purchases || defaultPurchases),
-        payments: farmerPayments.length > 0 ? farmerPayments : (targetFarmer.payments || defaultPayments),
-        materialPurchases: targetFarmer.materialPurchases || defaultMaterials,
+        purchases: farmerPurchases,
+        payments: farmerPayments,
+        materialPurchases: targetFarmer.materialPurchases || [],
       });
       setLoading(false);
     }

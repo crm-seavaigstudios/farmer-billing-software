@@ -130,9 +130,9 @@ export default function InventoryPage() {
 
   const filtered = batches.filter(
     (b) =>
-      b.grade.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.room.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.id.toLowerCase().includes(searchQuery.toLowerCase())
+      (b.grade || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (b.room || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (b.id || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (

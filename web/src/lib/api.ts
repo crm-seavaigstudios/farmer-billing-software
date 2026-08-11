@@ -58,19 +58,26 @@ export const apiGetFarmers = async () => {
   try {
     const { data, error } = await supabase.from('farmers').select('*').order('created_at', { ascending: false });
     if (!error && data && data.length > 0) {
-      const mapped = data.map((f: any) => ({
-        id: f.id,
-        farmerIdCode: f.farmer_code || f.farmerIdCode || `FAR-${f.id.toString().slice(0, 5)}`,
-        name: f.name,
-        phone: f.phone,
-        village: f.village || 'Nandgaon',
-        taluka: f.taluka || 'Nashik',
-        grade: f.grade || 'A Grade',
-        totalPurchase: f.total_purchases || f.totalPurchase || 0,
-        totalPaid: f.total_paid || f.totalPaid || 0,
-        advanceBalance: f.advance_balance || f.advanceBalance || 0,
-        outstandingAmount: f.outstanding_amount || f.outstandingAmount || 0,
-      }));
+      const mapped = data.map((f: any) => {
+        const totalPurchase = f.total_purchases || f.totalPurchase || 0;
+        const totalPaid = f.total_paid || f.totalPaid || 0;
+        const due = f.outstanding_amount !== undefined && f.outstanding_amount !== null 
+          ? f.outstanding_amount 
+          : Math.max(0, totalPurchase - totalPaid);
+        return {
+          id: f.id,
+          farmerIdCode: f.farmer_code || f.farmerIdCode || `FAR-${f.id.toString().slice(0, 5)}`,
+          name: f.name,
+          phone: f.phone,
+          village: f.village || 'Nandgaon',
+          taluka: f.taluka || 'Nashik',
+          grade: f.grade || 'A Grade',
+          totalPurchase,
+          totalPaid,
+          advanceBalance: f.advance_balance || f.advanceBalance || 0,
+          outstandingAmount: due,
+        };
+      });
       setLocalCache('seavaig_farmers_cache', mapped);
       return mapped;
     }
@@ -88,10 +95,13 @@ export const apiGetFarmerDetails = async (id: string) => {
 };
 
 export const apiCreateFarmer = async (farmerData: any) => {
+  const current = getLocalCache('seavaig_farmers_cache', []);
+  const nextNum = current.length + 1;
+  const autoCode = `FAR-${String(nextNum).padStart(2, '0')}`;
   const newId = `far-${Date.now()}`;
   const farmerObj = {
     id: newId,
-    farmerIdCode: farmerData.farmerIdCode || `FAR-${Math.floor(10000 + Math.random() * 90000)}`,
+    farmerIdCode: farmerData.farmerIdCode || autoCode,
     name: farmerData.name,
     phone: farmerData.phone,
     village: farmerData.village || 'Nandgaon',
@@ -116,8 +126,8 @@ export const apiCreateFarmer = async (farmerData: any) => {
     }]);
   } catch {}
 
-  const current = getLocalCache('seavaig_farmers_cache', []);
-  const updated = [farmerObj, ...current];
+  const existing = getLocalCache('seavaig_farmers_cache', []);
+  const updated = [farmerObj, ...existing];
   setLocalCache('seavaig_farmers_cache', updated);
   return farmerObj;
 };

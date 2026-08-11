@@ -85,9 +85,9 @@ export default function CustomersPage() {
 
   const filtered = customers.filter(
     (c) =>
-      c.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone.includes(searchQuery)
+      (c.company || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.phone || '').includes(searchQuery)
   );
 
   return (
