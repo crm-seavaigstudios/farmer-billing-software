@@ -80,10 +80,10 @@ export default function WorkersPage() {
 
     const res = await apiGetWorkers();
     if (res) {
-      const list = res.data && Array.isArray(res.data) ? res.data : (Array.isArray(res) ? res : null);
+      const list = Array.isArray(res) ? res : ((res as any)?.data || []);
       if (list && list.length > 0) {
         setWorkers(list);
-        if (res.summary) setSummary(res.summary);
+        if ((res as any)?.summary) setSummary((res as any).summary);
         if (typeof window !== 'undefined') {
           localStorage.setItem('seavaig_workers_cache', JSON.stringify(list));
         }
