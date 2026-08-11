@@ -36,12 +36,8 @@ export default function UsersPage() {
   useEffect(() => {
     async function loadUsers() {
       const res = await apiGetUsers();
-      if (res) {
-        if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-          setUsers(res.data);
-        } else if (Array.isArray(res) && res.length > 0) {
-          setUsers(res);
-        }
+      if (res && Array.isArray(res) && res.length > 0) {
+        setUsers(res);
       }
     }
     loadUsers();
