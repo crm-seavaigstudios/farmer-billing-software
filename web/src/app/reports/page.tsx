@@ -119,7 +119,7 @@ export default function ReportsPage() {
         }
 
         if (salesRes) {
-          const sList = salesRes.data || (Array.isArray(salesRes) ? salesRes : []);
+          const sList = Array.isArray(salesRes) ? salesRes : ((salesRes as any)?.data || []);
           sList.forEach((s: any) => {
             combined.push({
               id: s.id || s.invoiceNo,
