@@ -243,10 +243,34 @@ export default function FarmersPage() {
                           <div className="text-[10px] text-slate-500">{f.phone}</div>
                         </td>
                         <td className="py-3.5 px-4 text-slate-600">{f.village}, {f.taluka}</td>
-                        <td className="py-3.5 px-4">
-                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                        <td className="py-3.5 px-4 space-y-1">
+                          <div className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 inline-block">
                             {f.grade || 'A Grade'}
-                          </span>
+                          </div>
+                          {(() => {
+                            const due = Number(f.outstandingAmount || 0);
+                            const adv = Number(f.advanceBalance || 0);
+                            let label = 'COMPLETED';
+                            let color = 'bg-slate-50 text-slate-700 border-slate-100';
+                            if (adv > 0) {
+                              label = 'ADVANCE (अ‍ॅडव्हान्स जमा)';
+                              color = 'bg-indigo-50 text-indigo-700 border-indigo-100';
+                            } else if (due > 0) {
+                              label = 'PENDING_DUE (बाकी थकबाकी)';
+                              color = 'bg-rose-50 text-rose-700 border-rose-100';
+                            } else if (f.totalPurchase > 0 && due === 0) {
+                              label = 'FULL_PAID (पूर्ण भरणा)';
+                              color = 'bg-emerald-50 text-emerald-700 border-emerald-100';
+                            } else {
+                              label = 'COMPLETED (पूर्ण हिशोब)';
+                              color = 'bg-slate-50 text-slate-700 border-slate-100';
+                            }
+                            return (
+                              <div className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${color} block w-fit`}>
+                                {label}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="py-3.5 px-4 font-bold text-slate-900">₹{(f.totalPurchase || 0).toLocaleString('en-IN')}</td>
                         <td className="py-3.5 px-4 font-extrabold text-emerald-600">₹{(f.totalPaid || 0).toLocaleString('en-IN')}</td>

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { AddPurchaseModal } from '@/components/purchases/AddPurchaseModal';
+import { EditPurchaseModal } from '@/components/purchases/EditPurchaseModal';
 import { AddPaymentModal } from '@/components/payments/AddPaymentModal';
 import { PrintReceiptModal, ReceiptData } from '@/components/common/PrintReceiptModal';
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
@@ -21,7 +22,8 @@ import {
   Printer,
   Database,
   DollarSign,
-  Inbox
+  Inbox,
+  Edit3
 } from 'lucide-react';
 
 export default function PurchasesPage() {
@@ -33,6 +35,41 @@ export default function PurchasesPage() {
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLiveSynced, setIsLiveSynced] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedBillToEdit, setSelectedBillToEdit] = useState<any>(null);
+
+  const handleEditPurchase = (updatedBill: any) => {
+    const updated = purchases.map((p) => (p.id === updatedBill.id ? updatedBill : p));
+    setPurchases(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_purchases_cache', JSON.stringify(updated));
+
+      const farmersCache = localStorage.getItem('seavaig_farmers_cache');
+      if (farmersCache) {
+        try {
+          const list = JSON.parse(farmersCache);
+          const oldBill = purchases.find((p) => p.id === updatedBill.id);
+          const oldAmount = parseFloat(String(oldBill.amount).replace(/[^0-9.-]+/g, '')) || 0;
+          const newAmount = parseFloat(String(updatedBill.amount).replace(/[^0-9.-]+/g, '')) || 0;
+          
+          const oldDue = parseFloat(String(oldBill.dueAmount).replace(/[^0-9.-]+/g, '')) || 0;
+          const newDue = parseFloat(String(updatedBill.dueAmount).replace(/[^0-9.-]+/g, '')) || 0;
+
+          const updatedFarmers = list.map((f: any) => {
+            if (f.id === updatedBill.farmerId || f.name === updatedBill.farmerName) {
+              return {
+                ...f,
+                totalPurchase: Math.max(0, (f.totalPurchase || 0) - oldAmount + newAmount),
+                outstandingAmount: Math.max(0, (f.outstandingAmount || 0) - oldDue + newDue),
+              };
+            }
+            return f;
+          });
+          localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updatedFarmers));
+        } catch {}
+      }
+    }
+  };
 
   // Category Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -326,6 +363,17 @@ export default function PurchasesPage() {
                               </button>
                             )}
 
+                             <button
+                              onClick={() => {
+                                setSelectedBillToEdit(row);
+                                setIsEditModalOpen(true);
+                              }}
+                              className="p-1.5 text-blue-500 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors cursor-pointer"
+                              title="Edit Purchase Bill"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+
                             <button
                               onClick={() => openPrintModal(row)}
                               className="p-1.5 text-slate-500 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors"
@@ -349,6 +397,13 @@ export default function PurchasesPage() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAddPurchase={handleAddPurchase}
+      />
+
+      <EditPurchaseModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        purchase={selectedBillToEdit}
+        onEditPurchase={handleEditPurchase}
       />
 
       <AddPaymentModal

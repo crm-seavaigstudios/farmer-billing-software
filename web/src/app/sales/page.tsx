@@ -203,7 +203,16 @@ export default function SalesPage() {
                     <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-3 font-bold text-blue-600">{row.id}</td>
                       <td className="py-3 px-3 font-bold text-slate-900">{row.customerName}</td>
-                      <td className="py-3 px-3 text-slate-600 font-medium">{row.items}</td>
+                      <td className="py-3 px-3">
+                        <div className="text-slate-600 font-medium">{row.items}</div>
+                        {row.farmerBatches && row.farmerBatches.length > 0 && (
+                          <div className="text-[9px] text-emerald-700 font-black mt-1 flex items-center gap-1">
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-100">
+                              🌾 Origin Batches: {row.farmerBatches.join(', ')}
+                            </span>
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3 px-3 text-right font-black text-slate-900">{row.amount}</td>
                       <td className="py-3 px-3 text-center">
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${

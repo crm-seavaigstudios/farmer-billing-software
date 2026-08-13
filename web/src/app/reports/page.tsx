@@ -88,60 +88,117 @@ export default function ReportsPage() {
 
   useEffect(() => {
     async function loadLiveReports() {
+      const combined: any[] = [];
+
+      // 1. Load from local caches
+      if (typeof window !== 'undefined') {
+        const cachedPurchases = localStorage.getItem('seavaig_purchases_cache');
+        if (cachedPurchases) {
+          try {
+            const list = JSON.parse(cachedPurchases);
+            list.forEach((p: any) => {
+              combined.push({
+                id: p.id,
+                date: p.date || '2026-08-07',
+                module: 'HARVEST_PURCHASE',
+                partyName: p.farmerName,
+                category: p.crop,
+                weight: p.weight || '0 KG',
+                totalAmount: parseFloat(String(p.amount).replace(/[^0-9.-]+/g, '')) || 0,
+                paidAmount: parseFloat(String(p.paidAmount).replace(/[^0-9.-]+/g, '')) || 0,
+                dueAmount: parseFloat(String(p.dueAmount).replace(/[^0-9.-]+/g, '')) || 0,
+                paymentStatus: p.paymentStatus || 'UNPAID',
+                refNo: p.id,
+              });
+            });
+          } catch {}
+        }
+
+        const cachedSales = localStorage.getItem('seavaig_sales_cache');
+        if (cachedSales) {
+          try {
+            const list = JSON.parse(cachedSales);
+            list.forEach((s: any) => {
+              combined.push({
+                id: s.id,
+                date: s.date || '2026-08-07',
+                module: 'B2B_SALES',
+                partyName: s.customerName,
+                category: s.items || 'Strawberry B2B',
+                weight: `${s.totalWeight || 0} KG`,
+                totalAmount: Number(s.amount) || 0,
+                paidAmount: Number(s.amount) || 0,
+                dueAmount: 0,
+                paymentStatus: 'PAID',
+                refNo: s.id,
+              });
+            });
+          } catch {}
+        }
+
+        const cachedTraderPurchases = localStorage.getItem('seavaig_trader_purchases_cache');
+        if (cachedTraderPurchases) {
+          try {
+            const list = JSON.parse(cachedTraderPurchases);
+            list.forEach((t: any) => {
+              const amt = Number(t.quantity || 0) * Number(t.rate || 0);
+              const paid = Number(t.paidAmount || 0);
+              combined.push({
+                id: t.id,
+                date: t.date || '2026-08-07',
+                module: 'TRADER_SUPPLY',
+                partyName: t.traderName,
+                category: t.itemName,
+                weight: `${t.quantity || 0} QTY`,
+                totalAmount: amt,
+                paidAmount: paid,
+                dueAmount: Math.max(0, amt - paid),
+                paymentStatus: amt - paid === 0 ? 'PAID' : (paid > 0 ? 'PARTIAL' : 'UNPAID'),
+                refNo: t.id,
+              });
+            });
+          } catch {}
+        }
+      }
+
+      if (combined.length > 0) {
+        setReportData(combined);
+      }
+
+      // 2. Fetch from backend API and append/override
       try {
-        const [farmersRes, salesRes, purchasesRes, tradersRes, workersRes, expensesRes] = await Promise.all([
-          apiGetFarmers(),
+        const [salesRes, purchasesRes, tradersRes] = await Promise.all([
           apiGetSales(),
           apiGetPurchases(),
           apiGetTraderPurchases(),
-          apiGetWorkers(),
-          apiGetExpenses(),
         ]);
 
-        const combined: any[] = [];
-
-        if (purchasesRes && Array.isArray(purchasesRes)) {
+        if (purchasesRes && Array.isArray(purchasesRes) && purchasesRes.length > 0) {
           purchasesRes.forEach((p: any) => {
-            combined.push({
-              id: p.id || p.purchaseNo,
-              date: p.purchaseDate ? new Date(p.purchaseDate).toISOString().slice(0, 10) : '2026-08-07',
-              module: 'HARVEST_PURCHASE',
-              partyName: p.farmerName || p.farmer?.name || 'Farmer',
-              category: p.crop || 'Harvest Crop',
-              weight: `${p.totalWeight || 0} KG`,
-              totalAmount: p.totalAmount || 0,
-              paidAmount: (p.paidAmount || 0) + (p.advanceApplied || 0),
-              dueAmount: p.dueAmount || 0,
-              paymentStatus: p.paymentStatus || 'UNPAID',
-              refNo: p.purchaseNo || 'PUR-100',
-            });
-          });
-        }
-
-        if (salesRes) {
-          const sList = Array.isArray(salesRes) ? salesRes : ((salesRes as any)?.data || []);
-          sList.forEach((s: any) => {
-            combined.push({
-              id: s.id || s.invoiceNo,
-              date: s.date || '2026-08-07',
-              module: 'B2B_SALES',
-              partyName: s.customerName || 'B2B Client',
-              category: s.crop || 'Crop Sale',
-              weight: `${s.weightKg || 0} KG`,
-              totalAmount: s.totalAmount || 0,
-              paidAmount: s.paidAmount || 0,
-              dueAmount: s.dueAmount || 0,
-              paymentStatus: s.paymentStatus || 'PAID',
-              refNo: s.invoiceNo || 'INV-100',
-            });
+            const exists = combined.some(item => item.id === (p.purchaseNo || p.id));
+            if (!exists) {
+              combined.push({
+                id: p.purchaseNo || p.id,
+                date: p.purchaseDate ? new Date(p.purchaseDate).toISOString().slice(0, 10) : '2026-08-07',
+                module: 'HARVEST_PURCHASE',
+                partyName: p.farmerName || p.farmer?.name || 'Farmer',
+                category: p.crop || 'Harvest Crop',
+                weight: `${p.totalWeight || 0} KG`,
+                totalAmount: p.totalAmount || 0,
+                paidAmount: (p.paidAmount || 0) + (p.advanceApplied || 0),
+                dueAmount: p.dueAmount || 0,
+                paymentStatus: p.paymentStatus || 'UNPAID',
+                refNo: p.purchaseNo || 'PUR-100',
+              });
+            }
           });
         }
 
         if (combined.length > 0) {
-          setReportData(combined);
+          setReportData([...combined]);
         }
       } catch (err) {
-        console.warn('Using report seed data:', err);
+        console.warn('Report API fetch skipped or failed, using cache:', err);
       }
     }
     loadLiveReports();

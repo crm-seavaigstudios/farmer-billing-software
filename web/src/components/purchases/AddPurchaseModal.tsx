@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, ShoppingBag, Calculator, ShieldCheck, Plus, Sparkles, Search, Check, ChevronDown } from 'lucide-react';
-import { apiGetCrops, apiCreateCrop, apiGetFarmers, apiCreatePurchase } from '@/lib/api';
+import { apiGetCrops, apiCreateCrop, apiGetFarmers, apiCreatePurchase, apiGetFarmerMaterials, apiGetPayments } from '@/lib/api';
 interface AddPurchaseModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -87,6 +87,29 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     if (isOpen) loadData();
   }, [isOpen]);
 
+  const [deductionMode, setDeductionMode] = useState<'AUTO_FIFO' | 'CUSTOM'>('AUTO_FIFO');
+  const [farmerMaterials, setFarmerMaterials] = useState<any[]>([]);
+  const [farmerAdvances, setFarmerAdvances] = useState<any[]>([]);
+  const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
+  const [selectedAdvanceIds, setSelectedAdvanceIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!selectedFarmer || !isOpen) return;
+    async function loadFarmerFinancials() {
+      const mats = await apiGetFarmerMaterials(selectedFarmer.id);
+      setFarmerMaterials(mats || []);
+      
+      const allPays = await apiGetPayments();
+      const advs = (allPays || []).filter(
+        (p: any) =>
+          (p.farmerId === selectedFarmer.id || p.farmerName === selectedFarmer.name) &&
+          (String(p.notes || '').toLowerCase().includes('advance') || p.paymentType === 'ADVANCE' || Number(p.amount) > 0)
+      );
+      setFarmerAdvances(advs);
+    }
+    loadFarmerFinancials();
+  }, [selectedFarmer, isOpen]);
+
   if (!isOpen) return null;
 
   // Multi-Unit Total Calculation Logic
@@ -99,9 +122,21 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     calculatedTotal = (quantityOrWeight / 1000) * ratePerUnit; // rate per ton
   }
 
-  const availableAdvance = selectedFarmer?.advanceBalance || 0;
-  const advanceApplied = Math.min(availableAdvance, calculatedTotal);
-  const dueAmount = Math.max(0, calculatedTotal - advanceApplied);
+  // Auto vs Custom Deduction calculation
+  const customMaterialsTotal = farmerMaterials
+    .filter((m) => selectedMaterialIds.includes(m.id))
+    .reduce((acc, m) => acc + Number(m.totalPrice || 0), 0);
+
+  const customAdvancesTotal = farmerAdvances
+    .filter((adv) => selectedAdvanceIds.includes(adv.id))
+    .reduce((acc, adv) => acc + Number(adv.amount || 0), 0);
+
+  const totalDeductionsApplied = deductionMode === 'AUTO_FIFO'
+    ? Math.min(selectedFarmer?.advanceBalance || 0, calculatedTotal)
+    : Math.min(customMaterialsTotal + customAdvancesTotal, calculatedTotal);
+
+  const dueAmount = Math.max(0, calculatedTotal - totalDeductionsApplied);
+  const advanceApplied = totalDeductionsApplied;
 
   const filteredFarmers = farmers.filter(
     (f) =>
@@ -141,8 +176,10 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
 
     const savedPurchase = await apiCreatePurchase(payload);
 
+    const newPurchaseId = (savedPurchase as any)?.purchaseNo || (savedPurchase as any)?.purchaseBillNo || `PUR-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
     const newPurchase = {
-      id: (savedPurchase as any)?.purchaseNo || (savedPurchase as any)?.purchaseBillNo || `PUR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: newPurchaseId,
       farmerName: selectedFarmer?.name || 'Ramesh Patil',
       farmerId: selectedFarmer?.id || 'far-01',
       phone: selectedFarmer?.phone || '9823456789',
@@ -153,13 +190,52 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
       category: activeCategory,
       rate: `₹${ratePerUnit}/${unit}`,
       amount: `₹${calculatedTotal.toLocaleString('en-IN')}`,
-      paidAmount: `₹${advanceApplied.toLocaleString('en-IN')}`,
-      advanceApplied: `₹${advanceApplied.toLocaleString('en-IN')}`,
+      paidAmount: `₹${totalDeductionsApplied.toLocaleString('en-IN')}`,
+      advanceApplied: `₹${totalDeductionsApplied.toLocaleString('en-IN')}`,
       dueAmount: `₹${dueAmount.toLocaleString('en-IN')}`,
-      paymentStatus: dueAmount === 0 ? 'PAID' : (advanceApplied > 0 ? 'PARTIAL' : 'UNPAID'),
+      paymentStatus: dueAmount === 0 ? 'PAID' : (totalDeductionsApplied > 0 ? 'PARTIAL' : 'UNPAID'),
       time: 'Just now',
       date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     };
+
+    // Mark checked materials as deducted in cache
+    if (deductionMode === 'CUSTOM' && selectedMaterialIds.length > 0) {
+      const cachedMats = typeof window !== 'undefined' ? localStorage.getItem('seavaig_material_supplies_cache') : null;
+      if (cachedMats) {
+        try {
+          const list = JSON.parse(cachedMats);
+          const updated = list.map((m: any) => {
+            if (selectedMaterialIds.includes(m.id)) {
+              return { ...m, isDeductedFromBill: true, deductedFromBillNo: newPurchaseId };
+            }
+            return m;
+          });
+          localStorage.setItem('seavaig_material_supplies_cache', JSON.stringify(updated));
+        } catch {}
+      }
+    }
+
+    // Update farmer balance in cache
+    const cachedFarmers = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+    if (cachedFarmers) {
+      try {
+        const list = JSON.parse(cachedFarmers);
+        const updated = list.map((f: any) => {
+          if (f.id === selectedFarmer?.id) {
+            const currentAdv = Number(f.advanceBalance || 0);
+            return {
+              ...f,
+              advanceBalance: Math.max(0, currentAdv - totalDeductionsApplied),
+              totalPurchase: (f.totalPurchase || 0) + calculatedTotal,
+              totalPaid: (f.totalPaid || 0) + totalDeductionsApplied,
+              outstandingAmount: Math.max(0, (f.totalPurchase || 0) + calculatedTotal - ((f.totalPaid || 0) + totalDeductionsApplied))
+            };
+          }
+          return f;
+        });
+        localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updated));
+      } catch {}
+    }
 
     onAddPurchase(newPurchase);
     onClose();
@@ -365,6 +441,93 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
             </div>
           </div>
 
+          {/* DEDUCTION ENGINE SELECTOR */}
+          <div className="space-y-2 border-t border-slate-100 pt-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700">Deduction Method (कपात पद्धत) *</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeductionMode('AUTO_FIFO')}
+                  className={`px-3 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                    deductionMode === 'AUTO_FIFO' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'
+                  }`}
+                >
+                  Auto Chronological FIFO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeductionMode('CUSTOM')}
+                  className={`px-3 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                    deductionMode === 'CUSTOM' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'
+                  }`}
+                >
+                  Custom Manual Selection
+                </button>
+              </div>
+            </div>
+
+            {deductionMode === 'CUSTOM' && (
+              <div className="space-y-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                {/* Cash Advances Checklist */}
+                <div>
+                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Unsettled Cash Advances</h4>
+                  {farmerAdvances.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 italic">No cash advances found for this farmer.</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                      {farmerAdvances.map((adv) => (
+                        <label key={adv.id} className="flex items-center gap-2 text-[10px] font-semibold text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedAdvanceIds.includes(adv.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedAdvanceIds([...selectedAdvanceIds, adv.id]);
+                              } else {
+                                setSelectedAdvanceIds(selectedAdvanceIds.filter((id) => id !== adv.id));
+                              }
+                            }}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>{adv.notes || 'Disbursed Cash Advance'} - <b>₹{Number(adv.amount || 0).toLocaleString('en-IN')}</b> ({adv.date || 'No Date'})</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Material Supplies Checklist */}
+                <div className="border-t border-slate-200 pt-2">
+                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Unsettled Material Input Supplies</h4>
+                  {farmerMaterials.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 italic">No material supplies issued to this farmer.</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                      {farmerMaterials.map((m) => (
+                        <label key={m.id} className="flex items-center gap-2 text-[10px] font-semibold text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedMaterialIds.includes(m.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedMaterialIds([...selectedMaterialIds, m.id]);
+                              } else {
+                                setSelectedMaterialIds(selectedMaterialIds.filter((id) => id !== m.id));
+                              }
+                            }}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>{m.itemName} ({m.quantity} Qty) - <b>₹{Number(m.totalPrice || 0).toLocaleString('en-IN')}</b> ({m.date || 'No Date'})</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* DYNAMIC CALCULATION & AUTO ADVANCE OFFSET PREVIEW */}
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50/60 border border-blue-100 rounded-2xl p-4 space-y-2">
             <div className="flex items-center justify-between text-xs">
@@ -372,13 +535,30 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
               <span className="font-extrabold text-slate-900">₹{calculatedTotal.toLocaleString('en-IN')}</span>
             </div>
 
-            {advanceApplied > 0 && (
+            {deductionMode === 'AUTO_FIFO' && selectedFarmer?.advanceBalance > 0 && (
               <div className="flex items-center justify-between text-xs text-emerald-700 font-bold">
                 <span className="flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                  Auto Advance Offset Applied:
+                  Auto FIFO Advance Offset:
                 </span>
-                <span>- ₹{advanceApplied.toLocaleString('en-IN')}</span>
+                <span>- ₹{totalDeductionsApplied.toLocaleString('en-IN')}</span>
+              </div>
+            )}
+
+            {deductionMode === 'CUSTOM' && (customAdvancesTotal + customMaterialsTotal) > 0 && (
+              <div className="space-y-1 text-xs font-bold">
+                {customAdvancesTotal > 0 && (
+                  <div className="flex items-center justify-between text-emerald-700">
+                    <span>Applied Cash Advances:</span>
+                    <span>- ₹{customAdvancesTotal.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {customMaterialsTotal > 0 && (
+                  <div className="flex items-center justify-between text-rose-700">
+                    <span>Applied Material Supplies:</span>
+                    <span>- ₹{customMaterialsTotal.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
               </div>
             )}
 

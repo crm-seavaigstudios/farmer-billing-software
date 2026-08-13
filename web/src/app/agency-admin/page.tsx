@@ -20,9 +20,19 @@ import {
   Inbox
 } from 'lucide-react';
 
+import { apiGetTenants, apiCreateTenant } from '@/lib/api';
+
 export default function AgencyAdminPage() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  useEffect(() => {
+    async function loadTenants() {
+      const data = await apiGetTenants();
+      setTenants(data);
+    }
+    loadTenants();
+  }, []);
   const [isAddTenantModalOpen, setIsAddTenantModalOpen] = useState(false);
 
   // 2FA TOTP Authentication Guard State (Microsoft Authenticator / Google Authenticator)
@@ -40,6 +50,12 @@ export default function AgencyAdminPage() {
     }
     setTotpSecret(secret);
   }, []);
+
+  const [validationError, setValidationError] = useState('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [sentOtpCode, setSentOtpCode] = useState('');
+  const [otpInput, setOtpInput] = useState('');
+  const [otpError, setOtpError] = useState(false);
 
   // New Client Form Data
   const [formData, setFormData] = useState({
@@ -75,24 +91,45 @@ export default function AgencyAdminPage() {
     }
   };
 
-  const handleOnboardTenant = (e: React.FormEvent) => {
+  const handleOnboardTenant = async (e: React.FormEvent) => {
     e.preventDefault();
-    const generatedCompanyCode = `COMP-${Math.floor(300 + Math.random() * 600)}`;
-    const newTenant = {
-      id: `TEN-${Date.now()}`,
-      companyCode: generatedCompanyCode,
-      companyName: formData.companyName,
-      ownerName: formData.ownerName,
-      ownerEmail: formData.ownerEmail,
-      ownerPhone: formData.ownerPhone,
-      passportOrGovId: formData.passportGovId,
-      status: 'ACTIVE',
-      package: formData.package,
-      createdAt: 'Just now',
-    };
+    setValidationError('');
+
+    // Check duplicate email or phone in database/cache
+    const duplicate = tenants.find(
+      (t) => t.ownerEmail.toLowerCase() === formData.ownerEmail.toLowerCase() || t.ownerPhone === formData.ownerPhone
+    );
+    if (duplicate) {
+      setValidationError('Error: Email or Mobile number is already registered in our database!');
+      return;
+    }
+
+    // Generate random 4-digit OTP code
+    const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
+    setSentOtpCode(generatedOtp);
+    setIsVerifyingOtp(true);
+    setOtpInput('');
+    setOtpError(false);
+
+    // Prompt user with simulation
+    alert(`🔐 [DEMO MODE OTP] Verification code sent to Email/SMS: ${generatedOtp}`);
+  };
+
+  const handleVerifyRegistrationOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otpInput !== sentOtpCode) {
+      setOtpError(true);
+      return;
+    }
+
+    setOtpError(false);
+    setIsVerifyingOtp(false);
+    setIsAddTenantModalOpen(false);
+
+    // Call DB persistence function
+    const newTenant = await apiCreateTenant(formData);
 
     setTenants([newTenant, ...tenants]);
-    setIsAddTenantModalOpen(false);
     setFormData({
       companyName: '',
       ownerName: '',
@@ -343,106 +380,168 @@ export default function AgencyAdminPage() {
 
       {/* ONBOARD CLIENT MODAL */}
       {isAddTenantModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 font-sans">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 font-sans text-xs">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-extrabold text-white">Sell Software / Onboard Client Company</h2>
-              <button onClick={() => setIsAddTenantModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => { setIsAddTenantModalOpen(false); setIsVerifyingOtp(false); }} className="text-slate-400 hover:text-white">
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleOnboardTenant} className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-300 font-bold block mb-1">Company Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Mahabaleshwar Strawberry Agro"
-                    value={formData.companyName}
-                    onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-slate-300 font-bold block mb-1">Client Owner Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Rameshwar Patil"
-                    value={formData.ownerName}
-                    onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white"
-                  />
-                </div>
+            {validationError && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{validationError}</span>
               </div>
+            )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-300 font-bold block mb-1">Owner Email *</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="admin@company.com"
-                    value={formData.ownerEmail}
-                    onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white"
-                  />
+            {!isVerifyingOtp ? (
+              <form onSubmit={handleOnboardTenant} className="space-y-3 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-300 font-bold block mb-1">Company Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Mahabaleshwar Strawberry Agro"
+                      value={formData.companyName}
+                      onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-300 font-bold block mb-1">Client Owner Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Rameshwar Patil"
+                      value={formData.ownerName}
+                      onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-slate-300 font-bold block mb-1">Owner Mobile *</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="+91 9823456789"
-                    value={formData.ownerPhone}
-                    onChange={(e) => setFormData({ ...formData, ownerPhone: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-300 font-bold block mb-1">Owner Email *</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="admin@company.com"
+                      value={formData.ownerEmail}
+                      onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-300 font-bold block mb-1">Owner Mobile *</label>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="+91 9823456789"
+                      value={formData.ownerPhone}
+                      onChange={(e) => setFormData({ ...formData, ownerPhone: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-300 font-bold block mb-1">Passport / Gov Tax ID</label>
+                    <input
+                      type="text"
+                      placeholder="GOV-MH-99812"
+                      value={formData.passportGovId}
+                      onChange={(e) => setFormData({ ...formData, passportGovId: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-300 font-bold block mb-1">Subscription Package</label>
+                    <select
+                      value={formData.package}
+                      onChange={(e) => setFormData({ ...formData, package: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-emerald-400 font-bold focus:outline-none"
+                    >
+                      <option value="Enterprise Pro (₹24,999/yr)">Enterprise Pro (₹24,999/yr)</option>
+                      <option value="Growth Plan (₹14,999/yr)">Growth Plan (₹14,999/yr)</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div>
-                  <label className="text-slate-300 font-bold block mb-1">Passport / Gov Tax ID</label>
+                  <label className="text-slate-300 font-bold block mb-1">Set Password for Agency Login *</label>
                   <input
-                    type="text"
-                    placeholder="GOV-MH-99812"
-                    value={formData.passportGovId}
-                    onChange={(e) => setFormData({ ...formData, passportGovId: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white"
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
                   />
                 </div>
-                <div>
-                  <label className="text-slate-300 font-bold block mb-1">Subscription Package</label>
-                  <select
-                    value={formData.package}
-                    onChange={(e) => setFormData({ ...formData, package: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-emerald-400 font-bold"
+
+                <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => { setIsAddTenantModalOpen(false); setIsVerifyingOtp(false); }}
+                    className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl cursor-pointer"
                   >
-                    <option value="Enterprise Pro (₹24,999/yr)">Enterprise Pro (₹24,999/yr)</option>
-                    <option value="Growth Plan (₹14,999/yr)">Growth Plan (₹14,999/yr)</option>
-                  </select>
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 cursor-pointer"
+                  >
+                    Verify Email/SMS & Save
+                  </button>
                 </div>
-              </div>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyRegistrationOtp} className="space-y-4 text-center">
+                <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-2xl flex items-center justify-center mx-auto">
+                  <Smartphone className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-white">Enter Email/SMS Verification OTP</h3>
+                  <p className="text-slate-400 text-xs mt-1">We sent a 4-digit code to verify owner authenticity.</p>
+                </div>
+                
+                <div>
+                  <input
+                    type="text"
+                    maxLength={4}
+                    required
+                    placeholder="e.g. 1234"
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                    className="w-32 text-center text-xl font-bold py-2 bg-slate-800 border border-slate-700 rounded-xl text-blue-400 focus:outline-none"
+                  />
+                  {otpError && (
+                    <p className="text-rose-400 font-semibold mt-2">Invalid verification OTP code. Try again!</p>
+                  )}
+                </div>
 
-              <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsAddTenantModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20"
-                >
-                  Save & Issue Company Code
-                </button>
-              </div>
-            </form>
+                <div className="pt-3 flex justify-center gap-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsVerifyingOtp(false)}
+                    className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl cursor-pointer"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 cursor-pointer"
+                  >
+                    Verify & Onboard
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

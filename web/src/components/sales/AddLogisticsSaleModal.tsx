@@ -13,6 +13,8 @@ interface AddLogisticsSaleModalProps {
 export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisticsSaleModalProps) {
   const [customers, setCustomers] = useState<any[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [recentPurchases, setRecentPurchases] = useState<any[]>([]);
+  const [selectedPurchaseIds, setSelectedPurchaseIds] = useState<string[]>([]);
   
   // Logistics Manifest Fields
   const [vehicleNo, setVehicleNo] = useState('MH-15-EG-4521');
@@ -35,6 +37,14 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
   useEffect(() => {
     if (!isOpen) return;
     async function loadCustomers() {
+      // Load recent purchases for origin mapping
+      const cachedPurchases = typeof window !== 'undefined' ? localStorage.getItem('seavaig_purchases_cache') : null;
+      if (cachedPurchases) {
+        try {
+          const parsed = JSON.parse(cachedPurchases);
+          if (Array.isArray(parsed)) setRecentPurchases(parsed);
+        } catch {}
+      }
       const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_customers_cache') : null;
       let cachedList: any[] = [];
       if (cached) {
@@ -95,12 +105,31 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
       vehicleNo,
       driverName,
       driverPhone,
+      farmerBatches: selectedPurchaseIds,
       date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     };
 
     await apiCreateSale(newSale);
 
-    // Save to local cache
+    // Automated Stock Deduction in Inventory Cache
+    const cachedInventory = typeof window !== 'undefined' ? localStorage.getItem('seavaig_inventory_cache') : null;
+    if (cachedInventory) {
+      try {
+        const list = JSON.parse(cachedInventory);
+        const updated = list.map((item: any) => {
+          if (item.item && item.item.toLowerCase().includes('strawberry')) {
+            return {
+              ...item,
+              available: Math.max(0, (item.available || 0) - totalBillWeight)
+            };
+          }
+          return item;
+        });
+        localStorage.setItem('seavaig_inventory_cache', JSON.stringify(updated));
+      } catch {}
+    }
+
+    // Save B2B Sale
     const cachedSales = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
     if (cachedSales) {
       try {
@@ -136,19 +165,48 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
         <form onSubmit={handleSubmit} className="p-6 space-y-6 text-xs max-h-[80vh] overflow-y-auto">
           
           {/* Customer Selection */}
-          <div>
-            <label className="font-extrabold text-slate-700 block mb-1">Select B2B Client / Buyer Account</label>
-            <select
-              value={selectedCustomerId}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
-              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900"
-            >
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name || c.company} ({c.customerIdCode || c.id})
-                </option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="font-extrabold text-slate-700 block mb-1">Select B2B Client / Buyer Account</label>
+              <select
+                value={selectedCustomerId}
+                onChange={(e) => setSelectedCustomerId(e.target.value)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none"
+              >
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name || c.company} ({c.customerIdCode || c.id})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="font-extrabold text-slate-700 block mb-1">Farmer Batches Origin Tracking (शेतकरी पीक मागोवा)</label>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 max-h-24 overflow-y-auto font-medium">
+                {recentPurchases.length === 0 ? (
+                  <p className="text-[10px] text-slate-400 italic">No recent farmer harvest purchase bills available to trace.</p>
+                ) : (
+                  recentPurchases.map((p: any) => (
+                    <label key={p.id} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedPurchaseIds.includes(p.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedPurchaseIds([...selectedPurchaseIds, p.id]);
+                          } else {
+                            setSelectedPurchaseIds(selectedPurchaseIds.filter((id) => id !== p.id));
+                          }
+                        }}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>{p.farmerName} ({p.id}) - {p.crop} ({p.weight})</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
 
           {/* VRL / Delhivery Logistics Section */}

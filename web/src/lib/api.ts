@@ -439,11 +439,106 @@ export const apiGetCrops = async () => [
 export const apiCreateCrop = async (data: any) => data;
 export const apiDeleteCrop = async (id: string) => true;
 
+export const apiRegisterStaff = async (data: any) => data;
+
 export const apiGetUsers = async () => [
   { id: 'usr-1', name: 'Admin Manager', role: 'ADMIN', email: 'admin@seavaig.com' }
 ];
-export const apiRegisterTenant = async (data: any) => data;
-export const apiRegisterStaff = async (data: any) => data;
+
+export const apiGetTenants = async () => {
+  try {
+    const { data, error } = await supabase.from('tenants').select('*').order('created_at', { ascending: false });
+    if (!error && data && data.length > 0) {
+      const mapped = data.map((t: any) => ({
+        id: t.id,
+        companyCode: t.company_code || t.companyCode,
+        companyName: t.company_name || t.companyName,
+        ownerName: t.owner_name || t.ownerName,
+        ownerEmail: t.owner_email || t.ownerEmail,
+        ownerPhone: t.owner_phone || t.ownerPhone,
+        passportOrGovId: t.passport_gov_id || t.passportOrGovId || '',
+        status: t.status || 'ACTIVE',
+        package: t.package || 'Enterprise Pro (₹24,999/yr)',
+        createdAt: t.created_at ? new Date(t.created_at).toLocaleDateString('en-IN') : 'Just now',
+        password: t.password || 'password123'
+      }));
+      setLocalCache('seavaig_tenants_cache', mapped);
+      return mapped;
+    }
+  } catch {}
+
+  try {
+    const { data, error } = await supabase.from('agencies').select('*').order('created_at', { ascending: false });
+    if (!error && data && data.length > 0) {
+      const mapped = data.map((t: any) => ({
+        id: t.id,
+        companyCode: t.company_code || t.companyCode,
+        companyName: t.company_name || t.companyName,
+        ownerName: t.owner_name || t.ownerName,
+        ownerEmail: t.owner_email || t.ownerEmail,
+        ownerPhone: t.owner_phone || t.ownerPhone,
+        passportOrGovId: t.passport_gov_id || t.passportOrGovId || '',
+        status: t.status || 'ACTIVE',
+        package: t.package || 'Enterprise Pro (₹24,999/yr)',
+        createdAt: t.created_at ? new Date(t.created_at).toLocaleDateString('en-IN') : 'Just now',
+        password: t.password || 'password123'
+      }));
+      setLocalCache('seavaig_tenants_cache', mapped);
+      return mapped;
+    }
+  } catch {}
+
+  return getLocalCache('seavaig_tenants_cache', []);
+};
+
+export const apiCreateTenant = async (tenantData: any) => {
+  const newTenant = {
+    id: tenantData.id || `TEN-${Date.now()}`,
+    companyCode: tenantData.companyCode || `COMP-${Math.floor(300 + Math.random() * 600)}`,
+    companyName: tenantData.companyName,
+    ownerName: tenantData.ownerName,
+    ownerEmail: tenantData.ownerEmail,
+    ownerPhone: tenantData.ownerPhone,
+    passportOrGovId: tenantData.passportOrGovId || tenantData.passportGovId || '',
+    status: tenantData.status || 'ACTIVE',
+    package: tenantData.package || 'Enterprise Pro (₹24,999/yr)',
+    createdAt: new Date().toLocaleDateString('en-IN'),
+    password: tenantData.password || 'password123'
+  };
+
+  try {
+    const { error } = await supabase.from('tenants').insert([{
+      company_code: newTenant.companyCode,
+      company_name: newTenant.companyName,
+      owner_name: newTenant.ownerName,
+      owner_email: newTenant.ownerEmail,
+      owner_phone: newTenant.ownerPhone,
+      passport_gov_id: newTenant.passportOrGovId,
+      status: newTenant.status,
+      package: newTenant.package,
+      password: newTenant.password
+    }]);
+
+    if (error) {
+      await supabase.from('agencies').insert([{
+        company_code: newTenant.companyCode,
+        company_name: newTenant.companyName,
+        owner_name: newTenant.ownerName,
+        owner_email: newTenant.ownerEmail,
+        owner_phone: newTenant.ownerPhone,
+        passport_gov_id: newTenant.passportOrGovId,
+        status: newTenant.status,
+        package: newTenant.package,
+        password: newTenant.password
+      }]);
+    }
+  } catch {}
+
+  const existing = getLocalCache('seavaig_tenants_cache', []);
+  const updated = [newTenant, ...existing];
+  setLocalCache('seavaig_tenants_cache', updated);
+  return newTenant;
+};
 
 export const apiCheckFarmerNetwork = async (phone: string) => ({ found: false });
 export const apiImportFarmerFromNetwork = async (data: any) => data;

@@ -41,6 +41,10 @@ export default function TradersPage() {
   const [isAddPurchaseOpen, setIsAddPurchaseOpen] = useState(false);
 
   // Forms
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedBillForPayment, setSelectedBillForPayment] = useState<any>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentNotes, setPaymentNotes] = useState('');
   const [name, setName] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [phone, setPhone] = useState('');
@@ -170,6 +174,36 @@ export default function TradersPage() {
     setIsAddPurchaseOpen(false);
   };
 
+  const handleRecordTraderPayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBillForPayment) return;
+
+    const amt = Number(paymentAmount) || 0;
+    const updated = purchases.map((p) => {
+      if (p.id === selectedBillForPayment.id) {
+        const currentPaid = Number(p.paidAmount || 0);
+        return {
+          ...p,
+          paidAmount: currentPaid + amt,
+        };
+      }
+      return p;
+    });
+
+    setPurchases(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_trader_purchases_cache', JSON.stringify(updated));
+    }
+    setIsPaymentModalOpen(false);
+    setSelectedBillForPayment(null);
+    setPaymentAmount('');
+    setPaymentNotes('');
+  };
+
+  const totalPurchasedSum = purchases.reduce((acc, p) => acc + (Number(p.quantity || 0) * Number(p.rate || 0)), 0);
+  const totalPaidSum = purchases.reduce((acc, p) => acc + Number(p.paidAmount || 0), 0);
+  const totalDueSum = Math.max(0, totalPurchasedSum - totalPaidSum);
+
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
       <Sidebar />
@@ -217,7 +251,7 @@ export default function TradersPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Total Supply Purchases</span>
-                <h3 className="text-xl font-extrabold text-slate-900">{summary.totalPurchased}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{totalPurchasedSum.toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-blue-600">Crates, Fuel, Fertilizers</span>
               </div>
             </div>
@@ -228,7 +262,7 @@ export default function TradersPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Total Paid to Traders</span>
-                <h3 className="text-xl font-extrabold text-slate-900">{summary.totalPaid}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{totalPaidSum.toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-emerald-600">Disbursed Settlements</span>
               </div>
             </div>
@@ -239,7 +273,7 @@ export default function TradersPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Outstanding Due Amount</span>
-                <h3 className="text-xl font-extrabold text-slate-900">{summary.dueAmount}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{totalDueSum.toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-amber-600">Pending Trader Invoices</span>
               </div>
             </div>
@@ -327,17 +361,50 @@ export default function TradersPage() {
                               </span>
                             </td>
                             <td className="py-3.5 px-4 text-right">
-                              <button
-                                onClick={() => {
-                                  const updated = purchases.filter((item) => item.id !== p.id);
-                                  setPurchases(updated);
-                                  if (typeof window !== 'undefined') localStorage.setItem('seavaig_trader_purchases_cache', JSON.stringify(updated));
-                                }}
-                                className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="Delete Supply Bill"
-                              >
-                                Delete
-                              </button>
+                              <div className="flex items-center justify-end gap-1.5">
+                                {dueNum > 0 && (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedBillForPayment(p);
+                                      setPaymentAmount(String(dueNum));
+                                      setIsPaymentModalOpen(true);
+                                    }}
+                                    className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold cursor-pointer"
+                                    title="Make Payment / Settlement"
+                                  >
+                                    Pay Due
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    const shareText = `🧾 *Trader Supply Order Receipt* 🧾\n` +
+                                      `Bill ID: ${p.id}\n` +
+                                      `Trader: ${p.traderName}\n` +
+                                      `Item: ${p.itemName} (${p.category})\n` +
+                                      `Qty: ${p.quantity} @ ₹${p.rate}\n` +
+                                      `Total: ₹${totalNum.toLocaleString('en-IN')}\n` +
+                                      `Paid: ₹${paidNum.toLocaleString('en-IN')}\n` +
+                                      `Remaining Due: ₹${dueNum.toLocaleString('en-IN')}\n` +
+                                      `Thank you!`;
+                                    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank');
+                                  }}
+                                  className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[10px] font-bold cursor-pointer"
+                                  title="Share Bill on WhatsApp"
+                                >
+                                  Share
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const updated = purchases.filter((item) => item.id !== p.id);
+                                    setPurchases(updated);
+                                    if (typeof window !== 'undefined') localStorage.setItem('seavaig_trader_purchases_cache', JSON.stringify(updated));
+                                  }}
+                                  className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-[10px] font-bold cursor-pointer"
+                                  title="Delete Supply Bill"
+                                >
+                                  Delete
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -553,6 +620,67 @@ export default function TradersPage() {
                   className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 font-extrabold rounded-xl text-white shadow-lg shadow-blue-600/20"
                 >
                   Save Trader Bill
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Trader Payment Modal */}
+      {isPaymentModalOpen && selectedBillForPayment && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 p-6 space-y-4 text-xs">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-extrabold text-slate-900">Make Payment to Trader</h2>
+              <button onClick={() => setIsPaymentModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRecordTraderPayment} className="space-y-3">
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                <p className="font-bold text-slate-700">Bill ID: <span className="text-blue-600">{selectedBillForPayment.id}</span></p>
+                <p className="font-semibold text-slate-600">Trader Name: {selectedBillForPayment.traderName}</p>
+                <p className="font-semibold text-slate-600">Total Purchase Value: ₹{Number(selectedBillForPayment.quantity * selectedBillForPayment.rate).toLocaleString('en-IN')}</p>
+                <p className="font-bold text-rose-600">Remaining Due: ₹{Math.max(0, Number(selectedBillForPayment.quantity * selectedBillForPayment.rate) - Number(selectedBillForPayment.paidAmount)).toLocaleString('en-IN')}</p>
+              </div>
+
+              <div>
+                <label className="font-extrabold text-slate-700 block mb-1">Payment Amount (₹) *</label>
+                <input
+                  type="number"
+                  max={Math.max(0, Number(selectedBillForPayment.quantity * selectedBillForPayment.rate) - Number(selectedBillForPayment.paidAmount))}
+                  required
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-extrabold text-slate-700 block mb-1">Notes / Remarks</label>
+                <input
+                  type="text"
+                  placeholder="e.g. UPI Payout, Cash, Bank Transfer"
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  className="flex-1 py-2.5 bg-slate-100 font-bold rounded-xl text-slate-700 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 font-extrabold rounded-xl text-white shadow-lg cursor-pointer"
+                >
+                  Confirm Payment
                 </button>
               </div>
             </form>

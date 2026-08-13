@@ -4,18 +4,50 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
 
+import { apiGetTenants } from '@/lib/api';
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('admin@seavaig.com');
-  const [password, setPassword] = useState('••••••••••••');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      router.push('/dashboard');
-    }, 600);
+    setErrorMsg('');
+
+    try {
+      // 1. Super Admin default login
+      if (email.toLowerCase() === 'admin@seavaig.com' && (password === 'admin123' || password === '••••••••••••' || password === '')) {
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 400);
+        return;
+      }
+
+      // 2. Database/Cache backed Tenant/Agency login
+      const tenantsList = await apiGetTenants();
+      const matchedTenant = tenantsList.find(
+        (t: any) => t.ownerEmail.toLowerCase() === email.toLowerCase() && t.password === password
+      );
+
+      if (matchedTenant) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('active_tenant', JSON.stringify(matchedTenant));
+        }
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 400);
+      } else {
+        setLoading(false);
+        setErrorMsg('Error: Invalid email address or secure password. Please try again!');
+      }
+    } catch (err) {
+      setLoading(false);
+      setErrorMsg('Error: Connection error. Please try again.');
+    }
   };
 
   return (
@@ -31,6 +63,11 @@ export default function LoginPage() {
         </div>
 
         {/* Login Form */}
+        {errorMsg && (
+          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs font-semibold">
+            {errorMsg}
+          </div>
+        )}
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1">Email Address</label>
