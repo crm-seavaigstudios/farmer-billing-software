@@ -47,13 +47,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
         if (fetched && fetched.length > 0) list = fetched;
       }
 
-      if (list.length === 0) {
-        list = [
-          { id: 'far-01', farmerIdCode: 'FAR-10001', name: 'Ramesh Patil', phone: '9823456789', village: 'Nandgaon' },
-          { id: 'far-02', farmerIdCode: 'FAR-10002', name: 'Suresh Jadhav', phone: '9765432100', village: 'Yeola' },
-          { id: 'far-03', farmerIdCode: 'FAR-10003', name: 'Vijay Shinde', phone: '8856789123', village: 'Pimpalgaon' },
-        ];
-      }
+      // No fallback to mock data when list is empty
 
       setFarmersList(list);
       if (list.length > 0) {

@@ -118,11 +118,7 @@ export default function WorkersPage() {
     setNewWorkerPhone('');
   };
 
-  const defaultWorkers = [
-    { id: 'wrk-101', workerCode: 'WRK-10001', name: 'Kiran More', phone: '9822334455', role: 'LABOUR', dailyRate: 500, totalEarned: 4500, totalPaid: 3500, outstandingBalance: 1000 },
-    { id: 'wrk-102', workerCode: 'WRK-10002', name: 'Sunita Bhosale', phone: '9833445566', role: 'PACKER', dailyRate: 600, totalEarned: 6000, totalPaid: 6000, outstandingBalance: 0 },
-    { id: 'wrk-103', workerCode: 'wrk-10003', name: 'Prakash Deshmukh', phone: '9844556677', role: 'SUPERVISOR', dailyRate: 800, totalEarned: 8000, totalPaid: 5000, outstandingBalance: 3000 },
-  ];
+  const defaultWorkers: any[] = [];
 
   useEffect(() => {
     const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_workers_cache') : null;

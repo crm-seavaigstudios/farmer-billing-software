@@ -34,14 +34,7 @@ import {
   apiGetExpenses
 } from '@/lib/api';
 
-const sampleReportSeed = [
-  { id: 'R-101', date: '2026-08-07', module: 'HARVEST_PURCHASE', partyName: 'Ramesh Patil', category: 'Strawberry (A Grade)', weight: '120 KG', totalAmount: 33600, paidAmount: 10000, dueAmount: 23600, paymentStatus: 'PARTIAL', refNo: 'PUR-2026-1052' },
-  { id: 'R-102', date: '2026-08-07', module: 'FARMER_PAYMENT', partyName: 'Suresh Jadhav', category: 'Advance Settlement', weight: '-', totalAmount: 15000, paidAmount: 15000, dueAmount: 0, paymentStatus: 'PAID', refNo: 'PAY-2026-0852' },
-  { id: 'R-103', date: '2026-08-06', module: 'TRADER_SUPPLY', partyName: 'Ambika Crates & Packaging', category: 'Plastic Crates 500 Qty', weight: '500 Qty', totalAmount: 45000, paidAmount: 20000, dueAmount: 25000, paymentStatus: 'PARTIAL', refNo: 'TBILL-2026-1001' },
-  { id: 'R-104', date: '2026-08-06', module: 'WORKER_WAGES', partyName: 'Ganesh More (Daily Worker)', category: 'Harvest Labour (8 hrs)', weight: '8 Hrs', totalAmount: 700, paidAmount: 700, dueAmount: 0, paymentStatus: 'PAID', refNo: 'WAGE-2026-901' },
-  { id: 'R-105', date: '2026-08-05', module: 'B2B_SALES', partyName: 'Reliance Fresh Ltd', category: 'Grapes Sonaka (1.2 Ton)', weight: '1200 KG', totalAmount: 132000, paidAmount: 132000, dueAmount: 0, paymentStatus: 'PAID', refNo: 'INV-2026-9042' },
-  { id: 'R-106', date: '2026-08-05', module: 'EXPENSE', partyName: 'Cold Storage Fuel & Transport', category: 'Diesel Fuel Expense', weight: '-', totalAmount: 12500, paidAmount: 12500, dueAmount: 0, paymentStatus: 'PAID', refNo: 'EXP-2026-302' },
-];
+const sampleReportSeed: any[] = [];
 
 export default function ReportsPage() {
   const { t, language } = useLanguage();
@@ -161,9 +154,7 @@ export default function ReportsPage() {
         }
       }
 
-      if (combined.length > 0) {
-        setReportData(combined);
-      }
+      setReportData(combined);
 
       // 2. Fetch from backend API and append/override
       try {
@@ -194,9 +185,7 @@ export default function ReportsPage() {
           });
         }
 
-        if (combined.length > 0) {
-          setReportData([...combined]);
-        }
+        setReportData([...combined]);
       } catch (err) {
         console.warn('Report API fetch skipped or failed, using cache:', err);
       }

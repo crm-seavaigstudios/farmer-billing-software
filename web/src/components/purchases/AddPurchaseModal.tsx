@@ -9,22 +9,16 @@ interface AddPurchaseModalProps {
   onAddPurchase: (purchase: any) => void;
 }
 
-const mockFarmersList = [
-  { id: 'far-01', farmerIdCode: 'FAR-10001', name: 'Ramesh Patil', phone: '9823456789', village: 'Nandgaon', advanceBalance: 10000 },
-  { id: 'far-02', farmerIdCode: 'FAR-10002', name: 'Suresh Jadhav', phone: '9765432100', village: 'Yeola', advanceBalance: 0 },
-  { id: 'far-03', farmerIdCode: 'FAR-10003', name: 'Vijay Shinde', phone: '8856789123', village: 'Pimpalgaon', advanceBalance: 5000 },
-  { id: 'far-04', farmerIdCode: 'FAR-10004', name: 'Ganesh More', phone: '9761112345', village: 'Chandwad', advanceBalance: 0 },
-  { id: 'far-05', farmerIdCode: 'FAR-10005', name: 'Sunil Pawar', phone: '9098765432', village: 'Sinnar', advanceBalance: 15000 },
-];
+const mockFarmersList: any[] = [];
 
 export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
   isOpen,
   onClose,
   onAddPurchase,
 }) => {
-  const [farmers, setFarmers] = useState<any[]>(mockFarmersList);
+  const [farmers, setFarmers] = useState<any[]>([]);
   const [farmerSearch, setFarmerSearch] = useState('');
-  const [selectedFarmer, setSelectedFarmer] = useState<any>(mockFarmersList[0]);
+  const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
   const [isFarmerDropdownOpen, setIsFarmerDropdownOpen] = useState(false);
 
   const [crops, setCrops] = useState<any[]>([

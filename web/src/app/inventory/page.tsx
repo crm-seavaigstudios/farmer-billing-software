@@ -39,12 +39,7 @@ export default function InventoryPage() {
   const [materialPurchases, setMaterialPurchases] = useState<any[]>([]);
   const [materialIssues, setMaterialIssues] = useState<any[]>([]);
 
-  const defaultBatches = [
-    { id: 'STK-2026-1001', room: 'Cold Room #1 (Satpur)', grade: 'Strawberry (A Grade)', weight: '300 KG', temp: '2.4°C', humidity: '85%', valuation: '₹1,05,000', status: 'OPTIMAL' },
-    { id: 'STK-2026-1002', room: 'Cold Room #1 (Satpur)', grade: 'Strawberry (B Grade)', weight: '150 KG', temp: '2.4°C', humidity: '85%', valuation: '₹27,000', status: 'OPTIMAL' },
-    { id: 'STK-2026-1003', room: 'Cold Room #2 (Pimpalgaon)', grade: 'Grapes (Sonaka Export)', weight: '500 KG', temp: '1.8°C', humidity: '90%', valuation: '₹65,000', status: 'OPTIMAL' },
-    { id: 'STK-2026-1004', room: 'Cold Room #2 (Pimpalgaon)', grade: 'Pomegranate (Bhagwa)', weight: '250 KG', temp: '3.0°C', humidity: '82%', valuation: '₹35,000', status: 'OPTIMAL' },
-  ];
+  const defaultBatches: any[] = [];
 
   useEffect(() => {
     const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_inventory_cache') : null;

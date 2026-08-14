@@ -44,14 +44,7 @@ export default function FarmersPage() {
   const [categoryType, setCategoryType] = useState<'ADVANCE' | 'PAID' | 'UNPAID' | 'OUTSTANDING'>('PAID');
   const [categoryModalFarmers, setCategoryModalFarmers] = useState<any[]>([]);
 
-  const defaultFarmers = [
-    { id: 'far-01', farmerIdCode: 'FAR-10001', name: 'Ramesh Patil', phone: '9823456789', village: 'Nandgaon', taluka: 'Nashik', grade: 'A Grade', totalPurchase: 124500, totalPaid: 95000, advanceBalance: 15000, outstandingAmount: 14500 },
-    { id: 'far-02', farmerIdCode: 'FAR-10002', name: 'Suresh Jadhav', phone: '9765432100', village: 'Yeola', taluka: 'Yeola', grade: 'A Grade', totalPurchase: 85000, totalPaid: 85000, advanceBalance: 0, outstandingAmount: 0 },
-    { id: 'far-03', farmerIdCode: 'FAR-10003', name: 'Vijay Shinde', phone: '8856789123', village: 'Pimpalgaon', taluka: 'Niphad', grade: 'B Grade', totalPurchase: 42000, totalPaid: 32000, advanceBalance: 5000, outstandingAmount: 5000 },
-    { id: 'far-04', farmerIdCode: 'FAR-10004', name: 'Ganesh More', phone: '9761112345', village: 'Chandwad', taluka: 'Chandwad', grade: 'A Grade', totalPurchase: 156000, totalPaid: 120000, advanceBalance: 20000, outstandingAmount: 16000 },
-    { id: 'far-05', farmerIdCode: 'FAR-10005', name: 'Sunil Pawar', phone: '9098765432', village: 'Sinnar', taluka: 'Sinnar', grade: 'A Grade', totalPurchase: 98000, totalPaid: 75000, advanceBalance: 10000, outstandingAmount: 13000 },
-    { id: 'far-06', farmerIdCode: 'FAR-10006', name: 'Ajay Deshmukh', phone: '9823001122', village: 'Nandgaon', taluka: 'Nashik', grade: 'B Grade', totalPurchase: 34000, totalPaid: 34000, advanceBalance: 0, outstandingAmount: 0 },
-  ];
+  const defaultFarmers: any[] = [];
 
   useEffect(() => {
     const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;

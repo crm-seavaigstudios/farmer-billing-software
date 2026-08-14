@@ -18,11 +18,7 @@ import {
   Inbox
 } from 'lucide-react';
 
-const defaultStaffSeed = [
-  { id: 'usr-1', staffIdCode: 'STF-101', name: 'Ajay Kadam', email: 'ajay@seavaig.com', role: 'CLIENT_OWNER', status: 'ACTIVE', phone: '9823001122' },
-  { id: 'usr-2', staffIdCode: 'STF-102', name: 'Vikram Salunkhe', email: 'vikram@seavaig.com', role: 'ACCOUNTANT', status: 'ACTIVE', phone: '9823003344' },
-  { id: 'usr-3', staffIdCode: 'STF-103', name: 'Sanjay More', email: 'sanjay@seavaig.com', role: 'COLD_STORAGE_MANAGER', status: 'ACTIVE', phone: '9823005566' }
-];
+const defaultStaffSeed: any[] = [];
 
 export default function UsersPage() {
   const { t } = useLanguage();
