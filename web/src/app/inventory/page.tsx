@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetInventory } from '@/lib/api';
+import { apiGetInventory, apiGetPurchases, apiGetSales, apiGetAllFarmerMaterials, apiGetTraderPurchases } from '@/lib/api';
 import {
   Package,
   Thermometer,
@@ -59,50 +59,67 @@ export default function InventoryPage() {
     }
 
     async function loadData() {
-      const res: any = await apiGetInventory();
-      if (res && !Array.isArray(res)) {
-        setMetrics({
-          totalStockKg: res.totalStockKg || 1200,
-          totalStockValue: res.totalStockValue || '₹2,32,000',
-          capacityUtilization: res.capacityUtilization || '68%',
-          spoilageRate: res.spoilageRate || '0.8%',
-          temperature: res.temperature || '2.4°C',
-          gradesAStock: res.grades?.find((g: any) => g.grade?.includes('A Grade') || g.grade?.includes('A_GRADE'))?.stockKg || 300,
-        });
+      const [allPurchases, allSales, traderPurchases, farmerIssues] = await Promise.all([
+        apiGetPurchases(),
+        apiGetSales(),
+        apiGetTraderPurchases(),
+        apiGetAllFarmerMaterials(),
+      ]);
 
-        if (res.grades && Array.isArray(res.grades) && res.grades.length > 0) {
-          const formatted = res.grades.map((g: any, i: number) => ({
-            id: `STK-2026-${1000 + i}`,
-            room: 'Cold Room #1 (Satpur)',
-            grade: g.grade,
-            weight: `${g.stockKg} KG`,
-            temp: res.temperature,
-            humidity: '85%',
-            valuation: g.val || '₹0',
-            status: g.status,
-          }));
-          setBatches(formatted);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('seavaig_inventory_cache', JSON.stringify(formatted));
-          }
+      if (traderPurchases && Array.isArray(traderPurchases)) {
+        setMaterialPurchases(traderPurchases);
+      }
+      if (farmerIssues && Array.isArray(farmerIssues)) {
+        setMaterialIssues(farmerIssues);
+      }
+
+      const stockMap: { [key: string]: { weight: number, valuation: number, rate: number } } = {};
+      
+      allPurchases.forEach((p: any) => {
+        const crop = p.crop || 'Strawberry';
+        const wtStr = String(p.weight || '0').replace(/[^0-9.-]+/g, '');
+        const wt = parseFloat(wtStr) || 0;
+        const amt = typeof p.amount === 'number' ? p.amount : parseFloat(String(p.amount).replace(/[^0-9.-]+/g, '')) || 0;
+        const rateVal = wt > 0 ? amt / wt : 350;
+
+        if (!stockMap[crop]) {
+          stockMap[crop] = { weight: 0, valuation: 0, rate: rateVal };
         }
+        stockMap[crop].weight += wt;
+        stockMap[crop].valuation += amt;
+      });
+
+      allSales.forEach((s: any) => {
+        const crop = s.items || 'Strawberry';
+        const wt = Number(s.totalWeight || 0);
+        const amt = Number(s.amount || 0);
+
+        if (!stockMap[crop]) {
+          stockMap[crop] = { weight: 0, valuation: 0, rate: wt > 0 ? amt / wt : 350 };
+        }
+        stockMap[crop].weight = Math.max(0, stockMap[crop].weight - wt);
+        stockMap[crop].valuation = stockMap[crop].weight * stockMap[crop].rate;
+      });
+
+      const formatted = Object.keys(stockMap).map((cropName, i) => {
+        const item = stockMap[cropName];
+        return {
+          id: `STK-2026-${1000 + i}`,
+          room: i % 2 === 0 ? 'Cold Room #1 (Satpur)' : 'Cold Room #2 (Pimpalgaon)',
+          grade: cropName,
+          weight: `${item.weight.toLocaleString('en-IN')} KG`,
+          temp: '2.4°C',
+          humidity: '85%',
+          valuation: `₹${Math.round(item.valuation).toLocaleString('en-IN')}`,
+          status: item.weight > 0 ? 'OPTIMAL' : 'OUT OF STOCK',
+        };
+      });
+
+      setBatches(formatted);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('seavaig_inventory_cache', JSON.stringify(formatted));
       }
     }
-      const cachedTraderPurchases = typeof window !== 'undefined' ? localStorage.getItem('seavaig_trader_purchases_cache') : null;
-      if (cachedTraderPurchases) {
-        try {
-          const parsed = JSON.parse(cachedTraderPurchases);
-          if (Array.isArray(parsed)) setMaterialPurchases(parsed);
-        } catch {}
-      }
-
-      const cachedMaterialIssues = typeof window !== 'undefined' ? localStorage.getItem('seavaig_material_supplies_cache') : null;
-      if (cachedMaterialIssues) {
-        try {
-          const parsed = JSON.parse(cachedMaterialIssues);
-          if (Array.isArray(parsed)) setMaterialIssues(parsed);
-        } catch {}
-      }
     loadData();
   }, []);
 

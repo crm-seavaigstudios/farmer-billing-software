@@ -21,7 +21,9 @@ import {
   apiGetTraders,
   apiCreateTrader,
   apiGetTraderPurchases,
-  apiCreateTraderPurchase
+  apiCreateTraderPurchase,
+  apiUpdateTraderPurchase,
+  apiUpdateTraderBalance
 } from '@/lib/api';
 
 export default function TradersPage() {
@@ -174,26 +176,38 @@ export default function TradersPage() {
     setIsAddPurchaseOpen(false);
   };
 
-  const handleRecordTraderPayment = (e: React.FormEvent) => {
+  const handleRecordTraderPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBillForPayment) return;
 
     const amt = Number(paymentAmount) || 0;
+    const totalAmt = Number(selectedBillForPayment.quantity || 1) * Number(selectedBillForPayment.rate || 0);
+    const newPaid = Number(selectedBillForPayment.paidAmount || 0) + amt;
+    const newDue = Math.max(0, totalAmt - newPaid);
+
+    await apiUpdateTraderPurchase(selectedBillForPayment.id, {
+      paidAmount: newPaid,
+      dueAmount: newDue,
+      paymentStatus: newDue === 0 ? 'PAID' : (newPaid > 0 ? 'PARTIAL' : 'UNPAID')
+    });
+
+    if (selectedBillForPayment.traderId) {
+      await apiUpdateTraderBalance(selectedBillForPayment.traderId, amt, -amt);
+    }
+
     const updated = purchases.map((p) => {
       if (p.id === selectedBillForPayment.id) {
-        const currentPaid = Number(p.paidAmount || 0);
         return {
           ...p,
-          paidAmount: currentPaid + amt,
+          paidAmount: newPaid,
+          dueAmount: newDue,
+          paymentStatus: newDue === 0 ? 'PAID' : (newPaid > 0 ? 'PARTIAL' : 'UNPAID')
         };
       }
       return p;
     });
 
     setPurchases(updated);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_trader_purchases_cache', JSON.stringify(updated));
-    }
     setIsPaymentModalOpen(false);
     setSelectedBillForPayment(null);
     setPaymentAmount('');

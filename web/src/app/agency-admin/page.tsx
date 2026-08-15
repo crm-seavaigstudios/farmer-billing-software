@@ -35,10 +35,11 @@ export default function AgencyAdminPage() {
   }, []);
   const [isAddTenantModalOpen, setIsAddTenantModalOpen] = useState(false);
 
-  // 2FA TOTP Authentication Guard State (Microsoft Authenticator / Google Authenticator)
+  // Email and Password Login Guard State
   const [is2FaAuthenticated, setIs2FaAuthenticated] = useState(false);
-  const [totpCodeInput, setTotpCodeInput] = useState('');
-  const [isTotpError, setIsTotpError] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
   const [isSetup2FaModalOpen, setIsSetup2FaModalOpen] = useState(false);
   const [totpSecret, setTotpSecret] = useState('');
 
@@ -68,26 +69,23 @@ export default function AgencyAdminPage() {
     package: 'Enterprise Pro (₹24,999/yr)',
   });
 
-  const handleVerifyTotp = (e: React.FormEvent) => {
+  const handleEmailPasswordLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!totpSecret) return;
-    
-    const totp = new OTPAuth.TOTP({
-      issuer: "SeavaigAgency",
-      label: "admin@seavaig.com",
-      algorithm: "SHA1",
-      digits: 6,
-      period: 30,
-      secret: OTPAuth.Secret.fromBase32(totpSecret)
-    });
-    
-    const delta = totp.validate({ token: totpCodeInput, window: 1 });
-    
-    if (totpCodeInput.length === 6 && delta !== null) {
+    setLoginError('');
+
+    if (loginEmail.toLowerCase() === 'admin@seavaig.com' && loginPassword === 'admin') {
       setIs2FaAuthenticated(true);
-      setIsTotpError(false);
+      return;
+    }
+
+    const tenant = tenants.find(
+      (t) => t.ownerEmail?.toLowerCase() === loginEmail.toLowerCase() && t.password === loginPassword
+    );
+
+    if (tenant) {
+      setIs2FaAuthenticated(true);
     } else {
-      setIsTotpError(true);
+      setLoginError('Invalid Email ID or Password! Please verify and try again.');
     }
   };
 
@@ -95,9 +93,20 @@ export default function AgencyAdminPage() {
     e.preventDefault();
     setValidationError('');
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.ownerEmail)) {
+      setValidationError('Error: Please enter a valid email address!');
+      return;
+    }
+    const phoneRegex = /^[0-9]{10}$/;
+    if (!phoneRegex.test(formData.ownerPhone)) {
+      setValidationError('Error: Phone number must be exactly 10 digits!');
+      return;
+    }
+
     // Check duplicate email or phone in database/cache
     const duplicate = tenants.find(
-      (t) => t.ownerEmail.toLowerCase() === formData.ownerEmail.toLowerCase() || t.ownerPhone === formData.ownerPhone
+      (t) => (t.ownerEmail || '').toLowerCase() === formData.ownerEmail.toLowerCase() || t.ownerPhone === formData.ownerPhone
     );
     if (duplicate) {
       setValidationError('Error: Email or Mobile number is already registered in our database!');
@@ -148,55 +157,56 @@ export default function AgencyAdminPage() {
         {/* 2FA AUTHENTICATION GUARD MODAL IF NOT AUTHENTICATED */}
         {!is2FaAuthenticated ? (
           <main className="flex-1 flex items-center justify-center p-6 bg-slate-950/80">
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-blue-600/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto shadow-inner">
-                <ShieldCheck className="w-8 h-8 text-blue-500" />
-              </div>
-
-              <div>
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6">
+              <div className="text-center">
+                <div className="w-16 h-16 rounded-2xl bg-blue-600/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto shadow-inner mb-4">
+                  <ShieldCheck className="w-8 h-8 text-blue-500" />
+                </div>
                 <h1 className="text-xl font-black text-white">Agency Super Admin Security Guard</h1>
                 <p className="text-xs font-semibold text-slate-400 mt-1">
-                  Enter 6-Digit Code from <b>Microsoft Authenticator</b> or <b>Google Authenticator</b>
+                  Enter your registered Email ID and Password to login
                 </p>
               </div>
 
-              <form onSubmit={handleVerifyTotp} className="space-y-4">
-                <div>
+              <form onSubmit={handleEmailPasswordLogin} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Address</label>
                   <input
-                    type="text"
-                    maxLength={6}
-                    autoFocus
-                    placeholder="Enter 6-Digit Code (e.g. 123456)"
-                    value={totpCodeInput}
-                    onChange={(e) => setTotpCodeInput(e.target.value.replace(/\D/g, ''))}
-                    className="w-full text-center tracking-widest text-2xl font-black py-3 bg-slate-800 border border-slate-700 rounded-2xl text-blue-400 placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                    type="email"
+                    required
+                    placeholder="e.g. admin@seavaig.com"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-white focus:outline-none focus:border-blue-500"
                   />
-                  {isTotpError && (
-                    <p className="text-xs font-bold text-rose-400 mt-2 flex items-center justify-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      Please enter a valid 6-digit TOTP code
-                    </p>
-                  )}
                 </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Password</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Enter Password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {loginError && (
+                  <p className="text-xs font-bold text-rose-400 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    {loginError}
+                  </p>
+                )}
 
                 <button
                   type="submit"
                   className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-extrabold shadow-lg shadow-blue-600/20"
                 >
-                  Verify Microsoft Authenticator & Login
+                  Verify Credentials & Login
                 </button>
               </form>
-
-              <div className="pt-2 border-t border-slate-800/80">
-                <button
-                  type="button"
-                  onClick={() => setIsSetup2FaModalOpen(true)}
-                  className="text-xs font-bold text-blue-400 hover:underline flex items-center justify-center gap-1.5 mx-auto"
-                >
-                  <QrCode className="w-3.5 h-3.5" />
-                  <span>Setup Microsoft Authenticator QR Code</span>
-                </button>
-              </div>
             </div>
           </main>
         ) : (

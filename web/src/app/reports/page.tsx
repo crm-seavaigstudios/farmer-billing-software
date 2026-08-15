@@ -166,20 +166,62 @@ export default function ReportsPage() {
 
         if (purchasesRes && Array.isArray(purchasesRes) && purchasesRes.length > 0) {
           purchasesRes.forEach((p: any) => {
-            const exists = combined.some(item => item.id === (p.purchaseNo || p.id));
+            const exists = combined.some(item => item.id === p.id);
             if (!exists) {
               combined.push({
-                id: p.purchaseNo || p.id,
-                date: p.purchaseDate ? new Date(p.purchaseDate).toISOString().slice(0, 10) : '2026-08-07',
+                id: p.id,
+                date: p.date || '2026-08-15',
                 module: 'HARVEST_PURCHASE',
-                partyName: p.farmerName || p.farmer?.name || 'Farmer',
+                partyName: p.farmerName || 'Farmer',
                 category: p.crop || 'Harvest Crop',
-                weight: `${p.totalWeight || 0} KG`,
-                totalAmount: p.totalAmount || 0,
-                paidAmount: (p.paidAmount || 0) + (p.advanceApplied || 0),
+                weight: p.weight || '0 KG',
+                totalAmount: p.amount || 0,
+                paidAmount: p.paidAmount || 0,
                 dueAmount: p.dueAmount || 0,
                 paymentStatus: p.paymentStatus || 'UNPAID',
-                refNo: p.purchaseNo || 'PUR-100',
+                refNo: p.purchaseNo || p.id,
+              });
+            }
+          });
+        }
+
+        if (salesRes && Array.isArray(salesRes) && salesRes.length > 0) {
+          salesRes.forEach((s: any) => {
+            const exists = combined.some(item => item.id === s.id);
+            if (!exists) {
+              combined.push({
+                id: s.id,
+                date: s.date || '2026-08-15',
+                module: 'B2B_SALES',
+                partyName: s.customerName || 'Wholesale Customer',
+                category: s.items || 'Strawberry B2B',
+                weight: `${s.totalWeight || 0} KG`,
+                totalAmount: Number(s.amount) || 0,
+                paidAmount: Number(s.amount) || 0,
+                dueAmount: 0,
+                paymentStatus: 'PAID',
+                refNo: s.invoiceNo || s.id,
+              });
+            }
+          });
+        }
+
+        if (tradersRes && Array.isArray(tradersRes) && tradersRes.length > 0) {
+          tradersRes.forEach((t: any) => {
+            const exists = combined.some(item => item.id === t.id);
+            if (!exists) {
+              combined.push({
+                id: t.id,
+                date: t.date || '2026-08-15',
+                module: 'TRADER_SUPPLY',
+                partyName: t.traderName || 'Trader',
+                category: t.itemName,
+                weight: `${t.quantity || 0} ${t.unit || 'QTY'}`,
+                totalAmount: Number(t.totalAmount || 0),
+                paidAmount: Number(t.paidAmount || 0),
+                dueAmount: Number(t.dueAmount || 0),
+                paymentStatus: t.paymentStatus || 'UNPAID',
+                refNo: t.id,
               });
             }
           });
