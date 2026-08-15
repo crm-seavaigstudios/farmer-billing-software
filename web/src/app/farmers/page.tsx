@@ -211,7 +211,8 @@ export default function FarmersPage() {
                     <th className="py-3.5 px-4">Farmer Code</th>
                     <th className="py-3.5 px-4">Farmer Name</th>
                     <th className="py-3.5 px-4">Location</th>
-                    <th className="py-3.5 px-4">Grade & Status</th>
+                    <th className="py-3.5 px-4">Grade</th>
+                    <th className="py-3.5 px-4">Payment Status</th>
                     <th className="py-3.5 px-4">Total Purchases</th>
                     <th className="py-3.5 px-4">Total Paid</th>
                     <th className="py-3.5 px-4">Outstanding Due</th>
@@ -221,7 +222,7 @@ export default function FarmersPage() {
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                   {filteredFarmers.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center">
+                      <td colSpan={9} className="py-12 text-center">
                         <Inbox className="w-10 h-10 text-slate-400 mx-auto mb-2" />
                         <p className="text-sm font-bold text-slate-800">No Farmers Registered Yet</p>
                         <p className="text-xs text-slate-500 mt-1">Click "Register New Farmer" above to add your first supplier.</p>
@@ -236,10 +237,12 @@ export default function FarmersPage() {
                           <div className="text-[10px] text-slate-500">{f.phone}</div>
                         </td>
                         <td className="py-3.5 px-4 text-slate-600">{f.village}, {f.taluka}</td>
-                        <td className="py-3.5 px-4 space-y-1">
+                        <td className="py-3.5 px-4">
                           <div className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 inline-block">
                             {f.grade || 'A Grade'}
                           </div>
+                        </td>
+                        <td className="py-3.5 px-4">
                           {(() => {
                             const due = Number(f.outstandingAmount || 0);
                             const adv = Number(f.advanceBalance || 0);
@@ -277,27 +280,6 @@ export default function FarmersPage() {
                             >
                               <Eye className="w-3.5 h-3.5 text-blue-600" />
                               <span>Passbook</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedDetailFarmerId(f.id);
-                                setIsMaterialModalOpen(true);
-                              }}
-                              className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-bold border border-indigo-100 flex items-center gap-1 cursor-pointer"
-                              title="Issue Material / Crates to Farmer"
-                            >
-                              <span>+ Material</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedDetailFarmerId(f.id);
-                                setIsAdvanceModalOpen(true);
-                              }}
-                              className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[11px] font-bold border border-emerald-100 flex items-center gap-1 cursor-pointer"
-                              title="Disburse Cash Advance to Farmer"
-                            >
-                              <DollarSign className="w-3 h-3 text-emerald-600" />
-                              <span>⚡ Advance</span>
                             </button>
                             <button
                               onClick={() => setEditingFarmer(f)}

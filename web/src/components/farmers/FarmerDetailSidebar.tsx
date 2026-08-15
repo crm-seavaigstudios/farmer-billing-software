@@ -128,7 +128,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
   const combinedEvents: any[] = [];
 
   purchases.forEach((p: any) => {
-    const amt = typeof p.rawAmount === 'number' ? p.rawAmount : Number(String(p.totalAmount || p.grossAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+    const amt = typeof p.amount === 'number' ? p.amount : (typeof p.rawAmount === 'number' ? p.rawAmount : Number(String(p.totalAmount || p.grossAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0);
     const dateStr = p.purchaseDate || p.date || 'Today';
     combinedEvents.push({
       id: p.purchaseNo || p.purchaseBillNo || p.id,
@@ -371,7 +371,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
                     <p className="text-xs text-slate-400 text-center py-8">No harvest purchases recorded yet.</p>
                   ) : (
                     purchases.map((p: any, idx: number) => {
-                      const pAmt = typeof p.rawAmount === 'number' ? p.rawAmount : Number(String(p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+                      const pAmt = typeof p.amount === 'number' ? p.amount : (typeof p.rawAmount === 'number' ? p.rawAmount : Number(String(p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0);
                       const dateText = p.purchaseDate || p.date || (p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN') : 'Today');
                       return (
                         <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 text-xs hover:border-blue-200 transition-colors">

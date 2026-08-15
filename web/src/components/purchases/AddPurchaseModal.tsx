@@ -158,6 +158,10 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
 
     const payload = {
       farmerId: selectedFarmer?.id || 'far-01',
+      farmerName: selectedFarmer?.name || 'Farmer',
+      paidAmount: totalDeductionsApplied,
+      dueAmount: dueAmount,
+      paymentStatus: dueAmount === 0 ? 'PAID' : (totalDeductionsApplied > 0 ? 'PARTIAL' : 'UNPAID'),
       items: [{
         cropName: activeCropName,
         grade: 'A_GRADE',
@@ -170,26 +174,11 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
 
     const savedPurchase = await apiCreatePurchase(payload);
 
-    const newPurchaseId = (savedPurchase as any)?.purchaseNo || (savedPurchase as any)?.purchaseBillNo || `PUR-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-
     const newPurchase = {
-      id: newPurchaseId,
-      farmerName: selectedFarmer?.name || 'Ramesh Patil',
-      farmerId: selectedFarmer?.id || 'far-01',
-      phone: selectedFarmer?.phone || '9823456789',
-      village: selectedFarmer?.village || 'Nandgaon',
-      crop: activeCropName,
-      weight: `${quantityOrWeight} ${unit}`,
-      unit,
+      ...savedPurchase,
+      phone: selectedFarmer?.phone || '',
+      village: selectedFarmer?.village || '',
       category: activeCategory,
-      rate: `₹${ratePerUnit}/${unit}`,
-      amount: `₹${calculatedTotal.toLocaleString('en-IN')}`,
-      paidAmount: `₹${totalDeductionsApplied.toLocaleString('en-IN')}`,
-      advanceApplied: `₹${totalDeductionsApplied.toLocaleString('en-IN')}`,
-      dueAmount: `₹${dueAmount.toLocaleString('en-IN')}`,
-      paymentStatus: dueAmount === 0 ? 'PAID' : (totalDeductionsApplied > 0 ? 'PARTIAL' : 'UNPAID'),
-      time: 'Just now',
-      date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     };
 
     // Mark checked materials as deducted in cache
@@ -200,35 +189,13 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
           const list = JSON.parse(cachedMats);
           const updated = list.map((m: any) => {
             if (selectedMaterialIds.includes(m.id)) {
-              return { ...m, isDeductedFromBill: true, deductedFromBillNo: newPurchaseId };
+              return { ...m, isDeductedFromBill: true, deductedFromBillNo: savedPurchase.id };
             }
             return m;
           });
           localStorage.setItem('seavaig_material_supplies_cache', JSON.stringify(updated));
         } catch {}
       }
-    }
-
-    // Update farmer balance in cache
-    const cachedFarmers = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
-    if (cachedFarmers) {
-      try {
-        const list = JSON.parse(cachedFarmers);
-        const updated = list.map((f: any) => {
-          if (f.id === selectedFarmer?.id) {
-            const currentAdv = Number(f.advanceBalance || 0);
-            return {
-              ...f,
-              advanceBalance: Math.max(0, currentAdv - totalDeductionsApplied),
-              totalPurchase: (f.totalPurchase || 0) + calculatedTotal,
-              totalPaid: (f.totalPaid || 0) + totalDeductionsApplied,
-              outstandingAmount: Math.max(0, (f.totalPurchase || 0) + calculatedTotal - ((f.totalPaid || 0) + totalDeductionsApplied))
-            };
-          }
-          return f;
-        });
-        localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updated));
-      } catch {}
     }
 
     onAddPurchase(newPurchase);

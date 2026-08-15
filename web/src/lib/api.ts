@@ -201,39 +201,114 @@ export const apiGetPurchases = async () => {
   try {
     const { data, error } = await supabase.from('purchases').select('*').order('created_at', { ascending: false });
     if (!error && data && data.length > 0) {
-      setLocalCache('seavaig_purchases_cache', data);
-      return data;
+      const mapped = data.map((p: any) => ({
+        id: p.id,
+        purchaseNo: p.id,
+        farmerId: p.farmer_id || '',
+        farmerName: p.farmer_name || 'Farmer',
+        crop: p.crop || 'Strawberry',
+        weight: p.weight || '0 KG',
+        rate: p.rate || '₹0/KG',
+        amount: parseFloat(p.amount) || 0,
+        paidAmount: parseFloat(p.paid_amount) || 0,
+        dueAmount: parseFloat(p.due_amount) || 0,
+        paymentStatus: p.payment_status || 'UNPAID',
+        date: p.date || new Date().toISOString().split('T')[0],
+      }));
+      setLocalCache('seavaig_purchases_cache', mapped);
+      return mapped;
     }
   } catch {}
   return getLocalCache('seavaig_purchases_cache', []);
 };
 
+export const apiUpdatePurchase = async (id: string, updateData: any) => {
+  const payload: any = {};
+  if (updateData.crop !== undefined) payload.crop = updateData.crop;
+  if (updateData.weight !== undefined) payload.weight = updateData.weight;
+  if (updateData.rate !== undefined) payload.rate = updateData.rate;
+  if (updateData.amount !== undefined) payload.amount = String(updateData.amount);
+  if (updateData.paidAmount !== undefined) payload.paid_amount = String(updateData.paidAmount);
+  if (updateData.dueAmount !== undefined) payload.due_amount = String(updateData.dueAmount);
+  if (updateData.paymentStatus !== undefined) payload.payment_status = updateData.paymentStatus;
+  
+  try {
+    await supabase.from('purchases').update(payload).eq('id', id);
+  } catch {}
+
+  const current = getLocalCache('seavaig_purchases_cache', []);
+  const updated = current.map((p: any) => (p.id === id ? { ...p, ...updateData } : p));
+  setLocalCache('seavaig_purchases_cache', updated);
+  return updated;
+};
+
+export const apiUpdateFarmerBalance = async (farmerId: string, paidAmt: number, dueAmt: number) => {
+  try {
+    const { data } = await supabase.from('farmers').select('*').eq('id', farmerId).single();
+    if (data) {
+      const newTotalPaid = (data.total_paid || 0) + paidAmt;
+      const newOutstanding = Math.max(0, (data.outstanding_amount || 0) + dueAmt);
+      const newAdvance = Math.max(0, (data.advance_balance || 0) - paidAmt);
+      
+      await supabase.from('farmers').update({
+        total_paid: newTotalPaid,
+        outstanding_amount: newOutstanding,
+        advance_balance: newAdvance,
+      }).eq('id', farmerId);
+    }
+  } catch {}
+
+  const farmers = getLocalCache('seavaig_farmers_cache', []);
+  const updatedFarmers = farmers.map((f: any) => {
+    if (f.id === farmerId) {
+      const newTotalPaid = (f.totalPaid || 0) + paidAmt;
+      const newOutstanding = Math.max(0, (f.outstandingAmount || 0) + dueAmt);
+      const newAdvance = Math.max(0, (f.advanceBalance || 0) - paidAmt);
+      return {
+        ...f,
+        totalPaid: newTotalPaid,
+        outstandingAmount: newOutstanding,
+        advanceBalance: newAdvance,
+      };
+    }
+    return f;
+  });
+  setLocalCache('seavaig_farmers_cache', updatedFarmers);
+};
+
 export const apiCreatePurchase = async (purchaseData: any) => {
+  const item = purchaseData.items?.[0];
+  const purAmt = Number((item?.weightKg || 0) * (item?.ratePerKg || 0));
   const newId = `pur-${Date.now()}`;
+  
   const purchaseObj = {
     id: newId,
-    purchaseBillNo: `PUR-2026-${Math.floor(100 + Math.random() * 900)}`,
+    purchaseNo: newId,
     farmerId: purchaseData.farmerId,
     farmerName: purchaseData.farmerName || 'Farmer',
-    cropName: purchaseData.crop || 'Strawberry',
-    totalQuantityKg: Number(purchaseData.weightKg || purchaseData.quantity || 0),
-    ratePerKg: Number(purchaseData.ratePerKg || purchaseData.rate || 0),
-    grossAmount: Number(purchaseData.totalAmount || 0),
+    crop: item?.cropName || 'Strawberry',
+    weight: `${item?.weightKg || 0} ${item?.unit || 'KG'}`,
+    rate: `₹${item?.ratePerKg || 0}/${item?.unit || 'KG'}`,
+    amount: purAmt,
     paidAmount: Number(purchaseData.paidAmount || 0),
-    dueAmount: Number(purchaseData.dueAmount || 0),
+    dueAmount: Number(purchaseData.dueAmount ?? purAmt),
     paymentStatus: purchaseData.paymentStatus || 'UNPAID',
-    purchaseDate: new Date().toISOString().split('T')[0],
+    date: new Date().toISOString().split('T')[0],
   };
 
   try {
     await supabase.from('purchases').insert([{
+      id: purchaseObj.id,
       farmer_id: purchaseObj.farmerId,
-      crop_name: purchaseObj.cropName,
-      weight_kg: purchaseObj.totalQuantityKg,
-      rate_per_kg: purchaseObj.ratePerKg,
-      total_amount: purchaseObj.grossAmount,
-      due_amount: purchaseObj.dueAmount,
+      farmer_name: purchaseObj.farmerName,
+      crop: purchaseObj.crop,
+      weight: purchaseObj.weight,
+      rate: purchaseObj.rate,
+      amount: String(purchaseObj.amount),
+      paid_amount: String(purchaseObj.paidAmount),
+      due_amount: String(purchaseObj.dueAmount),
       payment_status: purchaseObj.paymentStatus,
+      date: purchaseObj.date,
     }]);
   } catch {}
 
@@ -241,19 +316,9 @@ export const apiCreatePurchase = async (purchaseData: any) => {
   const updated = [purchaseObj, ...current];
   setLocalCache('seavaig_purchases_cache', updated);
 
-  // Update farmer total purchases
-  const farmers = getLocalCache('seavaig_farmers_cache', []);
-  const updatedFarmers = farmers.map((f: any) => {
-    if (f.id === purchaseData.farmerId || f.name === purchaseData.farmerName) {
-      return {
-        ...f,
-        totalPurchase: (f.totalPurchase || 0) + purchaseObj.grossAmount,
-        outstandingAmount: (f.outstandingAmount || 0) + purchaseObj.dueAmount,
-      };
-    }
-    return f;
-  });
-  setLocalCache('seavaig_farmers_cache', updatedFarmers);
+  if (purchaseData.farmerId) {
+    await apiUpdateFarmerBalance(purchaseData.farmerId, purchaseObj.paidAmount, purchaseObj.dueAmount);
+  }
 
   return purchaseObj;
 };
@@ -265,34 +330,48 @@ export const apiGetSales = async () => {
   try {
     const { data, error } = await supabase.from('sales').select('*').order('created_at', { ascending: false });
     if (!error && data && data.length > 0) {
-      setLocalCache('seavaig_sales_cache', data);
-      return data;
+      const mapped = data.map((s: any) => ({
+        id: s.id,
+        invoiceNo: s.id.startsWith('INV-') ? s.id : `INV-2026-${s.id.slice(-4)}`,
+        customerName: s.customer_name || 'Wholesale Customer',
+        amount: Number(s.amount || 0),
+        totalWeight: Number(s.total_weight || 0),
+        vehicleNo: s.vehicle_no || '',
+        date: s.created_at ? new Date(s.created_at).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN'),
+        status: 'DISPATCHED',
+        items: 'Strawberry Box Shipment',
+        farmerBatches: [],
+      }));
+      setLocalCache('seavaig_sales_cache', mapped);
+      return mapped;
     }
   } catch {}
   return getLocalCache('seavaig_sales_cache', []);
 };
 
 export const apiCreateSale = async (saleData: any) => {
-  const newId = `sal-${Date.now()}`;
+  const newId = saleData.id || `sal-${Date.now()}`;
   const saleObj = {
     id: newId,
-    invoiceNo: `INV-2026-${Math.floor(800 + Math.random() * 200)}`,
+    invoiceNo: saleData.id || `INV-2026-${Math.floor(800 + Math.random() * 200)}`,
     customerName: saleData.customerName || 'Wholesale Customer',
     cropName: saleData.cropName || 'Strawberry A Grade',
-    quantityKg: Number(saleData.totalWeight || saleData.quantityKg || 0),
-    totalAmount: Number(saleData.amount || saleData.totalAmount || 0),
-    vehicleNumber: saleData.vehicleNo || 'MH-15-EG-1234',
-    cratesDispatched: Number(saleData.cratesDispatched || 20),
-    paymentStatus: saleData.status || 'UNPAID',
-    saleDate: new Date().toISOString().split('T')[0],
+    totalWeight: Number(saleData.totalWeight || 0),
+    amount: Number(saleData.amount || 0),
+    vehicleNo: saleData.vehicleNo || 'MH-15-EG-1234',
+    status: saleData.status || 'DISPATCHED',
+    date: saleData.date || new Date().toISOString().split('T')[0],
+    items: saleData.items || '',
+    farmerBatches: saleData.farmerBatches || [],
   };
 
   try {
     await supabase.from('sales').insert([{
+      id: saleObj.id,
       customer_name: saleObj.customerName,
-      amount: saleObj.totalAmount,
-      total_weight: saleObj.quantityKg,
-      vehicle_no: saleObj.vehicleNumber,
+      amount: saleObj.amount,
+      total_weight: saleObj.totalWeight,
+      vehicle_no: saleObj.vehicleNo,
     }]);
   } catch {}
 
@@ -309,8 +388,18 @@ export const apiGetPayments = async () => {
   try {
     const { data, error } = await supabase.from('payments').select('*').order('created_at', { ascending: false });
     if (!error && data && data.length > 0) {
-      setLocalCache('seavaig_payments_cache', data);
-      return data;
+      const mapped = data.map((p: any) => ({
+        id: p.id,
+        paymentNo: p.payment_no || p.id,
+        farmerId: p.farmer_id || '',
+        farmerName: p.farmer_name || 'Farmer',
+        amount: Number(p.amount || 0),
+        method: p.method || 'CASH',
+        notes: p.notes || '',
+        date: p.created_at ? new Date(p.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      }));
+      setLocalCache('seavaig_payments_cache', mapped);
+      return mapped;
     }
   } catch {}
   return getLocalCache('seavaig_payments_cache', []);
@@ -320,22 +409,23 @@ export const apiCreatePayment = async (payData: any) => {
   const newId = `pay-${Date.now()}`;
   const payObj = {
     id: newId,
-    voucherNo: `VCH-2026-${Math.floor(500 + Math.random() * 500)}`,
-    partyType: payData.paymentType === 'FARMER_PAYOUT' ? 'FARMER' : 'CUSTOMER',
+    paymentNo: `PAY-2026-${Math.floor(1000 + Math.random() * 9000)}`,
     farmerId: payData.farmerId,
     farmerName: payData.farmerName || 'Farmer',
     amount: Number(payData.amount || 0),
-    paymentMethod: payData.paymentMode || 'CASH',
-    referenceNo: payData.referenceNo || `REF-${Date.now().toString().slice(-6)}`,
-    paymentDate: new Date().toISOString().split('T')[0],
-    notes: payData.notes || 'Payment Disbursement',
+    method: payData.paymentMode || 'CASH',
+    notes: payData.notes || 'Payment Settlement',
+    date: new Date().toISOString().split('T')[0],
   };
 
   try {
     await supabase.from('payments').insert([{
-      farmer_id: payData.farmerId,
+      id: payObj.id,
+      payment_no: payObj.paymentNo,
+      farmer_id: payObj.farmerId,
+      farmer_name: payObj.farmerName,
       amount: payObj.amount,
-      payment_mode: payObj.paymentMethod,
+      method: payObj.method,
       notes: payObj.notes,
     }]);
   } catch {}
@@ -344,24 +434,13 @@ export const apiCreatePayment = async (payData: any) => {
   const updated = [payObj, ...current];
   setLocalCache('seavaig_payments_cache', updated);
 
-  // Deduct from farmer outstanding balance
   if (payData.farmerId) {
-    const farmers = getLocalCache('seavaig_farmers_cache', []);
-    const updatedFarmers = farmers.map((f: any) => {
-      if (f.id === payData.farmerId) {
-        return {
-          ...f,
-          totalPaid: (f.totalPaid || 0) + payObj.amount,
-          outstandingAmount: Math.max(0, (f.outstandingAmount || 0) - payObj.amount),
-        };
-      }
-      return f;
-    });
-    setLocalCache('seavaig_farmers_cache', updatedFarmers);
+    await apiUpdateFarmerBalance(payData.farmerId, payObj.amount, -payObj.amount);
   }
 
   return payObj;
 };
+
 
 // ----------------------------------------------------
 // OTHER MODULE APIS (CUSTOMERS, WORKERS, TRADERS, EXPENSES)

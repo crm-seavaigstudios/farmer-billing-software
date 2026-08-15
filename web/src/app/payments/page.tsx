@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { AddPaymentModal } from '@/components/payments/AddPaymentModal';
 import { PrintReceiptModal, ReceiptData } from '@/components/common/PrintReceiptModal';
 import { useLanguage } from '@/context/LanguageContext';
+import { apiGetPayments } from '@/lib/api';
 import {
   CreditCard,
   CheckCircle,
@@ -38,6 +39,17 @@ export default function PaymentsPage() {
         if (Array.isArray(parsed) && parsed.length > 0) setPayments(parsed);
       } catch {}
     }
+
+    async function loadData() {
+      const dbPayments = await apiGetPayments();
+      if (dbPayments && Array.isArray(dbPayments) && dbPayments.length > 0) {
+        setPayments(dbPayments);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('seavaig_payments_cache', JSON.stringify(dbPayments));
+        }
+      }
+    }
+    loadData();
   }, []);
 
   const handleAddPayment = (newPay: any) => {
@@ -45,23 +57,6 @@ export default function PaymentsPage() {
     setPayments(updated);
     if (typeof window !== 'undefined') {
       localStorage.setItem('seavaig_payments_cache', JSON.stringify(updated));
-
-      const farmersCache = localStorage.getItem('seavaig_farmers_cache');
-      if (farmersCache) {
-        try {
-          const farmers = JSON.parse(farmersCache);
-          const payAmt = Number(String(newPay.amount).replace(/[^0-9.-]+/g, '')) || 0;
-          const updatedFarmers = farmers.map((f: any) => {
-            if (f.id === newPay.farmerId || f.name === newPay.farmerName) {
-              const newTotalPaid = (f.totalPaid || 0) + payAmt;
-              const newDue = Math.max(0, (f.totalPurchase || 0) - newTotalPaid);
-              return { ...f, totalPaid: newTotalPaid, outstandingAmount: newDue };
-            }
-            return f;
-          });
-          localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updatedFarmers));
-        } catch {}
-      }
     }
   };
 
@@ -87,6 +82,20 @@ export default function PaymentsPage() {
       (p.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.method || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const parseAmt = (val: any): number => {
+    if (typeof val === 'number') return val;
+    if (!val) return 0;
+    return parseFloat(String(val).replace(/[^0-9.-]+/g, '')) || 0;
+  };
+
+  const totalPaidOutSum = payments.reduce((acc, p) => acc + parseAmt(p.amount), 0);
+  
+  const bankOrUpiPayments = payments.filter(p => String(p.method).toUpperCase().includes('UPI') || String(p.method).toUpperCase().includes('BANK') || String(p.method).toUpperCase().includes('TRANSFER'));
+  const bankOrUpiRatio = payments.length > 0 ? (bankOrUpiPayments.length / payments.length) * 100 : 92.4;
+
+  const chequePayments = payments.filter(p => String(p.method).toUpperCase().includes('CHEQUE'));
+  const pendingChequesSum = chequePayments.reduce((acc, p) => acc + parseAmt(p.amount), 0);
 
   return (
     <div className="flex min-h-screen bg-slateCanvas font-sans">
@@ -123,8 +132,8 @@ export default function PaymentsPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Paid Out This Month</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹1,85,40,000</h3>
-                <span className="text-[10px] font-bold text-emerald-600">↑ 14.2% vs last month</span>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{totalPaidOutSum.toLocaleString('en-IN')}</h3>
+                <span className="text-[10px] font-bold text-emerald-600">Live Database</span>
               </div>
             </div>
 
@@ -134,8 +143,8 @@ export default function PaymentsPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">UPI & Bank Transfers</span>
-                <h3 className="text-xl font-extrabold text-slate-900">92.4%</h3>
-                <span className="text-[10px] font-bold text-blue-600">Digital Disbursal</span>
+                <h3 className="text-xl font-extrabold text-slate-900">{bankOrUpiRatio.toFixed(1)}%</h3>
+                <span className="text-[10px] font-bold text-blue-600">Digital Disbursal Ratio</span>
               </div>
             </div>
 
@@ -145,8 +154,8 @@ export default function PaymentsPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Pending Cheques</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹50,000</h3>
-                <span className="text-[10px] font-bold text-amber-600">1 Voucher Processing</span>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{pendingChequesSum.toLocaleString('en-IN')}</h3>
+                <span className="text-[10px] font-bold text-amber-600">{chequePayments.length} Vouchers Processing</span>
               </div>
             </div>
 
@@ -196,7 +205,7 @@ export default function PaymentsPage() {
                       <td className="py-3 px-3 font-bold text-blue-600">{row.id}</td>
                       <td className="py-3 px-3 font-bold text-slate-900">{row.farmerName}</td>
                       <td className="py-3 px-3 text-slate-600 font-medium">{row.method}</td>
-                      <td className="py-3 px-3 text-right font-black text-emerald-600">{row.amount}</td>
+                      <td className="py-3 px-3 text-right font-black text-emerald-600">₹{Number(row.amount || 0).toLocaleString('en-IN')}</td>
                       <td className="py-3 px-3 text-center">
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
                           row.status === 'COMPLETED'

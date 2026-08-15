@@ -10,7 +10,7 @@ import { PrintReceiptModal, ReceiptData } from '@/components/common/PrintReceipt
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetPurchases } from '@/lib/api';
+import { apiGetPurchases, apiUpdatePurchase, apiCreatePayment, apiUpdateFarmerBalance } from '@/lib/api';
 import {
   ShoppingBag,
   Scale,
@@ -38,37 +38,42 @@ export default function PurchasesPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedBillToEdit, setSelectedBillToEdit] = useState<any>(null);
 
-  const handleEditPurchase = (updatedBill: any) => {
-    const updated = purchases.map((p) => (p.id === updatedBill.id ? updatedBill : p));
-    setPurchases(updated);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_purchases_cache', JSON.stringify(updated));
+  const handleEditPurchase = async (updatedBill: any) => {
+    const oldBill = purchases.find((p) => p.id === updatedBill.id);
+    if (!oldBill) return;
 
-      const farmersCache = localStorage.getItem('seavaig_farmers_cache');
-      if (farmersCache) {
-        try {
-          const list = JSON.parse(farmersCache);
-          const oldBill = purchases.find((p) => p.id === updatedBill.id);
-          const oldAmount = parseFloat(String(oldBill.amount).replace(/[^0-9.-]+/g, '')) || 0;
-          const newAmount = parseFloat(String(updatedBill.amount).replace(/[^0-9.-]+/g, '')) || 0;
-          
-          const oldDue = parseFloat(String(oldBill.dueAmount).replace(/[^0-9.-]+/g, '')) || 0;
-          const newDue = parseFloat(String(updatedBill.dueAmount).replace(/[^0-9.-]+/g, '')) || 0;
+    const oldAmount = Number(oldBill.amount || 0);
+    const oldDue = Number(oldBill.dueAmount || 0);
+    const newAmount = parseFloat(String(updatedBill.amount).replace(/[^0-9.-]+/g, '')) || 0;
+    const newDue = parseFloat(String(updatedBill.dueAmount).replace(/[^0-9.-]+/g, '')) || 0;
 
-          const updatedFarmers = list.map((f: any) => {
-            if (f.id === updatedBill.farmerId || f.name === updatedBill.farmerName) {
-              return {
-                ...f,
-                totalPurchase: Math.max(0, (f.totalPurchase || 0) - oldAmount + newAmount),
-                outstandingAmount: Math.max(0, (f.outstandingAmount || 0) - oldDue + newDue),
-              };
-            }
-            return f;
-          });
-          localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updatedFarmers));
-        } catch {}
-      }
+    const diffPaid = (newAmount - newDue) - (oldAmount - oldDue);
+    const diffDue = newDue - oldDue;
+
+    const parsedBill = {
+      ...updatedBill,
+      amount: newAmount,
+      dueAmount: newDue,
+    };
+
+    // 1. Call apiUpdatePurchase to save to Supabase
+    await apiUpdatePurchase(updatedBill.id, {
+      crop: parsedBill.crop,
+      weight: parsedBill.weight,
+      rate: parsedBill.rate,
+      amount: parsedBill.amount,
+      dueAmount: parsedBill.dueAmount,
+      paymentStatus: parsedBill.paymentStatus,
+    });
+
+    // 2. Call apiUpdateFarmerBalance to adjust farmer totals in Supabase/Cache
+    if (parsedBill.farmerId) {
+      await apiUpdateFarmerBalance(parsedBill.farmerId, diffPaid, diffDue);
     }
+
+    // 3. Update React state
+    const updated = purchases.map((p) => (p.id === updatedBill.id ? parsedBill : p));
+    setPurchases(updated);
   };
 
   // Category Modal State
@@ -78,39 +83,38 @@ export default function PurchasesPage() {
   const [categoryModalFarmers, setCategoryModalFarmers] = useState<any[]>([]);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const search = params.get('search');
+      if (search) setSearchQuery(search);
+    }
+
     const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_purchases_cache') : null;
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) setPurchases(parsed);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const cleaned = parsed.map((p: any) => {
+            const cleanAmt = typeof p.amount === 'number' ? p.amount : parseFloat(String(p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+            const cleanDue = typeof p.dueAmount === 'number' ? p.dueAmount : parseFloat(String(p.dueAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+            return {
+              ...p,
+              amount: cleanAmt,
+              dueAmount: cleanDue,
+            };
+          });
+          setPurchases(cleaned);
+        }
       } catch {}
     }
 
     async function loadData() {
       const dbPurchases = await apiGetPurchases();
       if (dbPurchases && Array.isArray(dbPurchases) && dbPurchases.length > 0) {
-        const formatted = dbPurchases.map((p: any) => ({
-          id: p.purchaseNo || p.id,
-          farmerId: p.farmerId || '',
-          farmerName: p.farmer?.name || p.farmerName || 'Unknown Farmer',
-          phone: p.farmer?.phone || '',
-          village: p.farmer?.village || '',
-          crop: p.items?.[0]?.cropName || p.crop || 'Crop',
-          category: p.items?.[0]?.packagingCategory || 'कॅरेट',
-          weight: `${p.totalWeight} ${p.items?.[0]?.unit || 'KG'}`,
-          rate: `₹${p.items?.[0]?.ratePerKg || 0}/${p.items?.[0]?.unit || 'KG'}`,
-          amount: `₹${p.totalAmount?.toLocaleString('en-IN') || '0'}`,
-          rawAmount: p.totalAmount || 0,
-          dueAmount: `₹${p.dueAmount?.toLocaleString('en-IN') || '0'}`,
-          rawDue: p.dueAmount || 0,
-          paymentStatus: p.paymentStatus || 'UNPAID',
-          time: 'Today',
-          date: new Date(p.createdAt || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-        }));
-        setPurchases(formatted);
+        setPurchases(dbPurchases);
         setIsLiveSynced(true);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('seavaig_purchases_cache', JSON.stringify(formatted));
+          localStorage.setItem('seavaig_purchases_cache', JSON.stringify(dbPurchases));
         }
       }
     }
@@ -122,24 +126,6 @@ export default function PurchasesPage() {
     setPurchases(updated);
     if (typeof window !== 'undefined') {
       localStorage.setItem('seavaig_purchases_cache', JSON.stringify(updated));
-
-      const farmersCache = localStorage.getItem('seavaig_farmers_cache');
-      if (farmersCache) {
-        try {
-          const farmers = JSON.parse(farmersCache);
-          const purAmt = Number(String(newPurchase.amount || newPurchase.rawAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
-          const dueAmt = Number(String(newPurchase.dueAmount || newPurchase.rawDue || purAmt).replace(/[^0-9.-]+/g, '')) || purAmt;
-          const updatedFarmers = farmers.map((f: any) => {
-            if (f.id === newPurchase.farmerId || f.name === newPurchase.farmerName) {
-              const newTotalPurchase = (f.totalPurchase || 0) + purAmt;
-              const newDue = (f.outstandingAmount || 0) + dueAmt;
-              return { ...f, totalPurchase: newTotalPurchase, outstandingAmount: newDue };
-            }
-            return f;
-          });
-          localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updatedFarmers));
-        } catch {}
-      }
     }
   };
 
@@ -148,15 +134,21 @@ export default function PurchasesPage() {
     setIsSettleModalOpen(true);
   };
 
-  const handleBillSettled = (payment: any) => {
+  const handleBillSettled = async (payment: any) => {
     if (selectedBillToSettle) {
+      await apiUpdatePurchase(selectedBillToSettle.id, {
+        paymentStatus: 'PAID',
+        dueAmount: 0,
+        paidAmount: selectedBillToSettle.amount,
+      });
+
       setPurchases(
         purchases.map((p) => {
           if (p.id === selectedBillToSettle.id) {
             return {
               ...p,
-              dueAmount: '₹0',
-              rawDue: 0,
+              dueAmount: 0,
+              paidAmount: p.amount,
               paymentStatus: 'PAID',
             };
           }
@@ -337,8 +329,8 @@ export default function PurchasesPage() {
                         </td>
                         <td className="py-3.5 px-4 font-bold text-slate-900">{row.weight}</td>
                         <td className="py-3.5 px-4 text-slate-500">{row.rate}</td>
-                        <td className="py-3.5 px-4 font-black text-slate-900">{row.amount}</td>
-                        <td className="py-3.5 px-4 font-bold text-amber-600">{row.dueAmount}</td>
+                        <td className="py-3.5 px-4 font-black text-slate-900">₹{Number(row.amount || 0).toLocaleString('en-IN')}</td>
+                        <td className="py-3.5 px-4 font-bold text-amber-600">₹{Number(row.dueAmount || 0).toLocaleString('en-IN')}</td>
                         <td className="py-3.5 px-4">
                           <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
                             row.paymentStatus === 'PAID'
@@ -410,6 +402,9 @@ export default function PurchasesPage() {
         isOpen={isSettleModalOpen}
         onClose={() => setIsSettleModalOpen(false)}
         onAddPayment={handleBillSettled}
+        initialFarmerId={selectedBillToSettle?.farmerId}
+        initialPurchaseId={selectedBillToSettle?.id}
+        initialAmount={Number(selectedBillToSettle?.dueAmount || 0)}
       />
 
       <PrintReceiptModal

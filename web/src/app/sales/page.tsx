@@ -25,11 +25,6 @@ import {
 export default function SalesPage() {
   const { t } = useLanguage();
   const [sales, setSales] = useState<any[]>([]);
-  const [metrics, setMetrics] = useState({
-    totalSalesThisMonth: '₹0',
-    totalVolumeSold: '0 KG',
-    pendingInvoicesCount: 0
-  });
   const [searchQuery, setSearchQuery] = useState('');
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -85,6 +80,10 @@ export default function SalesPage() {
       (s.id || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const totalSalesVal = sales.reduce((acc: number, s: any) => acc + (Number(s.amount) || 0), 0);
+  const totalVolumeVal = sales.reduce((acc: number, s: any) => acc + (Number(s.totalWeight) || 0), 0);
+  const pendingVal = sales.filter((s: any) => s.status !== 'PAID').length;
+
   return (
     <div className="flex min-h-screen bg-slateCanvas font-sans">
       <Sidebar />
@@ -120,7 +119,7 @@ export default function SalesPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Total B2B Revenue</span>
-                <h3 className="text-xl font-extrabold text-slate-900">{metrics.totalSalesThisMonth}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{totalSalesVal.toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-emerald-600">Live Database</span>
               </div>
             </div>
@@ -131,7 +130,7 @@ export default function SalesPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Volume Sold (KG)</span>
-                <h3 className="text-xl font-extrabold text-slate-900">{metrics.totalVolumeSold}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">{totalVolumeVal.toLocaleString('en-IN')} KG</h3>
                 <span className="text-[10px] font-bold text-blue-600">Total Weight Out</span>
               </div>
             </div>
@@ -153,7 +152,7 @@ export default function SalesPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Pending Invoices</span>
-                <h3 className="text-xl font-extrabold text-slate-900">{metrics.pendingInvoicesCount} Pending</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">{pendingVal} Pending</h3>
                 <span className="text-[10px] font-bold text-amber-600">Requires Follow-up</span>
               </div>
             </div>
@@ -206,14 +205,22 @@ export default function SalesPage() {
                       <td className="py-3 px-3">
                         <div className="text-slate-600 font-medium">{row.items}</div>
                         {row.farmerBatches && row.farmerBatches.length > 0 && (
-                          <div className="text-[9px] text-emerald-700 font-black mt-1 flex items-center gap-1">
-                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-100">
-                              🌾 Origin Batches: {row.farmerBatches.join(', ')}
-                            </span>
+                          <div className="text-[9px] text-emerald-700 font-black mt-1 flex items-center gap-1 flex-wrap">
+                            <span className="mr-0.5">🌾 Origin Batches:</span>
+                            {row.farmerBatches.map((batchId: string, bIdx: number) => (
+                              <a
+                                key={bIdx}
+                                href={`/purchases?search=${batchId}`}
+                                className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-100 hover:bg-emerald-100 hover:text-emerald-800 transition-colors cursor-pointer"
+                                title="Click to view purchase bill"
+                              >
+                                {batchId}
+                              </a>
+                            ))}
                           </div>
                         )}
                       </td>
-                      <td className="py-3 px-3 text-right font-black text-slate-900">{row.amount}</td>
+                      <td className="py-3 px-3 text-right font-black text-slate-900">₹{Number(row.amount || 0).toLocaleString('en-IN')}</td>
                       <td className="py-3 px-3 text-center">
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
                           row.status === 'PAID'

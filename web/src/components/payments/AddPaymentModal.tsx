@@ -7,12 +7,18 @@ interface AddPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddPayment: (payment: any) => void;
+  initialFarmerId?: string;
+  initialPurchaseId?: string;
+  initialAmount?: number;
 }
 
 export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   isOpen,
   onClose,
   onAddPayment,
+  initialFarmerId,
+  initialPurchaseId,
+  initialAmount,
 }) => {
   const { language } = useLanguage();
   const [farmersList, setFarmersList] = useState<any[]>([]);
@@ -47,21 +53,25 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
         if (fetched && fetched.length > 0) list = fetched;
       }
 
-      // No fallback to mock data when list is empty
-
       setFarmersList(list);
-      if (list.length > 0) {
-        setFormData((prev) => ({
-          ...prev,
-          farmerId: list[0].id,
-          farmerName: list[0].name,
-          phone: list[0].phone || '',
-          village: list[0].village || '',
-        }));
-      }
+
+      const activeFarmerId = initialFarmerId || (list.length > 0 ? list[0].id : '');
+      const found = list.find((f) => f.id === activeFarmerId);
+
+      setFormData({
+        farmerId: activeFarmerId,
+        farmerName: found ? found.name : '',
+        phone: found ? (found.phone || '') : '',
+        village: found ? (found.village || '') : '',
+        purchaseId: initialPurchaseId || '',
+        amount: initialAmount !== undefined ? String(initialAmount) : '',
+        paymentType: initialPurchaseId ? 'PURCHASE_SETTLEMENT' : 'GENERAL_PAYOUT',
+        paymentMode: 'UPI',
+        notes: initialPurchaseId ? `Bill settlement for #${initialPurchaseId}` : '',
+      });
     }
     loadFarmers();
-  }, [isOpen]);
+  }, [isOpen, initialFarmerId, initialPurchaseId, initialAmount]);
 
   if (!isOpen) return null;
 

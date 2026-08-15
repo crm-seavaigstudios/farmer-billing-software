@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Truck, User, Phone, Camera, PenTool, Plus, Trash2, ShieldCheck } from 'lucide-react';
-import { apiCreateSale, apiGetCustomers } from '@/lib/api';
+import { apiCreateSale, apiGetCustomers, apiGetPurchases } from '@/lib/api';
 
 interface AddLogisticsSaleModalProps {
   isOpen: boolean;
@@ -15,6 +15,14 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [recentPurchases, setRecentPurchases] = useState<any[]>([]);
   const [selectedPurchaseIds, setSelectedPurchaseIds] = useState<string[]>([]);
+  const [purchaseSearchQuery, setPurchaseSearchQuery] = useState('');
+
+  const filteredPurchasesForTracking = recentPurchases.filter(
+    (p) =>
+      (p.farmerName || '').toLowerCase().includes(purchaseSearchQuery.toLowerCase()) ||
+      (p.id || '').toLowerCase().includes(purchaseSearchQuery.toLowerCase()) ||
+      (p.crop || '').toLowerCase().includes(purchaseSearchQuery.toLowerCase())
+  );
   
   // Logistics Manifest Fields
   const [vehicleNo, setVehicleNo] = useState('MH-15-EG-4521');
@@ -37,13 +45,16 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
   useEffect(() => {
     if (!isOpen) return;
     async function loadCustomers() {
-      // Load recent purchases for origin mapping
       const cachedPurchases = typeof window !== 'undefined' ? localStorage.getItem('seavaig_purchases_cache') : null;
       if (cachedPurchases) {
         try {
           const parsed = JSON.parse(cachedPurchases);
           if (Array.isArray(parsed)) setRecentPurchases(parsed);
         } catch {}
+      }
+      const dbPurchases = await apiGetPurchases();
+      if (dbPurchases && Array.isArray(dbPurchases)) {
+        setRecentPurchases(dbPurchases);
       }
       const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_customers_cache') : null;
       let cachedList: any[] = [];
@@ -183,11 +194,18 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
 
             <div>
               <label className="font-extrabold text-slate-700 block mb-1">Farmer Batches Origin Tracking (शेतकरी पीक मागोवा)</label>
+              <input
+                type="text"
+                placeholder="Search farmer name or bill ID..."
+                value={purchaseSearchQuery}
+                onChange={(e) => setPurchaseSearchQuery(e.target.value)}
+                className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 placeholder-slate-400 mb-1 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
+              />
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 max-h-24 overflow-y-auto font-medium">
-                {recentPurchases.length === 0 ? (
-                  <p className="text-[10px] text-slate-400 italic">No recent farmer harvest purchase bills available to trace.</p>
+                {filteredPurchasesForTracking.length === 0 ? (
+                  <p className="text-[10px] text-slate-400 italic">No matching farmer harvest purchase bills found.</p>
                 ) : (
-                  recentPurchases.map((p: any) => (
+                  filteredPurchasesForTracking.map((p: any) => (
                     <label key={p.id} className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
