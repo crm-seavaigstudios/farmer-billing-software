@@ -527,8 +527,56 @@ export const apiCreatePayment = async (payData: any) => {
 
     if (payData.farmerId) {
       await apiUpdateFarmerBalance(payData.farmerId, payObj.amount, -payObj.amount);
+
+      // FIFO Allocation to Purchases in Supabase
+      let remainingPayment = payObj.amount;
+      const { data: pendingPurchases } = await supabase
+        .from('Purchase')
+        .select('*')
+        .eq('farmerId', payData.farmerId)
+        .gt('dueAmount', 0)
+        .order('purchaseDate', { ascending: true });
+
+      if (pendingPurchases && pendingPurchases.length > 0) {
+        for (const p of pendingPurchases) {
+          if (remainingPayment <= 0) break;
+          
+          const currentDue = Number(p.dueAmount || 0);
+          const currentPaid = Number(p.paidAmount || 0);
+          const allocation = Math.min(currentDue, remainingPayment);
+          
+          const newDue = currentDue - allocation;
+          const newPaid = currentPaid + allocation;
+          const newStatus = newDue <= 0 ? 'PAID' : 'PARTIAL';
+          
+          await supabase.from('Purchase').update({
+            dueAmount: newDue,
+            paidAmount: newPaid,
+            paymentStatus: newStatus
+          }).eq('id', p.id);
+          
+          remainingPayment -= allocation;
+        }
+      }
     }
   } catch {}
+
+  // Update Purchases Cache for FIFO
+  const purchasesCache = getLocalCache('seavaig_purchases_cache', []);
+  let remainingPaymentCache = payObj.amount;
+  // Purchases cache is newest first, so we iterate backwards (oldest first)
+  for (let i = purchasesCache.length - 1; i >= 0; i--) {
+    const p = purchasesCache[i];
+    if (p.farmerId === payData.farmerId && remainingPaymentCache > 0 && p.dueAmount > 0) {
+      const allocation = Math.min(p.dueAmount, remainingPaymentCache);
+      remainingPaymentCache -= allocation;
+      const newDue = p.dueAmount - allocation;
+      const newPaid = (p.paidAmount || 0) + allocation;
+      const newStatus = newDue <= 0 ? 'PAID' : 'PARTIAL';
+      purchasesCache[i] = { ...p, dueAmount: newDue, paidAmount: newPaid, paymentStatus: newStatus };
+    }
+  }
+  setLocalCache('seavaig_purchases_cache', purchasesCache);
 
   const current = getLocalCache('seavaig_payments_cache', []);
   const farmers = getLocalCache('seavaig_farmers_cache', []);

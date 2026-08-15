@@ -23,15 +23,18 @@ import {
   Database,
   DollarSign,
   Inbox,
-  Edit3
+  Edit3,
+  Clock,
+  History
 } from 'lucide-react';
 
 export default function PurchasesPage() {
   const { t } = useLanguage();
   const [purchases, setPurchases] = useState<any[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
-  const [selectedBillToSettle, setSelectedBillToSettle] = useState<any>(null);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyBill, setHistoryBill] = useState<any>(null);
+  const [billPayments, setBillPayments] = useState<any[]>([]);
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLiveSynced, setIsLiveSynced] = useState(false);
@@ -129,34 +132,14 @@ export default function PurchasesPage() {
     }
   };
 
-  const handleSettleBillClick = (row: any) => {
-    setSelectedBillToSettle(row);
-    setIsSettleModalOpen(true);
-  };
-
-  const handleBillSettled = async (payment: any) => {
-    if (selectedBillToSettle) {
-      await apiUpdatePurchase(selectedBillToSettle.id, {
-        paymentStatus: 'PAID',
-        dueAmount: 0,
-        paidAmount: selectedBillToSettle.amount,
-      });
-
-      setPurchases(
-        purchases.map((p) => {
-          if (p.id === selectedBillToSettle.id) {
-            return {
-              ...p,
-              dueAmount: 0,
-              paidAmount: p.amount,
-              paymentStatus: 'PAID',
-            };
-          }
-          return p;
-        })
-      );
-    }
-    setIsSettleModalOpen(false);
+  const handleViewHistory = async (e: React.MouseEvent, row: any) => {
+    e.stopPropagation();
+    setHistoryBill(row);
+    const { apiGetPayments } = await import('@/lib/api');
+    const allPayments = await apiGetPayments();
+    const related = allPayments.filter((p: any) => p.farmerId === row.farmerId);
+    setBillPayments(related);
+    setIsHistoryModalOpen(true);
   };
 
   const openPrintModal = (row: any) => {
@@ -178,11 +161,17 @@ export default function PurchasesPage() {
   };
 
   // Dynamic Financial Summary Totals
+  const parseNum = (val: any) => {
+    if (typeof val === 'number') return val;
+    if (!val) return 0;
+    return parseFloat(String(val).replace(/[^0-9.-]+/g, '')) || 0;
+  };
+
   const totalAdvance = 0;
-  const totalPaid = purchases.filter(p => p.paymentStatus === 'PAID').reduce((acc, p) => acc + (p.rawAmount || 0), 0);
+  const totalPaid = purchases.filter(p => p.paymentStatus === 'PAID').reduce((acc, p) => acc + parseNum(p.amount), 0);
   const paidFarmersCount = purchases.filter(p => p.paymentStatus === 'PAID').length;
 
-  const totalUnpaid = purchases.filter(p => p.paymentStatus === 'UNPAID' || p.paymentStatus === 'PARTIAL').reduce((acc, p) => acc + (p.rawDue || 0), 0);
+  const totalUnpaid = purchases.filter(p => p.paymentStatus === 'UNPAID' || p.paymentStatus === 'PARTIAL').reduce((acc, p) => acc + parseNum(p.dueAmount), 0);
   const unpaidFarmersCount = purchases.filter(p => p.paymentStatus === 'UNPAID' || p.paymentStatus === 'PARTIAL').length;
 
   const totalOutstanding = totalUnpaid;
@@ -199,10 +188,10 @@ export default function PurchasesPage() {
       setCategoryModalFarmers([]);
     } else if (category === 'PAID') {
       setCategoryModalTitle(`Fully Paid Purchase Bills (${paidFarmersCount} Farmers)`);
-      setCategoryModalFarmers(purchases.filter(p => p.paymentStatus === 'PAID').map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, totalPaid: p.rawAmount })));
+      setCategoryModalFarmers(purchases.filter(p => p.paymentStatus === 'PAID').map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, totalPaid: parseNum(p.amount) })));
     } else if (category === 'UNPAID' || category === 'OUTSTANDING') {
       setCategoryModalTitle(`Farmers with Pending Outstanding Bills (${unpaidFarmersCount} Farmers)`);
-      setCategoryModalFarmers(purchases.filter(p => p.paymentStatus !== 'PAID').map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, dueAmount: p.rawDue, outstandingAmount: p.rawDue })));
+      setCategoryModalFarmers(purchases.filter(p => p.paymentStatus !== 'PAID').map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, dueAmount: parseNum(p.dueAmount), outstandingAmount: parseNum(p.dueAmount) })));
     }
     setIsCategoryModalOpen(true);
   };
@@ -314,7 +303,14 @@ export default function PurchasesPage() {
                     </tr>
                   ) : (
                     filteredPurchases.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                      <tr 
+                        key={idx} 
+                        className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                        onClick={() => {
+                          setSelectedBillToEdit(row);
+                          setIsEditModalOpen(true);
+                        }}
+                      >
                         <td className="py-3.5 px-4 font-bold text-blue-600 flex items-center gap-1.5">
                           <ShoppingBag className="w-3.5 h-3.5 text-blue-500" />
                           {row.id}
@@ -343,17 +339,15 @@ export default function PurchasesPage() {
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {row.paymentStatus !== 'PAID' && (
-                              <button
-                                onClick={() => handleSettleBillClick(row)}
-                                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition-all"
-                                title="Settle Bill Instantly"
-                              >
-                                <DollarSign className="w-3 h-3" />
-                                <span>Settle Bill</span>
-                              </button>
-                            )}
+                          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                             <button
+                              onClick={(e) => handleViewHistory(e, row)}
+                              className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition-all"
+                              title="View Payment History"
+                            >
+                              <History className="w-3 h-3" />
+                              <span>History</span>
+                            </button>
 
                              <button
                               onClick={() => {
@@ -398,14 +392,39 @@ export default function PurchasesPage() {
         onEditPurchase={handleEditPurchase}
       />
 
-      <AddPaymentModal
-        isOpen={isSettleModalOpen}
-        onClose={() => setIsSettleModalOpen(false)}
-        onAddPayment={handleBillSettled}
-        initialFarmerId={selectedBillToSettle?.farmerId}
-        initialPurchaseId={selectedBillToSettle?.id}
-        initialAmount={Number(selectedBillToSettle?.dueAmount || 0)}
-      />
+      {/* History Modal */}
+      {isHistoryModalOpen && historyBill && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <History className="w-5 h-5 text-purple-600" />
+                Payment History ({historyBill.id})
+              </h3>
+              <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              <p className="text-xs font-semibold text-slate-600">
+                Farmer: <span className="font-bold text-slate-900">{historyBill.farmerName}</span>
+              </p>
+              {billPayments.length === 0 ? (
+                <p className="text-xs text-slate-400 italic py-4 text-center">No payments found for this farmer.</p>
+              ) : (
+                billPayments.map((p, idx) => (
+                  <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center text-xs">
+                    <div>
+                      <div className="font-bold text-slate-900">{p.paymentNo || p.id}</div>
+                      <div className="text-[10px] text-slate-500">{p.date} • {p.method}</div>
+                    </div>
+                    <div className="font-black text-emerald-600">₹{p.amount.toLocaleString('en-IN')}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <PrintReceiptModal
         isOpen={!!activeReceipt}

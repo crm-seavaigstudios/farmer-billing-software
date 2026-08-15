@@ -205,7 +205,7 @@ export default function PaymentsPage() {
                       <td className="py-3 px-3 font-bold text-blue-600">{row.id}</td>
                       <td className="py-3 px-3 font-bold text-slate-900">{row.farmerName}</td>
                       <td className="py-3 px-3 text-slate-600 font-medium">{row.method}</td>
-                      <td className="py-3 px-3 text-right font-black text-emerald-600">₹{Number(row.amount || 0).toLocaleString('en-IN')}</td>
+                      <td className="py-3 px-3 text-right font-black text-emerald-600">₹{parseAmt(row.amount).toLocaleString('en-IN')}</td>
                       <td className="py-3 px-3 text-center">
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
                           row.status === 'COMPLETED'
@@ -295,7 +295,7 @@ export default function PaymentsPage() {
 
             <div className="border border-emerald-100 bg-emerald-50/50 rounded-2xl p-4 text-center">
               <span className="text-xs font-semibold text-emerald-600 block uppercase tracking-wider">Disbursed Amount</span>
-              <span className="text-2xl font-black text-emerald-700">{selectedPayment.amount}</span>
+              <span className="text-2xl font-black text-emerald-700">₹{parseAmt(selectedPayment.amount).toLocaleString('en-IN')}</span>
             </div>
 
             <button

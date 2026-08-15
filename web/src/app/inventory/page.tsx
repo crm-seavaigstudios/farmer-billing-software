@@ -90,15 +90,32 @@ export default function InventoryPage() {
       });
 
       allSales.forEach((s: any) => {
-        const crop = s.items || 'Strawberry';
-        const wt = Number(s.totalWeight || 0);
-        const amt = Number(s.amount || 0);
-
-        if (!stockMap[crop]) {
-          stockMap[crop] = { weight: 0, valuation: 0, rate: wt > 0 ? amt / wt : 350 };
+        if (s.farmerBatches && Array.isArray(s.farmerBatches) && s.farmerBatches.length > 0) {
+          const numBatches = s.farmerBatches.length;
+          const wtPerBatch = (Number(s.totalWeight) || 0) / numBatches;
+          s.farmerBatches.forEach((pid: string) => {
+            const relatedPurchase = allPurchases.find((p: any) => p.id === pid);
+            if (relatedPurchase) {
+              const crop = relatedPurchase.crop || 'Strawberry';
+              if (stockMap[crop]) {
+                stockMap[crop].weight = Math.max(0, stockMap[crop].weight - wtPerBatch);
+                stockMap[crop].valuation = stockMap[crop].weight * stockMap[crop].rate;
+              }
+            }
+          });
+        } else {
+          // Fallback parsing if farmerBatches is missing
+          let crop = 'Strawberry';
+          if (s.items && typeof s.items === 'string') {
+            crop = s.items.split(' (')[0].trim();
+          }
+          if (!stockMap[crop]) crop = 'Strawberry';
+          const wt = Number(s.totalWeight || 0);
+          if (stockMap[crop]) {
+            stockMap[crop].weight = Math.max(0, stockMap[crop].weight - wt);
+            stockMap[crop].valuation = stockMap[crop].weight * stockMap[crop].rate;
+          }
         }
-        stockMap[crop].weight = Math.max(0, stockMap[crop].weight - wt);
-        stockMap[crop].valuation = stockMap[crop].weight * stockMap[crop].rate;
       });
 
       const formatted = Object.keys(stockMap).map((cropName, i) => {
@@ -188,22 +205,22 @@ export default function InventoryPage() {
     {
       item: 'Packaging Crates (कॅरेट)',
       category: 'PACKAGING',
-      purchasedQty: materialPurchases.filter(m => m.itemName?.includes('Crates') || m.itemName?.includes('कॅरेट') || m.itemName?.includes('Crate')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0) + 1000,
-      issuedQty: materialIssues.filter(m => m.itemName?.includes('Crates') || m.itemName?.includes('कॅरेट') || m.materialName?.includes('Crates') || m.materialName?.includes('कॅरेट') || m.materialName?.includes('Crate')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0) + 400,
+      purchasedQty: materialPurchases.filter(m => m.itemName?.includes('Crates') || m.itemName?.includes('कॅरेट') || m.itemName?.includes('Crate')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
+      issuedQty: materialIssues.filter(m => m.itemName?.includes('Crates') || m.itemName?.includes('कॅरेट') || m.materialName?.includes('Crates') || m.materialName?.includes('कॅरेट') || m.materialName?.includes('Crate')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
       unit: 'QTY'
     },
     {
       item: 'Fertilizers & Nutrients',
       category: 'INPUTS',
-      purchasedQty: materialPurchases.filter(m => m.itemName?.includes('Fertilizer') || m.itemName?.includes('खत')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0) + 150,
-      issuedQty: materialIssues.filter(m => m.itemName?.includes('Fertilizer') || m.itemName?.includes('खत') || m.materialName?.includes('Fertilizer') || m.materialName?.includes('खत')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0) + 85,
+      purchasedQty: materialPurchases.filter(m => m.itemName?.includes('Fertilizer') || m.itemName?.includes('खत')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
+      issuedQty: materialIssues.filter(m => m.itemName?.includes('Fertilizer') || m.itemName?.includes('खत') || m.materialName?.includes('Fertilizer') || m.materialName?.includes('खत')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
       unit: 'Bags'
     },
     {
       item: 'Drip Irrigation Pipes',
       category: 'HARDWARE',
-      purchasedQty: materialPurchases.filter(m => m.itemName?.includes('Pipe') || m.itemName?.includes('नळी')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0) + 50,
-      issuedQty: materialIssues.filter(m => m.itemName?.includes('Pipe') || m.itemName?.includes('नळी') || m.materialName?.includes('Pipe') || m.materialName?.includes('नळी')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0) + 20,
+      purchasedQty: materialPurchases.filter(m => m.itemName?.includes('Pipe') || m.itemName?.includes('नळी')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
+      issuedQty: materialIssues.filter(m => m.itemName?.includes('Pipe') || m.itemName?.includes('नळी') || m.materialName?.includes('Pipe') || m.materialName?.includes('नळी')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
       unit: 'Bundles'
     }
   ];

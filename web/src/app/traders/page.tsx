@@ -15,7 +15,8 @@ import {
   X,
   FileText,
   Building2,
-  CheckCircle2
+  CheckCircle2,
+  History
 } from 'lucide-react';
 import {
   apiGetTraders,
@@ -45,6 +46,8 @@ export default function TradersPage() {
   // Forms
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedBillForPayment, setSelectedBillForPayment] = useState<any>(null);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyBill, setHistoryBill] = useState<any>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [name, setName] = useState('');
@@ -212,6 +215,11 @@ export default function TradersPage() {
     setSelectedBillForPayment(null);
     setPaymentAmount('');
     setPaymentNotes('');
+  };
+
+  const handleViewHistory = (p: any) => {
+    setHistoryBill(p);
+    setIsHistoryModalOpen(true);
   };
 
   const totalPurchasedSum = purchases.reduce((acc, p) => acc + (Number(p.quantity || 0) * Number(p.rate || 0)), 0);
@@ -406,6 +414,13 @@ export default function TradersPage() {
                                   title="Share Bill on WhatsApp"
                                 >
                                   Share
+                                </button>
+                                <button
+                                  onClick={() => handleViewHistory(p)}
+                                  className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-[10px] font-bold cursor-pointer"
+                                  title="View Bill Details & History"
+                                >
+                                  Details
                                 </button>
                                 <button
                                   onClick={() => {
@@ -698,6 +713,55 @@ export default function TradersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {isHistoryModalOpen && historyBill && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 p-6 space-y-4 text-xs">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <History className="w-5 h-5 text-purple-600" />
+                Trader Bill Details ({historyBill.id})
+              </h3>
+              <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-slate-600">
+                Trader: <span className="font-bold text-slate-900">{historyBill.traderName}</span>
+              </p>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Item:</span>
+                  <span className="font-bold text-slate-900">{historyBill.itemName} ({historyBill.category})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Total Purchase:</span>
+                  <span className="font-bold text-slate-900">{historyBill.quantity} @ ₹{historyBill.rate}</span>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-2">
+                  <span className="text-slate-500">Total Amount:</span>
+                  <span className="font-black text-slate-900">₹{(historyBill.quantity * historyBill.rate).toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Paid Amount:</span>
+                  <span className="font-bold text-emerald-600">₹{(historyBill.paidAmount || 0).toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Remaining Due:</span>
+                  <span className="font-bold text-rose-600">₹{Math.max(0, (historyBill.quantity * historyBill.rate) - (historyBill.paidAmount || 0)).toLocaleString('en-IN')}</span>
+                </div>
+                {historyBill.notes && (
+                  <div className="flex justify-between border-t border-slate-200 pt-2">
+                    <span className="text-slate-500">Notes:</span>
+                    <span className="font-semibold text-slate-700">{historyBill.notes}</span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

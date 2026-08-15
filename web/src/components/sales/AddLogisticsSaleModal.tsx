@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { X, Truck, User, Phone, Camera, PenTool, Plus, Trash2, ShieldCheck } from 'lucide-react';
-import { apiCreateSale, apiGetCustomers, apiGetPurchases } from '@/lib/api';
+import { apiCreateSale, apiGetCustomers, apiGetPurchases, apiGetSales } from '@/lib/api';
 
 interface AddLogisticsSaleModalProps {
   isOpen: boolean;
@@ -52,9 +51,24 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
           if (Array.isArray(parsed)) setRecentPurchases(parsed);
         } catch {}
       }
+      const dbSales = await apiGetSales();
+      const sales = Array.isArray(dbSales) ? dbSales : [];
       const dbPurchases = await apiGetPurchases();
+      
       if (dbPurchases && Array.isArray(dbPurchases)) {
-        setRecentPurchases(dbPurchases);
+        const purchasesWithRemaining = dbPurchases.map((p: any) => {
+          let soldWeight = 0;
+          sales.forEach((s: any) => {
+            if (s.farmerBatches && Array.isArray(s.farmerBatches) && s.farmerBatches.includes(p.id)) {
+              const numBatches = s.farmerBatches.length || 1;
+              soldWeight += (Number(s.totalWeight) || 0) / numBatches;
+            }
+          });
+          const origWeight = parseFloat(String(p.weight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+          const remainingWeight = Math.max(0, origWeight - soldWeight);
+          return { ...p, remainingWeight: Math.round(remainingWeight), origWeight };
+        });
+        setRecentPurchases(purchasesWithRemaining.filter(p => p.remainingWeight > 0));
       }
       const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_customers_cache') : null;
       let cachedList: any[] = [];
@@ -219,7 +233,7 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
                         }}
                         className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
-                      <span>{p.farmerName} ({p.id}) - {p.crop} ({p.weight})</span>
+                      <span>{p.farmerName} ({p.id}) - {p.crop} (Remaining: {p.remainingWeight} KG)</span>
                     </label>
                   ))
                 )}

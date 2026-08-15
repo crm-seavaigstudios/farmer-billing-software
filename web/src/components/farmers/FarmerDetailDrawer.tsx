@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { PrintStatementModal, StatementData } from '@/components/common/PrintStatementModal';
+import { apiGetPurchases, apiGetPayments } from '@/lib/api';
+import { useEffect } from 'react';
 
 interface FarmerDetailDrawerProps {
   farmer: any | null;
@@ -38,25 +40,81 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
 
   if (!farmer) return null;
 
-  // Derived mock data for farmer
-  const samplePurchases = [
-    { id: 'PUR-2026-1052', date: '05 Aug 2026', crop: 'Strawberry (A Grade Export)', weight: '120 KG', rate: '₹280/KG', total: '₹33,600' },
-    { id: 'PUR-2026-1030', date: '02 Aug 2026', crop: 'Strawberry (B Grade Local)', weight: '150 KG', rate: '₹180/KG', total: '₹27,000' },
-    { id: 'PUR-2026-0980', date: '28 Jul 2026', crop: 'Strawberry (A Grade Export)', weight: '200 KG', rate: '₹290/KG', total: '₹58,000' },
-  ];
+  const [purchases, setPurchases] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [realTransactions, setRealTransactions] = useState<any[]>([]);
+  const [totals, setTotals] = useState({ purchase: 0, paid: 0, outstanding: 0 });
 
-  const samplePayments = [
-    { id: 'PAY-2026-0852', date: '05 Aug 2026', type: 'PARTIAL', method: 'UPI (GPay)', amount: '₹15,000', notes: 'Weekly harvest partial settlement' },
-    { id: 'PAY-2026-0820', date: '01 Aug 2026', type: 'ADVANCE', method: 'Cash Advance', amount: '₹10,000', notes: 'Advance for labor & packing crates' },
-    { id: 'PAY-2026-0790', date: '25 Jul 2026', type: 'FULL', method: 'Bank Transfer (IMPS)', amount: '₹58,000', notes: 'Full settlement of previous batch' },
-  ];
+  useEffect(() => {
+    if (!farmer) return;
+    const fetchLedger = async () => {
+      const p = await apiGetPurchases();
+      const pay = await apiGetPayments();
+      
+      const fp = Array.isArray(p) ? p.filter((x: any) => x.farmerName === farmer.name || x.farmerId === farmer.id) : [];
+      const fpay = Array.isArray(pay) ? pay.filter((x: any) => x.farmerName === farmer.name || x.farmerId === farmer.id) : [];
+      
+      setPurchases(fp.reverse());
+      setPayments(fpay.reverse());
+      
+      let allItems: any[] = [];
+      let totalPurchase = 0;
+      let totalPaid = 0;
 
-  const sampleTransactions = [
-    { date: '05 Aug 2026', refNo: 'PUR-2026-1052', type: 'PURCHASE' as const, description: 'Strawberry (A Grade Export)', weightOrQty: '120 KG @ ₹280/KG', debit: '₹33,600', credit: '₹0', balance: '₹43,500' },
-    { date: '05 Aug 2026', refNo: 'PAY-2026-0852', type: 'PAYMENT' as const, description: 'UPI Payout Received (GPay)', debit: '₹0', credit: '₹15,000', balance: '₹28,500' },
-    { date: '02 Aug 2026', refNo: 'PUR-2026-1030', type: 'PURCHASE' as const, description: 'Strawberry (B Grade Local)', weightOrQty: '150 KG @ ₹180/KG', debit: '₹27,000', credit: '₹0', balance: '₹43,500' },
-    { date: '01 Aug 2026', refNo: 'PAY-2026-0820', type: 'ADVANCE' as const, description: 'Advance Payout Given (Cash)', debit: '₹0', credit: '₹10,000', balance: '₹16,500' },
-  ];
+      fp.forEach((x: any) => {
+        const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
+        totalPurchase += amt;
+        allItems.push({
+           dateStr: x.date,
+           timestamp: new Date(x.date).getTime() || 0,
+           refNo: x.id,
+           type: 'PURCHASE',
+           description: x.crop || 'Crop Purchase',
+           weightOrQty: `${x.weight} @ ${x.rate}`,
+           debitVal: amt,
+           creditVal: 0,
+           notes: x.notes
+        });
+      });
+      
+      fpay.forEach((x: any) => {
+        const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
+        totalPaid += amt;
+        allItems.push({
+           dateStr: x.date,
+           timestamp: new Date(x.date).getTime() || 0,
+           refNo: x.id,
+           type: 'PAYMENT',
+           description: `Payment (${x.method})`,
+           weightOrQty: '-',
+           debitVal: 0,
+           creditVal: amt,
+           notes: x.notes || x.method
+        });
+      });
+      
+      allItems.sort((a, b) => a.timestamp - b.timestamp);
+      
+      let bal = 0;
+      const computed = allItems.map(item => {
+         bal = bal + item.debitVal - item.creditVal;
+         return {
+            date: item.dateStr,
+            refNo: item.refNo,
+            type: item.type,
+            description: item.description,
+            weightOrQty: item.weightOrQty,
+            debit: item.debitVal > 0 ? `₹${item.debitVal.toLocaleString('en-IN')}` : '—',
+            credit: item.creditVal > 0 ? `₹${item.creditVal.toLocaleString('en-IN')}` : '—',
+            balance: `₹${bal.toLocaleString('en-IN')}`
+         };
+      });
+      
+      setTotals({ purchase: totalPurchase, paid: totalPaid, outstanding: Math.max(0, totalPurchase - totalPaid) });
+      setRealTransactions(computed.reverse()); // Newest first for view
+    };
+    fetchLedger();
+  }, [farmer]);
 
   const statementData: StatementData = {
     farmerId: farmer.id || 'FAR-10001',
@@ -66,11 +124,11 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     aadhaar: farmer.aadhaar || 'XXXX-XXXX-8910',
     bankAccount: farmer.bankAccount || '990011223344',
     ifsc: farmer.ifsc || 'MAHB0001234',
-    totalPurchases: farmer.totalPurchase || '₹2,45,600',
-    totalPaid: farmer.totalPaid || '₹2,27,100',
-    advanceGiven: '₹10,000',
-    netBalance: farmer.outstanding || '₹18,500',
-    transactions: sampleTransactions,
+    totalPurchases: `₹${totals.purchase.toLocaleString('en-IN')}`,
+    totalPaid: `₹${totals.paid.toLocaleString('en-IN')}`,
+    advanceGiven: '₹0',
+    netBalance: `₹${totals.outstanding.toLocaleString('en-IN')}`,
+    transactions: realTransactions,
   };
 
   return (
@@ -109,22 +167,22 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
         <div className="p-6 bg-slate-50 border-b border-slate-100 grid grid-cols-4 gap-3 text-xs">
           <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
             <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Purchases</span>
-            <span className="text-sm font-extrabold text-slate-900 mt-0.5 block">{farmer.totalPurchase || '₹2,45,600'}</span>
+            <span className="text-sm font-extrabold text-slate-900 mt-0.5 block">₹{totals.purchase.toLocaleString('en-IN')}</span>
           </div>
 
           <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
             <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Paid Out</span>
-            <span className="text-sm font-extrabold text-emerald-600 mt-0.5 block">{farmer.totalPaid || '₹2,27,100'}</span>
+            <span className="text-sm font-extrabold text-emerald-600 mt-0.5 block">₹{totals.paid.toLocaleString('en-IN')}</span>
           </div>
 
           <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
             <span className="text-[10px] font-semibold text-blue-600 uppercase block">Advance Given</span>
-            <span className="text-sm font-extrabold text-blue-700 mt-0.5 block">₹10,000</span>
+            <span className="text-sm font-extrabold text-blue-700 mt-0.5 block">₹0</span>
           </div>
 
           <div className="bg-white border border-rose-100 rounded-xl p-3 shadow-2xs">
             <span className="text-[10px] font-semibold text-rose-500 uppercase block">Net Outstanding</span>
-            <span className="text-sm font-black text-rose-600 mt-0.5 block">{farmer.outstanding || '₹18,500'}</span>
+            <span className="text-sm font-black text-rose-600 mt-0.5 block">₹{totals.outstanding.toLocaleString('en-IN')}</span>
           </div>
         </div>
 
@@ -241,14 +299,17 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
             <div className="space-y-3 text-xs">
               <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Recent Strawberry Procurement Deliveries</h3>
               <div className="space-y-2">
-                {samplePurchases.map((p) => (
+                {purchases.length === 0 && <p className="text-slate-400">No purchases found.</p>}
+                {purchases.map((p) => (
                   <div key={p.id} className="bg-white border border-slate-200 rounded-xl p-3 flex justify-between items-center">
                     <div>
                       <span className="font-bold text-blue-600">{p.id}</span>
                       <p className="font-extrabold text-slate-900">{p.crop}</p>
                       <p className="text-[10px] text-slate-400">{p.date} • {p.weight} @ {p.rate}</p>
                     </div>
-                    <span className="text-sm font-black text-slate-900">{p.total}</span>
+                    <span className="text-sm font-black text-slate-900">
+                      ₹{Number(String(p.amount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -259,21 +320,24 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
             <div className="space-y-3 text-xs">
               <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Payment Disbursals & Advance Given History</h3>
               <div className="space-y-2">
-                {samplePayments.map((pay) => (
+                {payments.length === 0 && <p className="text-slate-400">No payments found.</p>}
+                {payments.map((pay) => (
                   <div key={pay.id} className="bg-white border border-slate-200 rounded-xl p-3 flex justify-between items-center">
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-blue-600">{pay.id}</span>
                         <span className={`px-2 py-0.5 rounded text-[9px] font-black ${
-                          pay.type === 'ADVANCE' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
+                          pay.method && pay.method.toLowerCase().includes('advance') ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
                         }`}>
-                          {pay.type}
+                          {pay.method && pay.method.toLowerCase().includes('advance') ? 'ADVANCE' : 'PAYMENT'}
                         </span>
                       </div>
                       <p className="font-bold text-slate-800">{pay.method}</p>
-                      <p className="text-[10px] text-slate-400">{pay.date} • {pay.notes}</p>
+                      <p className="text-[10px] text-slate-400">{pay.date}</p>
                     </div>
-                    <span className="text-sm font-black text-emerald-600">{pay.amount}</span>
+                    <span className="text-sm font-black text-emerald-600">
+                      ₹{Number(String(pay.amount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -305,15 +369,20 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {sampleTransactions.map((tx, idx) => (
+                    {realTransactions.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-400 font-bold">No transactions recorded yet.</td>
+                      </tr>
+                    )}
+                    {realTransactions.map((tx, idx) => (
                       <tr key={idx} className="hover:bg-slate-50 font-medium">
                         <td className="py-2.5 px-3 text-slate-500 text-[11px]">{tx.date}</td>
                         <td className="py-2.5 px-3 text-slate-800">
                           <span className="font-bold">{tx.description}</span>
                           <span className="text-[10px] text-slate-400 block">{tx.refNo}</span>
                         </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-slate-900">{tx.debit !== '₹0' ? tx.debit : '—'}</td>
-                        <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{tx.credit !== '₹0' ? tx.credit : '—'}</td>
+                        <td className="py-2.5 px-3 text-right font-bold text-slate-900">{tx.debit}</td>
+                        <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{tx.credit}</td>
                         <td className="py-2.5 px-3 text-right font-black text-slate-900">{tx.balance}</td>
                       </tr>
                     ))}
