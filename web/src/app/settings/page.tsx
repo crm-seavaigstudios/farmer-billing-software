@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { useLanguage } from '@/context/LanguageContext';
 import { useTenant } from '@/context/TenantContext';
+import { apiUpdateTenant } from '@/lib/api';
 import {
   Building,
   FileText,
@@ -40,7 +41,7 @@ export default function SettingsPage() {
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
-        const stored = sessionStorage.getItem('active_tenant');
+        const stored = localStorage.getItem('active_tenant');
         if (stored) {
           const parsed = JSON.parse(stored);
           setIsAdmin(parsed.role === 'SUPERADMIN' || parsed.userRole === 'OWNER' || parsed.id === 'superadmin');
@@ -49,20 +50,25 @@ export default function SettingsPage() {
     }
   }, []);
 
-  const handleSave = (e?: React.FormEvent) => {
+  const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     updateTenant(formData);
     
     // Update local storage
     if (typeof window !== 'undefined') {
       try {
-        const stored = sessionStorage.getItem('active_tenant');
+        const stored = localStorage.getItem('active_tenant');
         if (stored) {
           const parsed = JSON.parse(stored);
-          parsed.secretPin = formData.secretPin;
-          sessionStorage.setItem('active_tenant', JSON.stringify(parsed));
+          Object.assign(parsed, formData);
+          localStorage.setItem('active_tenant', JSON.stringify(parsed));
         }
       } catch (e) {}
+    }
+
+    // Push to database
+    if (tenant?.tenantId) {
+      await apiUpdateTenant(tenant.tenantId, formData);
     }
 
     setSaved(true);

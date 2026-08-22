@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 export const getTenantId = () => {
   if (typeof window === 'undefined') return null;
   try {
-    const t = JSON.parse(sessionStorage.getItem('active_tenant') || '{}');
+    const t = JSON.parse(localStorage.getItem('active_tenant') || '{}');
     return t.id || null;
   } catch {
     return null;
@@ -427,7 +427,26 @@ export const apiCreatePurchase = async (purchaseData: any) => {
 
   const item = purchaseData.items?.[0];
   const purAmt = Number((item?.weightKg || 0) * (item?.ratePerKg || 0));
-  const newId = `pur-${Date.now()}`;
+    const today = new Date();
+  const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
+  
+  const { data: latestData } = await supabase
+    .from('Purchase')
+    .select('purchaseNo')
+    .eq('tenantId', tenantId)
+    .like('purchaseNo', `PUR${ddmmyy}-%`)
+    .order('createdAt', { ascending: false })
+    .limit(1);
+
+  let serial = 1;
+  if (latestData && latestData.length > 0) {
+    const latestStr = latestData[0].purchaseNo || '';
+    const parts = latestStr.split('-');
+    if (parts.length > 1) {
+      serial = parseInt(parts[parts.length - 1], 10) + 1;
+    }
+  }
+  const newId = `PUR${ddmmyy}-${serial}`;
   
   const purchaseObj = {
     id: newId,
@@ -522,11 +541,31 @@ export const apiCreateSale = async (saleData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
 
-  const newId = saleData.id || `sal-${Date.now()}`;
+    const today = new Date();
+  const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
+  
+  const { data: latestData } = await supabase
+    .from('Sale')
+    .select('saleNo')
+    .eq('tenantId', tenantId)
+    .like('saleNo', `SAL${ddmmyy}-%`)
+    .order('createdAt', { ascending: false })
+    .limit(1);
+
+  let serial = 1;
+  if (latestData && latestData.length > 0) {
+    const latestStr = latestData[0].saleNo || '';
+    const parts = latestStr.split('-');
+    if (parts.length > 1) {
+      serial = parseInt(parts[parts.length - 1], 10) + 1;
+    }
+  }
+  const newId = `SAL${ddmmyy}-${serial}`;
   const saleObj = {
     id: newId,
     tenantId,
-    invoiceNo: saleData.id || `INV-2026-${Math.floor(800 + Math.random() * 200)}`,
+    invoiceNo: newId,
+    saleNo: newId,
     customerName: saleData.customerName || 'Wholesale Customer',
     cropName: saleData.cropName || 'Strawberry A Grade',
     totalWeight: Number(saleData.totalWeight || 0),
@@ -616,7 +655,26 @@ export const apiCreatePayment = async (payData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
 
-  const newId = `pay-${Date.now()}`;
+    const today = new Date();
+  const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
+  
+  const { data: latestData } = await supabase
+    .from('Sale')
+    .select('saleNo')
+    .eq('tenantId', tenantId)
+    .like('saleNo', `SAL${ddmmyy}-%`)
+    .order('createdAt', { ascending: false })
+    .limit(1);
+
+  let serial = 1;
+  if (latestData && latestData.length > 0) {
+    const latestStr = latestData[0].saleNo || '';
+    const parts = latestStr.split('-');
+    if (parts.length > 1) {
+      serial = parseInt(parts[parts.length - 1], 10) + 1;
+    }
+  }
+  const newId = `SAL${ddmmyy}-${serial}`;
   const payObj = {
     id: newId,
     tenantId,
@@ -898,7 +956,29 @@ export const apiGetTraderPurchases = async () => {
 };
 
 export const apiCreateTraderPurchase = async (tpData: any) => {
-  const newId = `trd-pur-${Date.now()}`;
+  const tenantId = getTenantId();
+  if (!tenantId) throw new Error('No tenant');
+
+  const today = new Date();
+  const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
+  
+  const { data: latestData } = await supabase
+    .from('TraderPurchase')
+    .select('billNo')
+    .eq('tenantId', tenantId)
+    .like('billNo', `TBILL${ddmmyy}-%`)
+    .order('createdAt', { ascending: false })
+    .limit(1);
+
+  let serial = 1;
+  if (latestData && latestData.length > 0) {
+    const latestStr = latestData[0].billNo || '';
+    const parts = latestStr.split('-');
+    if (parts.length > 1) {
+      serial = parseInt(parts[parts.length - 1], 10) + 1;
+    }
+  }
+  const newId = `TBILL${ddmmyy}-${serial}`;
   const billNo = tpData.id || `TRD-PUR-${Math.floor(1000 + Math.random() * 9000)}`;
   const totalAmt = Number(tpData.quantity || 1) * Number(tpData.rate || 0);
   const paidAmt = Number(tpData.paidAmount || 0);
@@ -1127,7 +1207,16 @@ export const apiGetTenants = async () => {
         status: t.status || 'ACTIVE',
         package: t.package || 'Enterprise Pro (₹24,999/yr)',
         createdAt: t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-IN') : 'Just now',
-        password: t.password || 'password123'
+        password: t.password || 'password123',
+        businessNameMr: t.businessNameMr || '',
+        subdomain: t.subdomain || '',
+        logoUrl: t.logoUrl || '',
+        signatureUrl: t.signatureUrl || '',
+        addressMr: t.addressMr || '',
+        gstin: t.gstin || '',
+        tagline: t.tagline || 'Agricultural Procurement System',
+        primaryColor: t.primaryColor || '#2563EB',
+        secretPin: t.secretPin || '1234'
       }));
       setLocalCache('seavaig_tenants_cache', mapped);
       return mapped;
@@ -1236,7 +1325,7 @@ export const apiGetDailyRates = async () => {
 
 export const apiVerifyPin = async (pin: string) => {
   if (typeof window !== 'undefined') {
-    const stored = sessionStorage.getItem('active_tenant');
+    const stored = localStorage.getItem('active_tenant');
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -1273,4 +1362,26 @@ export const apiUpdateDailyRate = async (data: any) => {
   ];
   setLocalCache(`seavaig_dailyrates_cache_${tenantId}`, updated);
   return newItem;
+};
+
+export const apiUpdateTenant = async (tenantId: string, data: any) => {
+  try {
+    const { error } = await supabase.from('Tenant').update({
+      businessNameMr: data.businessNameMr,
+      subdomain: data.subdomain,
+      logoUrl: data.logoUrl,
+      signatureUrl: data.signatureUrl,
+      addressMr: data.addressMr,
+      gstin: data.gstin,
+      tagline: data.tagline,
+      primaryColor: data.primaryColor,
+      secretPin: data.secretPin
+    }).eq('id', tenantId);
+    
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Error updating tenant:', error);
+    return false;
+  }
 };

@@ -22,7 +22,7 @@ export default function LoginPage() {
       // 1. Super Admin default login
       if (email.toLowerCase() === 'crm@seavaigstudios.com' && (password === 'Admin@rushi$123' || password === '••••••••••••' || password === '')) {
         if (typeof window !== 'undefined') {
-          sessionStorage.setItem('active_tenant', JSON.stringify({ id: 'superadmin', role: 'SUPERADMIN', ownerEmail: 'crm@seavaigstudios.com' }));
+          localStorage.setItem('active_tenant', JSON.stringify({ id: 'superadmin', role: 'SUPERADMIN', ownerEmail: 'crm@seavaigstudios.com' }));
         }
         setTimeout(() => {
           router.push('/dashboard');
@@ -38,7 +38,7 @@ export default function LoginPage() {
 
       if (matchedTenant) {
         if (typeof window !== 'undefined') {
-          sessionStorage.setItem('active_tenant', JSON.stringify({ ...matchedTenant, userRole: 'OWNER' }));
+          localStorage.setItem('active_tenant', JSON.stringify({ ...matchedTenant, userRole: 'OWNER' }));
         }
         setTimeout(() => {
           router.push('/dashboard');
@@ -60,7 +60,7 @@ export default function LoginPage() {
           const staffTenant = tenantsList.find((t: any) => t.id === staffData.tenantId);
           if (staffTenant) {
              if (typeof window !== 'undefined') {
-               sessionStorage.setItem('active_tenant', JSON.stringify({ 
+               localStorage.setItem('active_tenant', JSON.stringify({ 
                  ...staffTenant, 
                  userRole: staffData.role || 'STAFF',
                  staffDetails: staffData
@@ -89,7 +89,7 @@ export default function LoginPage() {
             if (password.length >= 4) {
               await supabase.from('Farmer').update({ password }).eq('id', farmerData.id);
               if (typeof window !== 'undefined') {
-                sessionStorage.setItem('active_tenant', JSON.stringify({
+                localStorage.setItem('active_tenant', JSON.stringify({
                   id: farmerData.tenantId || 'global',
                   userRole: 'FARMER',
                   farmerDetails: farmerData
@@ -105,7 +105,7 @@ export default function LoginPage() {
           } else if (farmerData.password === password) {
             // Successful returning Farmer login
             if (typeof window !== 'undefined') {
-              sessionStorage.setItem('active_tenant', JSON.stringify({
+              localStorage.setItem('active_tenant', JSON.stringify({
                 id: farmerData.tenantId || 'global',
                 userRole: 'FARMER',
                 farmerDetails: farmerData

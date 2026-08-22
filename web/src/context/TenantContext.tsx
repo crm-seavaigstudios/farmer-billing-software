@@ -53,7 +53,7 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
-        const stored = sessionStorage.getItem('active_tenant');
+        const stored = localStorage.getItem('active_tenant');
         if (stored) {
           const parsed = JSON.parse(stored);
           
@@ -74,11 +74,17 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             ...defaultTenant,
             tenantId: parsed.id || defaultTenant.tenantId,
             businessName: parsed.companyName || parsed.businessName || defaultTenant.businessName,
-            businessNameMr: parsed.companyNameMr || parsed.businessNameMr || parsed.companyName || parsed.businessName || defaultTenant.businessNameMr,
-            subdomain: (parsed.companyName || parsed.businessName || 'seavaig').replace(/\s+/g, '-').toLowerCase(),
+            businessNameMr: parsed.businessNameMr || parsed.companyNameMr || parsed.companyName || parsed.businessName || defaultTenant.businessNameMr,
+            subdomain: parsed.subdomain || (parsed.companyName || parsed.businessName || 'seavaig').replace(/\s+/g, '-').toLowerCase(),
             phone: parsed.ownerPhone || parsed.phone || defaultTenant.phone,
             email: parsed.ownerEmail || parsed.email || defaultTenant.email,
             secretPin: parsed.secretPin || defaultTenant.secretPin,
+            tagline: parsed.tagline || defaultTenant.tagline,
+            primaryColor: parsed.primaryColor || defaultTenant.primaryColor,
+            logoUrl: parsed.logoUrl || defaultTenant.logoUrl,
+            signatureUrl: parsed.signatureUrl || defaultTenant.signatureUrl,
+            addressMr: parsed.addressMr || defaultTenant.addressMr,
+            gstin: parsed.gstin || defaultTenant.gstin,
           });
         }
       } catch (e) {

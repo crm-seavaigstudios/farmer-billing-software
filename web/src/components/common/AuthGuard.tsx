@@ -19,7 +19,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     // For all other routes, require an active session
-    const activeSession = typeof window !== 'undefined' ? sessionStorage.getItem('active_tenant') : null;
+    const activeSession = typeof window !== 'undefined' ? localStorage.getItem('active_tenant') : null;
     
     if (!activeSession) {
       // Redirect to login if not authenticated

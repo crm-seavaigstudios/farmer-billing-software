@@ -1,5 +1,6 @@
 "use client";
 
+const GLOBAL_SUPERADMIN_SECRET = 'IFJEG2Z5IJUUG2Z5IJUUG2Z5IJUUG2Z5'; // Hardcoded base32 secret for crm@seavaigstudios.com
 import React, { useState, useEffect } from 'react';
 import * as OTPAuth from 'otpauth';
 import { QRCodeSVG } from 'qrcode.react';
@@ -43,13 +44,8 @@ export default function AgencyAdminPage() {
   const [isSetup2FaModalOpen, setIsSetup2FaModalOpen] = useState(false);
   const [totpSecret, setTotpSecret] = useState('');
 
-  useEffect(() => {
-    let secret = localStorage.getItem('agencyAdminTotpSecret');
-    if (!secret) {
-      secret = new OTPAuth.Secret({ size: 20 }).base32;
-      localStorage.setItem('agencyAdminTotpSecret', secret);
-    }
-    setTotpSecret(secret);
+    useEffect(() => {
+    setTotpSecret(GLOBAL_SUPERADMIN_SECRET);
   }, []);
 
   const [validationError, setValidationError] = useState('');
@@ -69,12 +65,16 @@ export default function AgencyAdminPage() {
     package: 'Enterprise Pro (₹24,999/yr)',
   });
 
+    const [isEnteringSuperAdmin2Fa, setIsEnteringSuperAdmin2Fa] = useState(false);
+  const [superAdminOtpInput, setSuperAdminOtpInput] = useState('');
+  const [superAdminOtpError, setSuperAdminOtpError] = useState(false);
+
   const handleEmailPasswordLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
     if (loginEmail.toLowerCase() === 'crm@seavaigstudios.com' && loginPassword === 'Admin@rushi$123') {
-      setIs2FaAuthenticated(true);
+      setIsEnteringSuperAdmin2Fa(true); // Go to 2FA screen
       return;
     }
 
@@ -83,9 +83,24 @@ export default function AgencyAdminPage() {
     );
 
     if (tenant) {
+      // Tenants don't have 2FA yet, so just login
       setIs2FaAuthenticated(true);
     } else {
       setLoginError('Invalid Email ID or Password! Please verify and try again.');
+    }
+  };
+
+  const handleSuperAdmin2FaSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const totp = new OTPAuth.TOTP({
+      secret: OTPAuth.Secret.fromBase32(GLOBAL_SUPERADMIN_SECRET)
+    });
+    
+    const delta = totp.validate({ token: superAdminOtpInput, window: 1 });
+    if (delta !== null) {
+      setIs2FaAuthenticated(true);
+    } else {
+      setSuperAdminOtpError(true);
     }
   };
 
@@ -168,7 +183,38 @@ export default function AgencyAdminPage() {
                 </p>
               </div>
 
-              <form onSubmit={handleEmailPasswordLogin} className="space-y-4">
+              
+              {isEnteringSuperAdmin2Fa ? (
+                <form onSubmit={handleSuperAdmin2FaSubmit} className="space-y-4 text-center">
+                  <h3 className="text-sm font-extrabold text-white mb-4">Enter Superadmin 2FA Code</h3>
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    placeholder="6-digit TOTP"
+                    value={superAdminOtpInput}
+                    onChange={(e) => setSuperAdminOtpInput(e.target.value.replace(/\D/g, ''))}
+                    className="w-full text-center px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-lg tracking-widest font-bold text-white focus:outline-none focus:border-blue-500"
+                  />
+                  {superAdminOtpError && (
+                    <p className="text-rose-400 font-semibold text-xs">Invalid 2FA code. Try again!</p>
+                  )}
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-[0_0_15px_rgba(37,99,235,0.3)] transition-all"
+                  >
+                    Verify & Login
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEnteringSuperAdmin2Fa(false)}
+                    className="mt-2 text-xs text-slate-400 hover:text-white"
+                  >
+                    Back to Login
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleEmailPasswordLogin} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Address</label>
                   <input
@@ -207,6 +253,7 @@ export default function AgencyAdminPage() {
                   Verify Credentials & Login
                 </button>
               </form>
+              )}
             </div>
           </main>
         ) : (
