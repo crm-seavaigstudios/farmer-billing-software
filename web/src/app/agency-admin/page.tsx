@@ -74,7 +74,7 @@ export default function AgencyAdminPage() {
     setLoginError('');
 
     if (loginEmail.toLowerCase() === 'crm@seavaigstudios.com' && loginPassword === 'Admin@rushi$123') {
-      setIsEnteringSuperAdmin2Fa(true); // Go to 2FA screen
+      setIs2FaAuthenticated(true); // Login directly without 2FA
       return;
     }
 
@@ -83,7 +83,6 @@ export default function AgencyAdminPage() {
     );
 
     if (tenant) {
-      // Tenants don't have 2FA yet, so just login
       setIs2FaAuthenticated(true);
     } else {
       setLoginError('Invalid Email ID or Password! Please verify and try again.');
@@ -184,37 +183,7 @@ export default function AgencyAdminPage() {
               </div>
 
               
-              {isEnteringSuperAdmin2Fa ? (
-                <form onSubmit={handleSuperAdmin2FaSubmit} className="space-y-4 text-center">
-                  <h3 className="text-sm font-extrabold text-white mb-4">Enter Superadmin 2FA Code</h3>
-                  <input
-                    type="text"
-                    required
-                    maxLength={6}
-                    placeholder="6-digit TOTP"
-                    value={superAdminOtpInput}
-                    onChange={(e) => setSuperAdminOtpInput(e.target.value.replace(/\D/g, ''))}
-                    className="w-full text-center px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-lg tracking-widest font-bold text-white focus:outline-none focus:border-blue-500"
-                  />
-                  {superAdminOtpError && (
-                    <p className="text-rose-400 font-semibold text-xs">Invalid 2FA code. Try again!</p>
-                  )}
-                  <button
-                    type="submit"
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-[0_0_15px_rgba(37,99,235,0.3)] transition-all"
-                  >
-                    Verify & Login
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsEnteringSuperAdmin2Fa(false)}
-                    className="mt-2 text-xs text-slate-400 hover:text-white"
-                  >
-                    Back to Login
-                  </button>
-                </form>
-              ) : (
-                <form onSubmit={handleEmailPasswordLogin} className="space-y-4">
+              <form onSubmit={handleEmailPasswordLogin} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Address</label>
                   <input
@@ -253,7 +222,6 @@ export default function AgencyAdminPage() {
                   Verify Credentials & Login
                 </button>
               </form>
-              )}
             </div>
           </main>
         ) : (
