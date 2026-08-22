@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, ShoppingBag, Calculator, ShieldCheck, Plus, Sparkles, Search, Check, ChevronDown } from 'lucide-react';
-import { apiGetCrops, apiCreateCrop, apiGetFarmers, apiCreatePurchase, apiGetFarmerMaterials, apiGetPayments } from '@/lib/api';
+import { apiGetCrops, apiCreateCrop, apiGetFarmers, apiCreatePurchase, apiGetFarmerMaterials, apiGetPayments, apiGetLocations } from '@/lib/api';
 interface AddPurchaseModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -41,6 +41,9 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
   const [quantityOrWeight, setQuantityOrWeight] = useState<number>(100);
   const [ratePerUnit, setRatePerUnit] = useState<number>(280);
 
+  const [locations, setLocations] = useState<any[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState('Cold Room #1 (Satpur)');
+
   useEffect(() => {
     async function loadData() {
       const dbCrops = await apiGetCrops();
@@ -56,6 +59,12 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed) && parsed.length > 0) cachedFarmers = parsed;
         } catch {}
+      }
+
+      const locs = await apiGetLocations();
+      if (locs && locs.length > 0) {
+        setLocations(locs);
+        setSelectedLocation(locs[0].name);
       }
 
       const dbFarmersRes = await apiGetFarmers();
@@ -169,7 +178,8 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
         ratePerKg: ratePerUnit,
         unit: unit,
         packagingCategory: activeCategory
-      }]
+      }],
+      storageLocation: selectedLocation
     };
 
     const savedPurchase = await apiCreatePurchase(payload);
@@ -322,6 +332,21 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
                 ))}
               </select>
             )}
+          </div>
+          
+          <div>
+            <label className="text-xs font-bold text-slate-700 block mb-1">Storage Room / Location *</label>
+            <select
+              value={selectedLocation}
+              onChange={(e) => setSelectedLocation(e.target.value)}
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+            >
+              {locations.map((loc, i) => (
+                <option key={i} value={loc.name}>
+                  {loc.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* MULTI-UNIT & PACKAGING CATEGORY */}

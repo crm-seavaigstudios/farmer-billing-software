@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { X, Package, DollarSign, FileText } from 'lucide-react';
-import { apiCreateFarmerMaterialPurchase } from '@/lib/api';
+import { apiCreateFarmerMaterialPurchase, apiGetMaterialItems, apiAddMaterialItem } from '@/lib/api';
+import { useEffect } from 'react';
 
 interface AddFarmerMaterialModalProps {
   isOpen: boolean;
@@ -18,6 +19,13 @@ export function AddFarmerMaterialModal({ isOpen, onClose, farmerId, onSuccess }:
   const [unitPrice, setUnitPrice] = useState('500');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [materials, setMaterials] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      apiGetMaterialItems().then(setMaterials);
+    }
+  }, [isOpen]);
 
   if (!isOpen || !farmerId) return null;
 
@@ -78,18 +86,31 @@ export function AddFarmerMaterialModal({ isOpen, onClose, farmerId, onSuccess }:
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
           <div>
             <label className="font-extrabold text-slate-700 block mb-1">Item / Material Name</label>
-            <select
-              value={itemName}
-              onChange={(e) => setItemName(e.target.value)}
-              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800"
-            >
-              <option value="Empty Crates (कॅरेट)">Empty Crates (कॅरेट)</option>
-              <option value="Fertilizer Bags (खते)">Fertilizer Bags (खते)</option>
-              <option value="Seeds & Plants (बियाणे)">Seeds & Plants (बियाणे)</option>
-              <option value="Pesticides (औषधे)">Pesticides (औषधे)</option>
-              <option value="Advance Cash Payout (अ‍ॅडव्हान्स रोकड)">Advance Cash Payout (अ‍ॅडव्हान्स रोकड)</option>
-              <option value="Other Material Supply">Other Material Supply</option>
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={itemName}
+                onChange={(e) => {
+                  if (e.target.value === 'ADD_CUSTOM') {
+                    const custom = prompt("Enter new custom material name:");
+                    if (custom && custom.trim()) {
+                      apiAddMaterialItem(custom.trim()).then(newItem => {
+                        setMaterials([...materials, newItem]);
+                        setItemName(newItem.name);
+                      });
+                    }
+                  } else {
+                    setItemName(e.target.value);
+                  }
+                }}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800"
+              >
+                <option value="Empty Crates (कॅरेट)">Empty Crates (कॅरेट)</option>
+                {materials.map(m => (
+                  <option key={m.id} value={m.name}>{m.name}</option>
+                ))}
+                <option value="ADD_CUSTOM" className="text-blue-600 font-extrabold">+ Add Custom Material...</option>
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

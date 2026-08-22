@@ -28,6 +28,8 @@ export default function SalesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  
+  const [timelineFilter, setTimelineFilter] = useState('ALL_TIME');
 
   const loadData = async () => {
     const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
@@ -39,7 +41,7 @@ export default function SalesPage() {
     }
 
     const res = await apiGetSales();
-    if (res && Array.isArray(res) && res.length > 0) {
+    if (res && Array.isArray(res)) {
       setSales(res);
       if (typeof window !== 'undefined') {
         localStorage.setItem('seavaig_sales_cache', JSON.stringify(res));
@@ -74,15 +76,40 @@ export default function SalesPage() {
     });
   };
 
-  const filtered = sales.filter(
-    (s) =>
-      (s.customerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.id || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filtered = sales.filter((s) => {
+    let dateMatch = true;
+    if (timelineFilter !== 'ALL_TIME' && s.date) {
+      const pDate = new Date(s.date.split('/').reverse().join('-') || s.date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-  const totalSalesVal = sales.reduce((acc: number, s: any) => acc + (Number(s.amount) || 0), 0);
-  const totalVolumeVal = sales.reduce((acc: number, s: any) => acc + (Number(s.totalWeight) || 0), 0);
-  const pendingVal = sales.filter((s: any) => s.status !== 'PAID').length;
+      if (timelineFilter === 'TODAY') {
+        dateMatch = pDate >= today;
+      } else if (timelineFilter === 'YESTERDAY') {
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        dateMatch = pDate >= yesterday && pDate < today;
+      } else if (timelineFilter === 'THIS_WEEK') {
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        dateMatch = pDate >= weekAgo;
+      } else if (timelineFilter === 'THIS_MONTH') {
+        const monthAgo = new Date(today);
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        dateMatch = pDate >= monthAgo;
+      }
+    }
+
+    const textMatch = 
+      (s.customerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.id || '').toLowerCase().includes(searchQuery.toLowerCase());
+      
+    return dateMatch && textMatch;
+  });
+
+  const totalSalesVal = filtered.reduce((acc: number, s: any) => acc + (Number(s.amount) || 0), 0);
+  const totalVolumeVal = filtered.reduce((acc: number, s: any) => acc + (Number(s.totalWeight) || 0), 0);
+  const pendingVal = filtered.filter((s: any) => s.status !== 'PAID').length;
 
   return (
     <div className="flex min-h-screen bg-slateCanvas font-sans">
@@ -173,7 +200,18 @@ export default function SalesPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <button className="bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                <select
+                  value={timelineFilter}
+                  onChange={(e) => setTimelineFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="ALL_TIME">All Time</option>
+                  <option value="TODAY">Today</option>
+                  <option value="YESTERDAY">Yesterday</option>
+                  <option value="THIS_WEEK">This Week</option>
+                  <option value="THIS_MONTH">This Month</option>
+                </select>
+                <button className="px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer">
                   <Filter className="w-3.5 h-3.5 text-slate-400" />
                   <span>Filter Status</span>
                 </button>

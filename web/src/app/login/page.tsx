@@ -8,7 +8,7 @@ import { apiGetTenants } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('admin@seavaig.com');
+  const [email, setEmail] = useState('crm@seavaigstudios.com');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -20,7 +20,10 @@ export default function LoginPage() {
 
     try {
       // 1. Super Admin default login
-      if (email.toLowerCase() === 'admin@seavaig.com' && (password === 'admin123' || password === '••••••••••••' || password === '')) {
+      if (email.toLowerCase() === 'crm@seavaigstudios.com' && (password === 'Admin@rushi$123' || password === '••••••••••••' || password === '')) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('active_tenant', JSON.stringify({ id: 'superadmin', role: 'SUPERADMIN', ownerEmail: 'crm@seavaigstudios.com' }));
+        }
         setTimeout(() => {
           router.push('/dashboard');
         }, 400);
@@ -35,15 +38,87 @@ export default function LoginPage() {
 
       if (matchedTenant) {
         if (typeof window !== 'undefined') {
-          sessionStorage.setItem('active_tenant', JSON.stringify(matchedTenant));
+          sessionStorage.setItem('active_tenant', JSON.stringify({ ...matchedTenant, userRole: 'OWNER' }));
         }
         setTimeout(() => {
           router.push('/dashboard');
         }, 400);
-      } else {
-        setLoading(false);
-        setErrorMsg('Error: Invalid email address or secure password. Please try again!');
+        return;
       }
+
+      // 3. Staff Login Flow (Mobile Number + Staff ID Code)
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        const { data: staffData } = await supabase
+          .from('Worker')
+          .select('*')
+          .eq('phone', email)
+          .eq('workerCode', password)
+          .single();
+
+        if (staffData && staffData.tenantId) {
+          const staffTenant = tenantsList.find((t: any) => t.id === staffData.tenantId);
+          if (staffTenant) {
+             if (typeof window !== 'undefined') {
+               sessionStorage.setItem('active_tenant', JSON.stringify({ 
+                 ...staffTenant, 
+                 userRole: staffData.role || 'STAFF',
+                 staffDetails: staffData
+               }));
+             }
+             setTimeout(() => router.push('/dashboard'), 400);
+             return;
+          }
+        }
+      } catch {}
+
+      // 4. Farmer/Seller First-Time Login (Create Password Flow)
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        // Check if user exists in global Farmer table (using email as phone number)
+        const { data: farmerData } = await supabase
+          .from('Farmer')
+          .select('*')
+          .eq('phone', email)
+          .single();
+
+        if (farmerData) {
+          if (!farmerData.password) {
+            // First time login - they need to set a password!
+            // If they provided a password in the input, save it as their new password
+            if (password.length >= 4) {
+              await supabase.from('Farmer').update({ password }).eq('id', farmerData.id);
+              if (typeof window !== 'undefined') {
+                sessionStorage.setItem('active_tenant', JSON.stringify({
+                  id: farmerData.tenantId || 'global',
+                  userRole: 'FARMER',
+                  farmerDetails: farmerData
+                }));
+              }
+              setTimeout(() => router.push('/dashboard'), 400); // Route to Farmer APK view
+              return;
+            } else {
+              setLoading(false);
+              setErrorMsg('First time login! Please enter a strong password (min 4 chars) to create your account.');
+              return;
+            }
+          } else if (farmerData.password === password) {
+            // Successful returning Farmer login
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('active_tenant', JSON.stringify({
+                id: farmerData.tenantId || 'global',
+                userRole: 'FARMER',
+                farmerDetails: farmerData
+              }));
+            }
+            setTimeout(() => router.push('/dashboard'), 400);
+            return;
+          }
+        }
+      } catch {}
+
+      setLoading(false);
+      setErrorMsg('Error: Invalid credentials. Please try again!');
     } catch (err) {
       setLoading(false);
       setErrorMsg('Error: Connection error. Please try again.');
@@ -70,21 +145,22 @@ export default function LoginPage() {
         )}
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">Email Address</label>
+            <label className="text-xs font-bold text-slate-700 block mb-1">Email Address / Mobile Number</label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                placeholder="Owner Email or Staff Mobile..."
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">Password</label>
+            <label className="text-xs font-bold text-slate-700 block mb-1">Password / Staff ID Code</label>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input

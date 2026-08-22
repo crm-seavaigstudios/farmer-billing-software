@@ -139,7 +139,7 @@ export default function CustomersPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Total Sales Volume</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹5,05,90,000</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{customers.reduce((acc, c) => acc + (parseFloat(String(c.totalPurchases).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-emerald-600">Lifetime B2B Revenue</span>
               </div>
             </div>
@@ -150,7 +150,7 @@ export default function CustomersPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Receivables Due</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹23,92,500</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{customers.reduce((acc, c) => acc + (parseFloat(String(c.outstanding).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-amber-600">Outstanding Invoices</span>
               </div>
             </div>
@@ -161,7 +161,7 @@ export default function CustomersPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Avg Credit Limit</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹50,00,000</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{customers.length > 0 ? (customers.reduce((acc, c) => acc + (parseFloat(String(c.creditLimit).replace(/[^0-9.-]+/g, '')) || 0), 0) / customers.length).toLocaleString('en-IN') : 0}</h3>
                 <span className="text-[10px] font-bold text-purple-600">Approved Terms</span>
               </div>
             </div>

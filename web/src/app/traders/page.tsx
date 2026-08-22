@@ -21,10 +21,12 @@ import {
 import {
   apiGetTraders,
   apiCreateTrader,
-  apiGetTraderPurchases,
   apiCreateTraderPurchase,
   apiUpdateTraderPurchase,
-  apiUpdateTraderBalance
+  apiUpdateTraderBalance,
+  apiGetMaterialItems,
+  apiAddMaterialItem,
+  apiGetTraderPurchases
 } from '@/lib/api';
 
 export default function TradersPage() {
@@ -38,6 +40,8 @@ export default function TradersPage() {
   });
   const [activeTab, setActiveTab] = useState<'PURCHASES' | 'TRADERS'>('PURCHASES');
   const [searchQuery, setSearchQuery] = useState('');
+  const [timelineFilter, setTimelineFilter] = useState('ALL_TIME');
+  const [materials, setMaterials] = useState<any[]>([]);
 
   // Modals
   const [isAddTraderOpen, setIsAddTraderOpen] = useState(false);
@@ -68,6 +72,61 @@ export default function TradersPage() {
 
   const [loading, setLoading] = useState(false);
 
+  const parseNum = (val: any) => {
+    if (typeof val === 'number') return val;
+    if (!val) return 0;
+    return parseFloat(String(val).replace(/[^0-9.-]+/g, '')) || 0;
+  };
+
+  const filteredPurchases = purchases.filter((p) => {
+    let dateMatch = true;
+    if (timelineFilter !== 'ALL_TIME' && p.date) {
+      const pDate = new Date(p.date.split('/').reverse().join('-') || p.date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (timelineFilter === 'TODAY') {
+        dateMatch = pDate >= today;
+      } else if (timelineFilter === 'YESTERDAY') {
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        dateMatch = pDate >= yesterday && pDate < today;
+      } else if (timelineFilter === 'THIS_WEEK') {
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        dateMatch = pDate >= weekAgo;
+      } else if (timelineFilter === 'THIS_MONTH') {
+        const monthAgo = new Date(today);
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        dateMatch = pDate >= monthAgo;
+      }
+    }
+
+    const textMatch = 
+      (p.traderName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.itemName || '').toLowerCase().includes(searchQuery.toLowerCase());
+      
+    return dateMatch && textMatch;
+  });
+
+  const filteredTraders = traders.filter(t => 
+    (t.name || t.businessName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (t.phone || '').includes(searchQuery)
+  );
+
+  useEffect(() => {
+    const totalPurchased = filteredPurchases.reduce((acc, p) => acc + parseNum(p.totalAmount), 0);
+    const totalPaidVal = filteredPurchases.reduce((acc, p) => acc + parseNum(p.paidAmount), 0);
+    const totalDue = totalPurchased - totalPaidVal;
+
+    setSummary({
+      totalPurchased: `₹${totalPurchased.toLocaleString('en-IN')}`,
+      totalPaid: `₹${totalPaidVal.toLocaleString('en-IN')}`,
+      dueAmount: `₹${totalDue.toLocaleString('en-IN')}`,
+    });
+  }, [filteredPurchases]);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -89,7 +148,10 @@ export default function TradersPage() {
       } catch {}
     }
 
-    const [tRes, pRes] = await Promise.all([apiGetTraders(), apiGetTraderPurchases()]);
+    const [tRes, pRes, mRes] = await Promise.all([apiGetTraders(), apiGetTraderPurchases(), apiGetMaterialItems()]);
+    if (mRes) {
+      setMaterials(mRes);
+    }
     if (tRes && Array.isArray(tRes) && tRes.length > 0) {
       setTraders(tRes);
       if (tRes.length > 0) setSelectedTraderId(tRes[0].id);
@@ -222,10 +284,6 @@ export default function TradersPage() {
     setIsHistoryModalOpen(true);
   };
 
-  const totalPurchasedSum = purchases.reduce((acc, p) => acc + (Number(p.quantity || 0) * Number(p.rate || 0)), 0);
-  const totalPaidSum = purchases.reduce((acc, p) => acc + Number(p.paidAmount || 0), 0);
-  const totalDueSum = Math.max(0, totalPurchasedSum - totalPaidSum);
-
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
       <Sidebar />
@@ -248,6 +306,17 @@ export default function TradersPage() {
             </div>
 
             <div className="flex items-center gap-2">
+              <select
+                value={timelineFilter}
+                onChange={(e) => setTimelineFilter(e.target.value)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="ALL_TIME">All Time</option>
+                <option value="TODAY">Today</option>
+                <option value="YESTERDAY">Yesterday</option>
+                <option value="THIS_WEEK">This Week</option>
+                <option value="THIS_MONTH">This Month</option>
+              </select>
               <button
                 onClick={() => setIsAddTraderOpen(true)}
                 className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold rounded-xl shadow-md flex items-center gap-2 cursor-pointer"
@@ -273,7 +342,7 @@ export default function TradersPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Total Supply Purchases</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹{totalPurchasedSum.toLocaleString('en-IN')}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">{summary.totalPurchased}</h3>
                 <span className="text-[10px] font-bold text-blue-600">Crates, Fuel, Fertilizers</span>
               </div>
             </div>
@@ -284,7 +353,7 @@ export default function TradersPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Total Paid to Traders</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹{totalPaidSum.toLocaleString('en-IN')}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">{summary.totalPaid}</h3>
                 <span className="text-[10px] font-bold text-emerald-600">Disbursed Settlements</span>
               </div>
             </div>
@@ -295,7 +364,7 @@ export default function TradersPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Outstanding Due Amount</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹{totalDueSum.toLocaleString('en-IN')}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">{summary.dueAmount}</h3>
                 <span className="text-[10px] font-bold text-amber-600">Pending Trader Invoices</span>
               </div>
             </div>
@@ -311,7 +380,7 @@ export default function TradersPage() {
                     activeTab === 'PURCHASES' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
-                  Supply Bills ({purchases.length})
+                  Supply Bills ({filteredPurchases.length})
                 </button>
                 <button
                   onClick={() => setActiveTab('TRADERS')}
@@ -319,7 +388,7 @@ export default function TradersPage() {
                     activeTab === 'TRADERS' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
-                  Trader Directory ({traders.length})
+                  Trader Directory ({filteredTraders.length})
                 </button>
               </div>
 
@@ -351,16 +420,16 @@ export default function TradersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                    {purchases.length === 0 ? (
+                    {filteredPurchases.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="py-12 text-center text-slate-400 font-bold">
                           No Supply Purchases Recorded Yet.
                         </td>
                       </tr>
                     ) : (
-                      purchases.map((p) => {
-                        const totalNum = typeof p.totalAmount === 'number' ? p.totalAmount : Number(String(p.totalAmount).replace(/\D/g, '')) || 0;
-                        const paidNum = typeof p.paidAmount === 'number' ? p.paidAmount : Number(String(p.paidAmount).replace(/\D/g, '')) || 0;
+                      filteredPurchases.map((p) => {
+                        const totalNum = parseNum(p.totalAmount);
+                        const paidNum = parseNum(p.paidAmount);
                         const dueNum = Math.max(0, totalNum - paidNum);
                         const statusStr = dueNum === 0 ? 'PAID' : (paidNum > 0 ? 'PARTIAL' : 'UNPAID');
 
@@ -455,7 +524,14 @@ export default function TradersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                    {traders.map((t) => (
+                    {filteredTraders.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-400 text-xs italic">
+                          No traders found matching your search.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredTraders.map((t) => (
                       <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3.5 px-4 font-black text-blue-600">{t.traderCode || `TRD-${t.id.slice(0, 5)}`}</td>
                         <td className="py-3.5 px-4">
@@ -477,7 +553,7 @@ export default function TradersPage() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    )))}
                   </tbody>
                 </table>
               </div>
@@ -592,13 +668,31 @@ export default function TradersPage() {
 
               <div>
                 <label className="font-extrabold text-slate-700 block mb-1">Item Description</label>
-                <input
-                  type="text"
-                  value={itemName}
-                  onChange={(e) => setItemName(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
-                  required
-                />
+                <div className="flex gap-2">
+                  <select
+                    value={itemName}
+                    onChange={(e) => {
+                      if (e.target.value === 'ADD_CUSTOM') {
+                        const custom = prompt("Enter new custom material name:");
+                        if (custom && custom.trim()) {
+                          apiAddMaterialItem(custom.trim()).then(newItem => {
+                            setMaterials([...materials, newItem]);
+                            setItemName(newItem.name);
+                          });
+                        }
+                      } else {
+                        setItemName(e.target.value);
+                      }
+                    }}
+                    className="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                  >
+                    <option value="Packaging Crates (कॅरेट)">Packaging Crates (कॅरेट)</option>
+                    {materials.map(m => (
+                      <option key={m.id} value={m.name}>{m.name}</option>
+                    ))}
+                    <option value="ADD_CUSTOM" className="text-blue-600 font-extrabold">+ Add Custom Material...</option>
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">

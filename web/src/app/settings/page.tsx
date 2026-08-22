@@ -32,11 +32,39 @@ export default function SettingsPage() {
     addressMr: tenant.addressMr,
     gstin: tenant.gstin,
     tagline: tenant.tagline,
+    secretPin: tenant.secretPin || '1234',
   });
+
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = sessionStorage.getItem('active_tenant');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setIsAdmin(parsed.role === 'SUPERADMIN' || parsed.userRole === 'OWNER' || parsed.id === 'superadmin');
+        }
+      } catch (e) {}
+    }
+  }, []);
 
   const handleSave = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     updateTenant(formData);
+    
+    // Update local storage
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = sessionStorage.getItem('active_tenant');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          parsed.secretPin = formData.secretPin;
+          sessionStorage.setItem('active_tenant', JSON.stringify(parsed));
+        }
+      } catch (e) {}
+    }
+
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
@@ -240,11 +268,14 @@ export default function SettingsPage() {
                   <input
                     type="password"
                     maxLength={6}
-                    value="1234"
-                    disabled
-                    className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-black tracking-widest text-slate-800"
+                    value={formData.secretPin}
+                    onChange={(e) => setFormData({ ...formData, secretPin: e.target.value })}
+                    disabled={!isAdmin}
+                    className={`w-full px-3.5 py-2.5 border rounded-xl text-xs font-black tracking-widest text-slate-800 ${!isAdmin ? 'bg-slate-100 border-slate-200' : 'bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20'}`}
                   />
-                  <span className="text-[10px] text-slate-400 font-semibold block mt-0.5">Default Secret PIN: 1234 (Client Authorization)</span>
+                  <span className="text-[10px] text-slate-400 font-semibold block mt-0.5">
+                    {isAdmin ? 'You can change this PIN.' : 'Only Owner/Admin can change this PIN.'} Default: 1234
+                  </span>
                 </div>
               </div>
 

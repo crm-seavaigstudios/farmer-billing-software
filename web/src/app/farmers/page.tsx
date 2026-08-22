@@ -47,28 +47,11 @@ export default function FarmersPage() {
   const defaultFarmers: any[] = [];
 
   useEffect(() => {
-    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setFarmers(parsed);
-        } else {
-          setFarmers(defaultFarmers);
-        }
-      } catch {
-        setFarmers(defaultFarmers);
-      }
-    } else {
-      setFarmers(defaultFarmers);
-    }
-
     async function loadData() {
       const response = await apiGetFarmers();
-      if (response && Array.isArray(response) && response.length > 0) {
+      if (response && Array.isArray(response)) {
         setFarmers(response);
         setIsLiveSynced(true);
-        localStorage.setItem('seavaig_farmers_cache', JSON.stringify(response));
       }
     }
     loadData();

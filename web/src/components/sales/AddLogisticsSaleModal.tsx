@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { 
+  X, Truck, Calendar, Clock, Download, Plus, Search, CheckCircle2, Factory, Trash2, ShieldCheck, Camera, PenTool
+} from 'lucide-react';
 import { apiCreateSale, apiGetCustomers, apiGetPurchases, apiGetSales } from '@/lib/api';
 
 interface AddLogisticsSaleModalProps {

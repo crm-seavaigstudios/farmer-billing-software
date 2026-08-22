@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { PrintStatementModal, StatementData } from '@/components/common/PrintStatementModal';
-import { apiGetPurchases, apiGetPayments } from '@/lib/api';
+import { apiGetPurchases, apiGetPayments, apiGetFarmerMaterials } from '@/lib/api';
 import { useEffect } from 'react';
 
 interface FarmerDetailDrawerProps {
@@ -42,24 +42,30 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
 
   const [purchases, setPurchases] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
   const [realTransactions, setRealTransactions] = useState<any[]>([]);
-  const [totals, setTotals] = useState({ purchase: 0, paid: 0, outstanding: 0 });
+  const [totals, setTotals] = useState({ purchase: 0, paid: 0, material: 0, outstanding: 0 });
+  const [splitKPI, setSplitKPI] = useState(false);
 
   useEffect(() => {
     if (!farmer) return;
     const fetchLedger = async () => {
       const p = await apiGetPurchases();
       const pay = await apiGetPayments();
+      const mat = await apiGetFarmerMaterials(farmer.id);
       
       const fp = Array.isArray(p) ? p.filter((x: any) => x.farmerName === farmer.name || x.farmerId === farmer.id) : [];
       const fpay = Array.isArray(pay) ? pay.filter((x: any) => x.farmerName === farmer.name || x.farmerId === farmer.id) : [];
+      const fmat = Array.isArray(mat) ? mat : [];
       
       setPurchases(fp.reverse());
       setPayments(fpay.reverse());
+      setMaterials(fmat.reverse());
       
       let allItems: any[] = [];
       let totalPurchase = 0;
       let totalPaid = 0;
+      let totalMaterial = 0;
 
       fp.forEach((x: any) => {
         const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
@@ -71,8 +77,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
            type: 'PURCHASE',
            description: x.crop || 'Crop Purchase',
            weightOrQty: `${x.weight} @ ${x.rate}`,
-           debitVal: amt,
-           creditVal: 0,
+           debitVal: 0,
+           creditVal: amt,
            notes: x.notes
         });
       });
@@ -87,30 +93,57 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
            type: 'PAYMENT',
            description: `Payment (${x.method})`,
            weightOrQty: '-',
-           debitVal: 0,
-           creditVal: amt,
+           debitVal: amt,
+           creditVal: 0,
            notes: x.notes || x.method
         });
       });
+
+      fmat.forEach((x: any) => {
+        const amt = typeof x.totalAmount === 'number' ? x.totalAmount : parseFloat(String(x.totalAmount).replace(/[^0-9.-]+/g, '')) || 0;
+        totalMaterial += amt;
+        allItems.push({
+           dateStr: x.createdAt ? new Date(x.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Unknown',
+           timestamp: new Date(x.createdAt || 0).getTime(),
+           refNo: x.id,
+           type: 'MATERIAL',
+           description: `Material Issue: ${x.itemName}`,
+           weightOrQty: `${x.quantity} ${x.unit}`,
+           debitVal: amt,
+           creditVal: 0,
+           notes: x.notes
+        });
+      });
       
-      allItems.sort((a, b) => a.timestamp - b.timestamp);
+      const typeOrder: any = { 'MATERIAL': 1, 'PURCHASE': 2, 'PAYMENT': 3 };
+      allItems.sort((a, b) => {
+        if (a.timestamp !== b.timestamp) {
+          return a.timestamp - b.timestamp;
+        }
+        return typeOrder[a.type] - typeOrder[b.type];
+      });
       
       let bal = 0;
       const computed = allItems.map(item => {
-         bal = bal + item.debitVal - item.creditVal;
+         bal = bal + item.creditVal - item.debitVal;
          return {
             date: item.dateStr,
             refNo: item.refNo,
             type: item.type,
             description: item.description,
             weightOrQty: item.weightOrQty,
-            debit: item.debitVal > 0 ? `₹${item.debitVal.toLocaleString('en-IN')}` : '—',
+            debit: item.debitVal > 0 ? `-₹${item.debitVal.toLocaleString('en-IN')}` : '—',
             credit: item.creditVal > 0 ? `₹${item.creditVal.toLocaleString('en-IN')}` : '—',
             balance: `₹${bal.toLocaleString('en-IN')}`
          };
       });
       
-      setTotals({ purchase: totalPurchase, paid: totalPaid, outstanding: Math.max(0, totalPurchase - totalPaid) });
+      setTotals({ 
+        purchase: totalPurchase, 
+        paid: totalPaid, 
+        material: totalMaterial,
+        outstanding: Math.max(0, totalPurchase - (totalPaid + totalMaterial)) 
+      });
       setRealTransactions(computed.reverse()); // Newest first for view
     };
     fetchLedger();
@@ -126,7 +159,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     ifsc: farmer.ifsc || 'MAHB0001234',
     totalPurchases: `₹${totals.purchase.toLocaleString('en-IN')}`,
     totalPaid: `₹${totals.paid.toLocaleString('en-IN')}`,
-    advanceGiven: '₹0',
+    advanceGiven: `₹${totals.material.toLocaleString('en-IN')}`, // mapping material to advance in print for now
     netBalance: `₹${totals.outstanding.toLocaleString('en-IN')}`,
     transactions: realTransactions,
   };
@@ -164,25 +197,43 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
         </div>
 
         {/* Financial Summary Cards */}
-        <div className="p-6 bg-slate-50 border-b border-slate-100 grid grid-cols-4 gap-3 text-xs">
-          <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
-            <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Purchases</span>
-            <span className="text-sm font-extrabold text-slate-900 mt-0.5 block">₹{totals.purchase.toLocaleString('en-IN')}</span>
+        <div className="p-6 bg-slate-50 border-b border-slate-100 flex flex-col gap-2">
+          <div className="flex justify-end mb-1">
+            <button
+              onClick={() => setSplitKPI(!splitKPI)}
+              className="text-[10px] px-2 py-1 bg-white border border-slate-200 rounded text-slate-500 hover:bg-slate-100 font-bold transition-colors"
+            >
+              {splitKPI ? 'Combine Payments & Materials' : 'Split Payments & Materials'}
+            </button>
           </div>
+          <div className="grid grid-cols-4 gap-3 text-xs">
+            <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Purchases</span>
+              <span className="text-sm font-extrabold text-slate-900 mt-0.5 block">₹{totals.purchase.toLocaleString('en-IN')}</span>
+            </div>
 
-          <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
-            <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Paid Out</span>
-            <span className="text-sm font-extrabold text-emerald-600 mt-0.5 block">₹{totals.paid.toLocaleString('en-IN')}</span>
-          </div>
+            {!splitKPI ? (
+              <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs col-span-2">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Deductions (Paid + Material)</span>
+                <span className="text-sm font-extrabold text-emerald-600 mt-0.5 block">₹{(totals.paid + totals.material).toLocaleString('en-IN')}</span>
+              </div>
+            ) : (
+              <>
+                <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Paid Out</span>
+                  <span className="text-sm font-extrabold text-emerald-600 mt-0.5 block">₹{totals.paid.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
+                  <span className="text-[10px] font-semibold text-blue-600 uppercase block">Materials Given</span>
+                  <span className="text-sm font-extrabold text-blue-700 mt-0.5 block">₹{totals.material.toLocaleString('en-IN')}</span>
+                </div>
+              </>
+            )}
 
-          <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
-            <span className="text-[10px] font-semibold text-blue-600 uppercase block">Advance Given</span>
-            <span className="text-sm font-extrabold text-blue-700 mt-0.5 block">₹0</span>
-          </div>
-
-          <div className="bg-white border border-rose-100 rounded-xl p-3 shadow-2xs">
-            <span className="text-[10px] font-semibold text-rose-500 uppercase block">Net Outstanding</span>
-            <span className="text-sm font-black text-rose-600 mt-0.5 block">₹{totals.outstanding.toLocaleString('en-IN')}</span>
+            <div className="bg-white border border-rose-100 rounded-xl p-3 shadow-2xs">
+              <span className="text-[10px] font-semibold text-rose-500 uppercase block">Net Outstanding</span>
+              <span className="text-sm font-black text-rose-600 mt-0.5 block">₹{totals.outstanding.toLocaleString('en-IN')}</span>
+            </div>
           </div>
         </div>
 
@@ -381,7 +432,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                           <span className="font-bold">{tx.description}</span>
                           <span className="text-[10px] text-slate-400 block">{tx.refNo}</span>
                         </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-slate-900">{tx.debit}</td>
+                        <td className={`py-2.5 px-3 text-right font-bold ${tx.debit !== '—' ? 'text-rose-600' : 'text-slate-900'}`}>{tx.debit}</td>
                         <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{tx.credit}</td>
                         <td className="py-2.5 px-3 text-right font-black text-slate-900">{tx.balance}</td>
                       </tr>

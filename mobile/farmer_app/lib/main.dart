@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'updater.dart';
 
 void main() {
   runApp(const SeavaigFarmerApp());
@@ -55,7 +56,12 @@ class _SeavaigFarmerAppState extends State<SeavaigFarmerApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+ 
+    // Check for updates on load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      checkForUpdates(context);
+    });
+   return MaterialApp(
       title: 'SEAVAIG Farmer Passbook',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'updater.dart';
 
 void main() {
   runApp(const SeavaigSellerApp());
@@ -9,7 +10,12 @@ class SeavaigSellerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+ 
+    // Check for updates on load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      checkForUpdates(context);
+    });
+   return MaterialApp(
       title: 'SEAVAIG Seller App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

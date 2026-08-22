@@ -4,23 +4,16 @@ import React, { useState, useEffect } from 'react';
 import { apiGetPurchases } from '@/lib/api';
 
 export const RecentPurchasesTable: React.FC = () => {
-  const [purchases, setPurchases] = useState<any[]>([]);
+  const [recentPurchases, setRecentPurchases] = React.useState<any[]>([]);
 
-  useEffect(() => {
-    async function load() {
-      const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_purchases_cache') : null;
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) setPurchases(parsed.slice(0, 5));
-        } catch {}
-      }
-      const db = await apiGetPurchases();
-      if (Array.isArray(db)) {
-        setPurchases(db.slice(0, 5));
-      }
+  React.useEffect(() => {
+    async function fetchData() {
+      try {
+        const purchases = await apiGetPurchases();
+        setRecentPurchases(purchases.slice(0, 4));
+      } catch(e) {}
     }
-    load();
+    fetchData();
   }, []);
   return (
     <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle flex flex-col justify-between">
@@ -44,7 +37,7 @@ export const RecentPurchasesTable: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {purchases.map((row) => (
+            {recentPurchases.map((row) => (
               <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
                 <td className="py-2.5 font-bold text-blue-600">{row.id}</td>
                 <td className="py-2.5 font-semibold text-slate-800 flex items-center gap-1.5">

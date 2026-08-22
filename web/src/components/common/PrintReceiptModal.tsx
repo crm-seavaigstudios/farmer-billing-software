@@ -94,7 +94,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
           await navigator.share({
             files: [file],
             title: `Harvest Purchase Invoice #${data.receiptNo}`,
-            text: `🙏 *${tenant?.businessName || 'महाबळेश्वर अ‍ॅग्रो'}*\nपावती क्र: ${data.receiptNo}\nशेतकरी: ${data.partyName}\nरक्कम: ${data.totalAmount}`,
+            text: `🙏 *${tenant?.businessName || 'Agri CRM'}*\nपावती क्र: ${data.receiptNo}\nशेतकरी: ${data.partyName}\nरक्कम: ${data.totalAmount}`,
           });
           setIsGeneratingPdf(false);
           return;
@@ -107,7 +107,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
     // Fallback: Download PDF & open WhatsApp Chat with summary
     await handleDownloadPdf();
     const encodedText = encodeURIComponent(
-      `🙏 *${tenant?.businessName || 'महाबळेश्वर अ‍ॅग्रो'}*\n` +
+      `🙏 *${tenant?.businessName || 'Agri CRM'}*\n` +
       `पावती क्र: ${data.receiptNo}\n` +
       `दिनांक: ${data.date}\n` +
       `शेतकरी नाव: ${data.partyName} (${data.partyVillageOrAddress})\n` +
@@ -191,7 +191,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
             {/* Header / Brand */}
             <div className="text-center pb-4 border-b border-slate-200">
               <h2 className="font-black text-slate-900 uppercase tracking-tight text-base">
-                {tenant?.businessName || 'महाबळेश्वर स्ट्रॉबेरी अ‍ॅग्रो'}
+                {tenant?.businessName || 'Agri CRM'}
               </h2>
               <p className="text-[11px] font-bold text-slate-500 mt-0.5">
                 {tenant?.address || 'नांदगाव शाखा, जि. नाशिक (मंडी पावती / Billing Voucher)'}
@@ -280,9 +280,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
                 <span className="text-[9px] font-bold text-slate-500">शेतकऱ्याची सही</span>
               </div>
               <div className="text-center">
-                <div className="h-8 flex items-center justify-center text-blue-600 font-black text-[10px] mb-1">
-                  [SEAVAIG DIGITAL STAMP]
-                </div>
+                <div className="h-8 flex items-center justify-center text-blue-600 font-black text-[10px] mb-1"></div>
                 <span className="text-[9px] font-bold text-slate-500">अधिकृत सही व शिक्का</span>
               </div>
             </div>

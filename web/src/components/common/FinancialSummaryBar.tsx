@@ -13,7 +13,7 @@ import {
   ArrowUpRight
 } from 'lucide-react';
 
-export type TimelineFilter = 'TODAY' | 'WEEK' | 'MONTH' | 'SEASON' | 'CUSTOM';
+export type TimelineFilter = 'ALL_TIME' | 'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'WEEK' | 'MONTH' | 'SEASON' | 'CUSTOM';
 
 interface FinancialSummaryBarProps {
   totalAdvance: number;

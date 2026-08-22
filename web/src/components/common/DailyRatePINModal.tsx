@@ -73,36 +73,46 @@ export function DailyRatePINWidget() {
         </div>
 
         {isUnlocked ? (
-          <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-extrabold flex items-center gap-1">
+          <button
+            onClick={() => setIsUnlocked(false)}
+            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-sm transition-colors"
+          >
             <Unlock className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Unlocked (Client Authorized)</span>
-          </span>
+            <span>Lock Rates</span>
+          </button>
         ) : (
           <button
             onClick={() => setIsModalOpen(true)}
             className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
           >
             <Lock className="w-3.5 h-3.5 text-amber-400" />
-            <span>Enter Secret PIN to Edit</span>
+            <span>Enter Secret PIN to View/Edit</span>
           </button>
         )}
       </div>
 
       {/* Rates Table / List */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-        {rates.map((r, idx) => (
-          <div key={idx} className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex items-center justify-between text-xs">
-            <div>
-              <span className="font-bold text-slate-900 block">{r.cropName}</span>
-              <span className="text-[10px] text-slate-400 uppercase font-semibold">{r.unit?.replace('_', ' ') || 'PER KG'}</span>
+      {isUnlocked ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          {rates.map((r, idx) => (
+            <div key={idx} className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex items-center justify-between text-xs">
+              <div>
+                <span className="font-bold text-slate-900 block">{r.cropName}</span>
+                <span className="text-[10px] text-slate-400 uppercase font-semibold">{r.unit?.replace('_', ' ') || 'PER KG'}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-sm font-black text-blue-600">₹{r.rate}</span>
+                <span className="text-[9px] text-emerald-600 font-bold block">Live Rate</span>
+              </div>
             </div>
-            <div className="text-right">
-              <span className="text-sm font-black text-blue-600">₹{r.rate}</span>
-              <span className="text-[9px] text-emerald-600 font-bold block">Live Rate</span>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="p-4 text-center bg-slate-50 border border-slate-100 rounded-xl text-xs font-semibold text-slate-400 flex flex-col items-center gap-2">
+          <Lock className="w-6 h-6 text-slate-300" />
+          <p>Market rates are locked. Please enter your PIN to view.</p>
+        </div>
+      )}
 
       {/* If Unlocked, show Add/Update Rate Form */}
       {isUnlocked && (

@@ -78,7 +78,7 @@ export default function UsersPage() {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black text-slate-900">
-                  Staff & Access Control ({tenant?.businessName || 'महाबळेश्वर स्ट्रॉबेरी अ‍ॅग्रो'})
+                  Staff & Access Control ({tenant?.businessName || 'Agri CRM'})
                 </h1>
                 <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
                   <Building className="w-3 h-3" />

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetInventory, apiGetPurchases, apiGetSales, apiGetAllFarmerMaterials, apiGetTraderPurchases } from '@/lib/api';
+import { apiGetInventory, apiGetPurchases, apiGetSales, apiGetAllFarmerMaterials, apiGetTraderPurchases, apiGetLocations, apiAddLocation } from '@/lib/api';
 import {
   Package,
   Thermometer,
@@ -35,9 +35,11 @@ export default function InventoryPage() {
   const [gradeFilter, setGradeFilter] = useState('ALL');
   const [timeFilter, setTimeFilter] = useState('ALL');
   const [typeFilter, setTypeFilter] = useState('ALL');
+  const [roomFilter, setRoomFilter] = useState('ALL');
 
   const [materialPurchases, setMaterialPurchases] = useState<any[]>([]);
   const [materialIssues, setMaterialIssues] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
 
   const defaultBatches: any[] = [];
 
@@ -59,12 +61,17 @@ export default function InventoryPage() {
     }
 
     async function loadData() {
-      const [allPurchases, allSales, traderPurchases, farmerIssues] = await Promise.all([
+      const [allPurchases, allSales, traderPurchases, farmerIssues, locs] = await Promise.all([
         apiGetPurchases(),
         apiGetSales(),
         apiGetTraderPurchases(),
         apiGetAllFarmerMaterials(),
+        apiGetLocations(),
       ]);
+
+      if (locs) {
+        setLocations(locs);
+      }
 
       if (traderPurchases && Array.isArray(traderPurchases)) {
         setMaterialPurchases(traderPurchases);
@@ -73,20 +80,29 @@ export default function InventoryPage() {
         setMaterialIssues(farmerIssues);
       }
 
-      const stockMap: { [key: string]: { weight: number, valuation: number, rate: number } } = {};
+      const stockMap: { [key: string]: { weight: number, quantity: number, valuation: number, rate: number, unit: string, room: string } } = {};
       
       allPurchases.forEach((p: any) => {
         const crop = p.crop || 'Strawberry';
+        const room = p.storageLocation || 'Main Cold Room';
+        const key = `${crop}|${room}`;
+        
         const wtStr = String(p.weight || '0').replace(/[^0-9.-]+/g, '');
-        const wt = parseFloat(wtStr) || 0;
+        const numericVal = parseFloat(wtStr) || 0;
         const amt = typeof p.amount === 'number' ? p.amount : parseFloat(String(p.amount).replace(/[^0-9.-]+/g, '')) || 0;
-        const rateVal = wt > 0 ? amt / wt : 350;
+        const rateVal = numericVal > 0 ? amt / numericVal : 350;
+        const isKg = String(p.weight || '').toUpperCase().includes('KG');
 
-        if (!stockMap[crop]) {
-          stockMap[crop] = { weight: 0, valuation: 0, rate: rateVal };
+        if (!stockMap[key]) {
+          stockMap[key] = { weight: 0, quantity: 0, valuation: 0, rate: rateVal, unit: isKg ? 'KG' : 'QTY', room };
         }
-        stockMap[crop].weight += wt;
-        stockMap[crop].valuation += amt;
+        
+        if (isKg) {
+          stockMap[key].weight += numericVal;
+        } else {
+          stockMap[key].quantity += numericVal;
+        }
+        stockMap[key].valuation += amt;
       });
 
       allSales.forEach((s: any) => {
@@ -97,9 +113,11 @@ export default function InventoryPage() {
             const relatedPurchase = allPurchases.find((p: any) => p.id === pid);
             if (relatedPurchase) {
               const crop = relatedPurchase.crop || 'Strawberry';
-              if (stockMap[crop]) {
-                stockMap[crop].weight = Math.max(0, stockMap[crop].weight - wtPerBatch);
-                stockMap[crop].valuation = stockMap[crop].weight * stockMap[crop].rate;
+              const room = relatedPurchase.storageLocation || 'Main Cold Room';
+              const key = `${crop}|${room}`;
+              if (stockMap[key]) {
+                stockMap[key].weight = Math.max(0, stockMap[key].weight - wtPerBatch);
+                stockMap[key].valuation = stockMap[key].weight * stockMap[key].rate;
               }
             }
           });
@@ -118,17 +136,22 @@ export default function InventoryPage() {
         }
       });
 
-      const formatted = Object.keys(stockMap).map((cropName, i) => {
-        const item = stockMap[cropName];
+      const formatted = Object.keys(stockMap).map((key, i) => {
+        const item = stockMap[key as any];
+        const isKg = item.unit === 'KG';
+        const cropName = key.split('|')[0];
+        const roomName = (item as any).room || 'Main Cold Room';
         return {
           id: `STK-2026-${1000 + i}`,
-          room: i % 2 === 0 ? 'Cold Room #1 (Satpur)' : 'Cold Room #2 (Pimpalgaon)',
+          room: roomName,
           grade: cropName,
-          weight: `${item.weight.toLocaleString('en-IN')} KG`,
+          weight: isKg ? `${item.weight.toLocaleString('en-IN')} KG` : `${item.quantity.toLocaleString('en-IN')} QTY`,
+          rawWeight: item.weight,
+          rawQuantity: item.quantity,
           temp: '2.4°C',
           humidity: '85%',
           valuation: `₹${Math.round(item.valuation).toLocaleString('en-IN')}`,
-          status: item.weight > 0 ? 'OPTIMAL' : 'OUT OF STOCK',
+          status: (item.weight > 0 || item.quantity > 0) ? 'OPTIMAL' : 'OUT OF STOCK',
         };
       });
 
@@ -179,7 +202,8 @@ export default function InventoryPage() {
     setTimeout(() => setTransferSuccess(false), 3000);
   };
 
-  const totalStockKgSum = batches.reduce((acc, b) => acc + (parseFloat(b.weight) || 0), 0);
+  const totalStockKgSum = batches.reduce((acc, b) => acc + (b.rawWeight || 0), 0);
+  const totalStockQtySum = batches.reduce((acc, b) => acc + (b.rawQuantity || 0), 0);
   const totalValuationSum = batches.reduce((acc, b) => {
     const val = parseFloat(String(b.valuation).replace(/[^0-9.-]+/g, '')) || 0;
     return acc + val;
@@ -198,7 +222,12 @@ export default function InventoryPage() {
       if (gradeFilter === 'C_GRADE') matchGrade = b.grade.toLowerCase().includes('c grade') || b.grade.toLowerCase().includes('c_grade');
     }
 
-    return matchSearch && matchGrade;
+    let matchRoom = true;
+    if (roomFilter !== 'ALL') {
+      matchRoom = (b.room || '') === roomFilter;
+    }
+
+    return matchSearch && matchGrade && matchRoom;
   });
 
   const materialSummaryItems = [
@@ -303,15 +332,26 @@ export default function InventoryPage() {
           )}
 
           {/* Metric Ribbon */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
                 <Boxes className="w-6 h-6" />
               </div>
               <div>
-                <span className="text-[11px] font-semibold text-slate-500 block mb-0.5">Total Crop Stock Qty / Weight</span>
+                <span className="text-[11px] font-semibold text-slate-500 block mb-0.5">Stock by Weight (KG)</span>
                 <h3 className="text-2xl font-black text-slate-900">{totalStockKgSum.toLocaleString('en-IN')} KG</h3>
-                <span className="text-[10px] font-bold text-blue-600">Active Storage Batches</span>
+                <span className="text-[10px] font-bold text-blue-600">Total KG Stock</span>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <Package className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[11px] font-semibold text-slate-500 block mb-0.5">Stock by Units / Qty</span>
+                <h3 className="text-2xl font-black text-slate-900">{totalStockQtySum.toLocaleString('en-IN')} Units</h3>
+                <span className="text-[10px] font-bold text-emerald-600">Total Nag / Crates</span>
               </div>
             </div>
 
@@ -349,12 +389,32 @@ export default function InventoryPage() {
                 >
                   📦 Input Materials Ledger
                 </button>
+                <button
+                  onClick={() => setActiveTab('LOCATIONS' as any)}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                    activeTab === 'LOCATIONS' as any ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  🏢 Storage Rooms / Locations
+                </button>
               </div>
 
               {/* Custom Grade Selector Filter */}
               {activeTab === 'CROPS' && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Grade:</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Room:</span>
+                  <select
+                    value={roomFilter}
+                    onChange={(e) => setRoomFilter(e.target.value)}
+                    className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 focus:outline-none"
+                  >
+                    <option value="ALL">All Rooms</option>
+                    {Array.from(new Set(batches.map(b => b.room))).filter(Boolean).map((room, idx) => (
+                      <option key={idx} value={room as string}>{room as string}</option>
+                    ))}
+                  </select>
+
+                  <span className="text-[10px] font-bold text-slate-400 uppercase ml-2">Grade:</span>
                   <select
                     value={gradeFilter}
                     onChange={(e) => setGradeFilter(e.target.value)}
@@ -428,7 +488,7 @@ export default function InventoryPage() {
                   </tbody>
                 </table>
               </div>
-            ) : (
+            ) : activeTab === 'MATERIALS' ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
@@ -467,6 +527,37 @@ export default function InventoryPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex justify-end">
+                  <button 
+                    onClick={() => {
+                      const newLoc = prompt("Enter new Storage Room / Location name:");
+                      if (newLoc && newLoc.trim()) {
+                        apiAddLocation(newLoc.trim()).then(loc => {
+                          setLocations([...locations, loc]);
+                        });
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold shadow-md shadow-blue-500/20"
+                  >
+                    + Add New Location
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {locations.map((loc) => (
+                    <div key={loc.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                        <Thermometer className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-extrabold text-slate-900">{loc.name}</h4>
+                        <span className="text-[10px] font-semibold text-slate-500">{loc.id}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

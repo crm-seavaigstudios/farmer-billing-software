@@ -39,7 +39,18 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const handleLogout = () => {
-    // Clear tokens & redirect to login
+    // Clear tenant session and all isolated caches
+    sessionStorage.removeItem('active_tenant');
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('seavaig_')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    
+    // Redirect to login
     router.push('/login');
   };
 
@@ -148,7 +159,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-2xl p-3 space-y-2 z-50 animate-in fade-in zoom-in-95 duration-150">
               <div className="p-2 border-b border-slate-100">
                 <span className="text-xs font-black text-slate-900 block truncate">{tenant.businessName}</span>
-                <span className="text-[10px] text-slate-400 font-semibold block truncate">admin@{tenant.businessName.replace(/\s+/g, '').toLowerCase()}.com</span>
+                <span className="text-[10px] text-slate-400 font-semibold block truncate">{tenant.email}</span>
                 <div className="mt-2 px-2 py-1 rounded bg-blue-50 text-blue-700 text-[10px] font-bold flex items-center gap-1">
                   <Building className="w-3 h-3" />
                   <span className="truncate">{displayName}</span>

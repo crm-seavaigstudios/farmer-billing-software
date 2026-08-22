@@ -331,4 +331,17 @@ export class FarmersService {
   async importFromNetwork(dto: any) {
     return await this.create(dto);
   }
+
+  async remove(id: string) {
+    try {
+      return await this.prisma.farmer.delete({
+        where: { id },
+      });
+    } catch {
+      const idx = this.mockFarmers.findIndex((x) => x.id === id || x.farmerIdCode === id);
+      if (idx === -1) throw new NotFoundException('Farmer not found');
+      const removed = this.mockFarmers.splice(idx, 1);
+      return removed[0];
+    }
+  }
 }

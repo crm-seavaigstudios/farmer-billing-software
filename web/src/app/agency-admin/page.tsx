@@ -20,7 +20,7 @@ import {
   Inbox
 } from 'lucide-react';
 
-import { apiGetTenants, apiCreateTenant } from '@/lib/api';
+import { apiGetTenants, apiCreateTenant, apiToggleTenantStatus } from '@/lib/api';
 
 export default function AgencyAdminPage() {
   const [tenants, setTenants] = useState<any[]>([]);
@@ -73,7 +73,7 @@ export default function AgencyAdminPage() {
     e.preventDefault();
     setLoginError('');
 
-    if (loginEmail.toLowerCase() === 'admin@seavaig.com' && loginPassword === 'admin') {
+    if (loginEmail.toLowerCase() === 'crm@seavaigstudios.com' && loginPassword === 'Admin@rushi$123') {
       setIs2FaAuthenticated(true);
       return;
     }
@@ -174,7 +174,7 @@ export default function AgencyAdminPage() {
                   <input
                     type="email"
                     required
-                    placeholder="e.g. admin@seavaig.com"
+                    placeholder="e.g. crm@seavaigstudios.com"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-white focus:outline-none focus:border-blue-500"
@@ -319,9 +319,20 @@ export default function AgencyAdminPage() {
                           <td className="py-3.5 px-4 text-slate-300">{t.passportOrGovId}</td>
                           <td className="py-3.5 px-4 font-bold text-emerald-400">{t.package}</td>
                           <td className="py-3.5 px-4">
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              {t.status}
-                            </span>
+                            <button
+                              onClick={async () => {
+                                const newStatus = t.status === 'ACTIVE' ? 'EXPIRED' : 'ACTIVE';
+                                const updated = await apiToggleTenantStatus(t.id, newStatus);
+                                setTenants(updated);
+                              }}
+                              className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border cursor-pointer ${
+                                t.status === 'ACTIVE'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
+                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20'
+                              }`}
+                            >
+                              {t.status === 'ACTIVE' ? 'ACTIVE (Click to Disable)' : 'EXPIRED (Click to Enable)'}
+                            </button>
                           </td>
                         </tr>
                       ))
@@ -361,7 +372,7 @@ export default function AgencyAdminPage() {
                   <QRCodeSVG 
                     value={new OTPAuth.TOTP({
                       issuer: "SeavaigAgency",
-                      label: "admin@seavaig.com",
+                      label: "crm@seavaigstudios.com",
                       algorithm: "SHA1",
                       digits: 6,
                       period: 30,

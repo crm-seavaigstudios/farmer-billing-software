@@ -11,18 +11,51 @@ import {
   CartesianGrid
 } from 'recharts';
 import { Info } from 'lucide-react';
-
-const data = [
-  { date: '1 Aug', purchase: 0, sales: 0 },
-  { date: '5 Aug', purchase: 0, sales: 0 },
-  { date: '10 Aug', purchase: 0, sales: 0 },
-  { date: '15 Aug', purchase: 0, sales: 0 },
-  { date: '20 Aug', purchase: 0, sales: 0 },
-  { date: '25 Aug', purchase: 0, sales: 0 },
-  { date: '31 Aug', purchase: 0, sales: 0 },
-];
+import { apiGetPurchases, apiGetSales } from '@/lib/api';
 
 export const PurchaseSalesChart: React.FC = () => {
+  const [chartData, setChartData] = React.useState<any[]>([]);
+  const [maxValue, setMaxValue] = React.useState(0);
+
+  React.useEffect(() => {
+    async function loadData() {
+      try {
+        const purchases = await apiGetPurchases();
+        const sales = await apiGetSales();
+
+      const aggregated: Record<string, { purchase: number, sales: number }> = {};
+      
+      const parseNum = (val: any) => parseFloat(String(val).replace(/[^0-9.-]+/g, '')) || 0;
+      
+      purchases.forEach((p: any) => {
+        if (p.date) {
+          const d = p.date.substring(0, 5); // simple grouping by day
+          if (!aggregated[d]) aggregated[d] = { purchase: 0, sales: 0 };
+          aggregated[d].purchase += parseNum(p.amount || p.totalAmount);
+        }
+      });
+      sales.forEach((s: any) => {
+        if (s.date) {
+          const d = s.date.substring(0, 5);
+          if (!aggregated[d]) aggregated[d] = { purchase: 0, sales: 0 };
+          aggregated[d].sales += parseNum(s.amount || s.totalAmount);
+        }
+      });
+
+      const sortedDates = Object.keys(aggregated).sort();
+      const finalData = sortedDates.slice(-7).map(d => ({
+        date: d,
+        purchase: aggregated[d].purchase,
+        sales: aggregated[d].sales
+      }));
+
+      setChartData(finalData.length ? finalData : [
+        { date: 'No Data', purchase: 0, sales: 0 }
+      ]);
+      } catch(e) {}
+    }
+    loadData();
+  }, []);
   return (
     <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle flex flex-col justify-between h-[340px]">
       {/* Header */}
@@ -41,7 +74,7 @@ export const PurchaseSalesChart: React.FC = () => {
       {/* Recharts Dual Area / Line Chart */}
       <div className="w-full h-56">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorPurchase" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15}/>

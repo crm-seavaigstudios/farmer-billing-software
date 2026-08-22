@@ -85,6 +85,10 @@ export default function PurchasesPage() {
   const [categoryType, setCategoryType] = useState<'ADVANCE' | 'PAID' | 'UNPAID' | 'OUTSTANDING'>('PAID');
   const [categoryModalFarmers, setCategoryModalFarmers] = useState<any[]>([]);
 
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('TODAY');
+  const [customStartDate, setCustomStartDate] = useState<string | undefined>();
+  const [customEndDate, setCustomEndDate] = useState<string | undefined>();
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -135,10 +139,82 @@ export default function PurchasesPage() {
   const handleViewHistory = async (e: React.MouseEvent, row: any) => {
     e.stopPropagation();
     setHistoryBill(row);
-    const { apiGetPayments } = await import('@/lib/api');
-    const allPayments = await apiGetPayments();
-    const related = allPayments.filter((p: any) => p.farmerId === row.farmerId);
-    setBillPayments(related);
+    
+    // Fetch complete transaction history for this farmer
+    const { apiGetPayments, apiGetPurchases, apiGetFarmerMaterials } = await import('@/lib/api');
+    const [allPayments, allPurchases, allMaterials] = await Promise.all([
+      apiGetPayments(),
+      apiGetPurchases(),
+      apiGetFarmerMaterials(row.farmerId)
+    ]);
+    
+    const fp = allPurchases.filter((p: any) => p.farmerId === row.farmerId);
+    const fpay = allPayments.filter((p: any) => p.farmerId === row.farmerId);
+    const fmat = allMaterials || [];
+    
+    let allItems: any[] = [];
+    fp.forEach((x: any) => {
+      const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
+      allItems.push({
+         dateStr: x.date,
+         timestamp: new Date(x.date).getTime() || 0,
+         refNo: x.id,
+         type: 'PURCHASE',
+         description: x.crop || 'Crop Purchase',
+         debitVal: 0,
+         creditVal: amt,
+      });
+    });
+    
+    fpay.forEach((x: any) => {
+      const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
+      allItems.push({
+         dateStr: x.date,
+         timestamp: new Date(x.date).getTime() || 0,
+         refNo: x.id,
+         type: 'PAYMENT',
+         description: `Payment (${x.method})`,
+         debitVal: amt,
+         creditVal: 0,
+      });
+    });
+
+    fmat.forEach((x: any) => {
+      const amt = typeof x.totalAmount === 'number' ? x.totalAmount : parseFloat(String(x.totalAmount).replace(/[^0-9.-]+/g, '')) || 0;
+      allItems.push({
+         dateStr: x.createdAt ? new Date(x.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Unknown',
+         timestamp: new Date(x.createdAt || 0).getTime(),
+         refNo: x.id,
+         type: 'MATERIAL',
+         description: `Material Issue: ${x.itemName}`,
+         debitVal: amt,
+         creditVal: 0,
+      });
+    });
+    
+    const typeOrder: any = { 'MATERIAL': 1, 'PURCHASE': 2, 'PAYMENT': 3 };
+    allItems.sort((a, b) => {
+      if (a.timestamp !== b.timestamp) {
+        return a.timestamp - b.timestamp;
+      }
+      return typeOrder[a.type] - typeOrder[b.type];
+    });
+    
+    let bal = 0;
+    const computed = allItems.map(item => {
+       bal = bal + item.creditVal - item.debitVal;
+       return {
+          date: item.dateStr,
+          refNo: item.refNo,
+          type: item.type,
+          description: item.description,
+          debit: item.debitVal,
+          credit: item.creditVal,
+          balance: bal
+       };
+    });
+    
+    setBillPayments(computed.reverse()); // Show newest first
     setIsHistoryModalOpen(true);
   };
 
@@ -167,19 +243,60 @@ export default function PurchasesPage() {
     return parseFloat(String(val).replace(/[^0-9.-]+/g, '')) || 0;
   };
 
-  const totalAdvance = 0;
-  const totalPaid = purchases.filter(p => p.paymentStatus === 'PAID').reduce((acc, p) => acc + parseNum(p.amount), 0);
-  const paidFarmersCount = purchases.filter(p => p.paymentStatus === 'PAID').length;
+  const filteredPurchases = purchases.filter((p) => {
+    let dateMatch = true;
+    if (timelineFilter !== 'ALL_TIME' && p.date) {
+      const pDate = new Date(p.date.split('/').reverse().join('-') || p.date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-  const totalUnpaid = purchases.filter(p => p.paymentStatus === 'UNPAID' || p.paymentStatus === 'PARTIAL').reduce((acc, p) => acc + parseNum(p.dueAmount), 0);
-  const unpaidFarmersCount = purchases.filter(p => p.paymentStatus === 'UNPAID' || p.paymentStatus === 'PARTIAL').length;
+      if (timelineFilter === 'TODAY') {
+        dateMatch = pDate >= today;
+      } else if (timelineFilter === 'YESTERDAY') {
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        dateMatch = pDate >= yesterday && pDate < today;
+      } else if (timelineFilter === 'THIS_WEEK') {
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        dateMatch = pDate >= weekAgo;
+      } else if (timelineFilter === 'THIS_MONTH') {
+        const monthAgo = new Date(today);
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        dateMatch = pDate >= monthAgo;
+      } else if (timelineFilter === 'CUSTOM' && customStartDate && customEndDate) {
+        const s = new Date(customStartDate);
+        const e = new Date(customEndDate);
+        dateMatch = pDate >= s && pDate <= e;
+      }
+    }
+
+    const textMatch = 
+      (p.farmerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.village || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.crop || '').toLowerCase().includes(searchQuery.toLowerCase());
+      
+    return dateMatch && textMatch;
+  });
+
+  const totalAdvance = 0;
+  const totalPaid = filteredPurchases.filter(p => p.paymentStatus === 'PAID').reduce((acc, p) => acc + parseNum(p.amount), 0);
+  const paidFarmersCount = filteredPurchases.filter(p => p.paymentStatus === 'PAID').length;
+
+  const totalUnpaid = filteredPurchases.filter(p => p.paymentStatus === 'UNPAID' || p.paymentStatus === 'PARTIAL').reduce((acc, p) => acc + parseNum(p.dueAmount), 0);
+  const unpaidFarmersCount = filteredPurchases.filter(p => p.paymentStatus === 'UNPAID' || p.paymentStatus === 'PARTIAL').length;
 
   const totalOutstanding = totalUnpaid;
   const outstandingFarmersCount = unpaidFarmersCount;
 
   const handleTimelineChange = (filter: TimelineFilter, startDate?: string, endDate?: string) => {
-    console.log('Timeline changed to:', filter, startDate, endDate);
+    setTimelineFilter(filter);
+    setCustomStartDate(startDate);
+    setCustomEndDate(endDate);
   };
+
+
 
   const handleCategoryClick = (category: 'ADVANCE' | 'PAID' | 'UNPAID' | 'OUTSTANDING') => {
     setCategoryType(category);
@@ -188,21 +305,14 @@ export default function PurchasesPage() {
       setCategoryModalFarmers([]);
     } else if (category === 'PAID') {
       setCategoryModalTitle(`Fully Paid Purchase Bills (${paidFarmersCount} Farmers)`);
-      setCategoryModalFarmers(purchases.filter(p => p.paymentStatus === 'PAID').map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, totalPaid: parseNum(p.amount) })));
+      setCategoryModalFarmers(filteredPurchases.filter(p => p.paymentStatus === 'PAID').map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, totalPaid: parseNum(p.amount) })));
     } else if (category === 'UNPAID' || category === 'OUTSTANDING') {
       setCategoryModalTitle(`Farmers with Pending Outstanding Bills (${unpaidFarmersCount} Farmers)`);
-      setCategoryModalFarmers(purchases.filter(p => p.paymentStatus !== 'PAID').map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, dueAmount: parseNum(p.dueAmount), outstandingAmount: parseNum(p.dueAmount) })));
+      setCategoryModalFarmers(filteredPurchases.filter(p => p.paymentStatus !== 'PAID').map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, dueAmount: parseNum(p.dueAmount), outstandingAmount: parseNum(p.dueAmount) })));
     }
     setIsCategoryModalOpen(true);
   };
 
-  const filteredPurchases = purchases.filter(
-    (p) =>
-      (p.farmerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.village || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.crop || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 antialiased selection:bg-blue-500 selection:text-white">
@@ -395,31 +505,61 @@ export default function PurchasesPage() {
       {/* History Modal */}
       {isHistoryModalOpen && historyBill && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-2xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
-                <History className="w-5 h-5 text-purple-600" />
-                Payment History ({historyBill.id})
-              </h3>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                  <History className="w-5 h-5 text-purple-600" />
+                  Total Transaction History
+                </h3>
+                <p className="text-xs font-semibold text-slate-500 mt-1">Farmer: <span className="font-black text-blue-700">{historyBill.farmerName}</span></p>
+              </div>
               <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
             
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              <p className="text-xs font-semibold text-slate-600">
-                Farmer: <span className="font-bold text-slate-900">{historyBill.farmerName}</span>
-              </p>
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto">
               {billPayments.length === 0 ? (
-                <p className="text-xs text-slate-400 italic py-4 text-center">No payments found for this farmer.</p>
+                <p className="text-xs text-slate-400 italic py-4 text-center">No transactions found for this farmer.</p>
               ) : (
-                billPayments.map((p, idx) => (
-                  <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center text-xs">
-                    <div>
-                      <div className="font-bold text-slate-900">{p.paymentNo || p.id}</div>
-                      <div className="text-[10px] text-slate-500">{p.date} • {p.method}</div>
-                    </div>
-                    <div className="font-black text-emerald-600">₹{p.amount.toLocaleString('en-IN')}</div>
-                  </div>
-                ))
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 sticky top-0">
+                    <tr className="text-[10px] font-black text-slate-400 uppercase">
+                      <th className="py-2 px-3">Date</th>
+                      <th className="py-2 px-3">Type</th>
+                      <th className="py-2 px-3 text-right">Credit (₹)</th>
+                      <th className="py-2 px-3 text-right">Debit (₹)</th>
+                      <th className="py-2 px-3 text-right text-blue-600">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {billPayments.map((p, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-3">
+                          <div className="font-bold text-slate-900">{p.date}</div>
+                          <div className="text-[9px] text-slate-400">{p.refNo}</div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border ${
+                            p.type === 'PURCHASE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                            p.type === 'PAYMENT' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                            'bg-blue-50 text-blue-700 border-blue-200'
+                          }`}>
+                            {p.description}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-emerald-600">
+                          {p.credit > 0 ? `₹${p.credit.toLocaleString('en-IN')}` : '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-rose-600">
+                          {p.debit > 0 ? `-₹${p.debit.toLocaleString('en-IN')}` : '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-black text-blue-700">
+                          ₹{p.balance.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
           </div>

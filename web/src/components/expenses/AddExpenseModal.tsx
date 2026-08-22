@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { X, DollarSign } from 'lucide-react';
+import { X, DollarSign, Truck } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 
 interface AddExpenseModalProps {

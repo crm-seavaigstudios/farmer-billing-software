@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'updater.dart';
 
 void main() {
   runApp(const SeavaigOwnerApp());
@@ -28,7 +29,12 @@ class _SeavaigOwnerAppState extends State<SeavaigOwnerApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+ 
+    // Check for updates on load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      checkForUpdates(context);
+    });
+   return MaterialApp(
       title: 'SEAVAIG Owner Enterprise Mobile CRM',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -490,7 +496,7 @@ class _OwnerMainScreenState extends State<OwnerMainScreen> {
               if (nameCtrl.text.isNotEmpty) {
                 setState(() {
                   _farmers.add({
-                    'id': 'far-${Date.now()}',
+                    'id': 'far-${DateTime.now().millisecondsSinceEpoch}',
                     'name': nameCtrl.text,
                     'code': 'FAR-${10000 + _farmers.length + 1}',
                     'village': villageCtrl.text.isEmpty ? 'Nashik' : villageCtrl.text,
@@ -562,7 +568,7 @@ class _OwnerMainScreenState extends State<OwnerMainScreen> {
             onPressed: () {
               setState(() {
                 _purchases.add({
-                  'id': 'pur-${Date.now()}',
+                  'id': 'pur-${DateTime.now().millisecondsSinceEpoch}',
                   'billNo': 'PUR-2026-${1050 + _purchases.length}',
                   'farmer': farmerCtrl.text,
                   'crop': cropCtrl.text,
@@ -600,7 +606,7 @@ class _OwnerMainScreenState extends State<OwnerMainScreen> {
             onPressed: () {
               setState(() {
                 _inventory.add({
-                  'id': 'inv-${Date.now()}',
+                  'id': 'inv-${DateTime.now().millisecondsSinceEpoch}',
                   'item': itemCtrl.text,
                   'qty': qtyCtrl.text,
                   'valuation': '₹45,000',
@@ -638,7 +644,7 @@ class _OwnerMainScreenState extends State<OwnerMainScreen> {
               if (nameCtrl.text.isNotEmpty) {
                 setState(() {
                   _workers.add({
-                    'id': 'wrk-${Date.now()}',
+                    'id': 'wrk-${DateTime.now().millisecondsSinceEpoch}',
                     'name': nameCtrl.text,
                     'hours': '8.0 hrs (8am-4pm)',
                     'rate': rateCtrl.text,
@@ -675,7 +681,7 @@ class _OwnerMainScreenState extends State<OwnerMainScreen> {
             onPressed: () {
               setState(() {
                 _traders.add({
-                  'id': 'trd-${Date.now()}',
+                  'id': 'trd-${DateTime.now().millisecondsSinceEpoch}',
                   'billNo': 'TBILL-2026-${1000 + _traders.length}',
                   'trader': traderCtrl.text,
                   'item': 'Packaging Supplies',

@@ -31,7 +31,8 @@ import {
   apiGetPurchases,
   apiGetTraderPurchases,
   apiGetWorkers,
-  apiGetExpenses
+  apiGetExpenses,
+  apiGetPayments
 } from '@/lib/api';
 
 const sampleReportSeed: any[] = [];
@@ -45,24 +46,7 @@ export default function ReportsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [reportData, setReportData] = useState<any[]>(sampleReportSeed);
 
-  // Multi-Agency Checkbox Selector State
-  const [selectedAgencies, setSelectedAgencies] = useState<string[]>([
-    'agency_nashik',
-    'agency_sinnar'
-  ]);
 
-  const availableAgencies = [
-    { id: 'agency_nashik', name: 'Seavaig Agro Agency (Nashik)', location: 'Nashik' },
-    { id: 'agency_sinnar', name: 'Godavari Traders (Sinnar)', location: 'Sinnar' },
-    { id: 'agency_yeola', name: 'Ambika Agro Supplies (Yeola)', location: 'Yeola' },
-    { id: 'agency_pimpalgaon', name: 'Sahyadri Mandi Enterprise (Pimpalgaon)', location: 'Pimpalgaon' },
-  ];
-
-  const toggleAgency = (id: string) => {
-    setSelectedAgencies((prev) =>
-      prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]
-    );
-  };
 
   // Column Selector State
   const [columns, setColumns] = useState({
@@ -158,10 +142,13 @@ export default function ReportsPage() {
 
       // 2. Fetch from backend API and append/override
       try {
-        const [salesRes, purchasesRes, tradersRes] = await Promise.all([
+        const [salesRes, purchasesRes, tradersRes, workersRes, expensesRes, paymentsRes] = await Promise.all([
           apiGetSales(),
           apiGetPurchases(),
           apiGetTraderPurchases(),
+          apiGetWorkers(),
+          apiGetExpenses(),
+          apiGetPayments()
         ]);
 
         if (purchasesRes && Array.isArray(purchasesRes) && purchasesRes.length > 0) {
@@ -330,50 +317,6 @@ export default function ReportsPage() {
                 <Printer className="w-4 h-4" />
                 <span>Print PDF Report</span>
               </button>
-            </div>
-          </div>
-
-          {/* Multi-Agency Custom Checkbox Selector Widget */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Building className="w-4 h-4 text-blue-600" />
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                  Select Agencies for Multi-Agency Consolidated Report Matrix
-                </h3>
-              </div>
-              <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full">
-                {selectedAgencies.length} Agencies Selected
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              {availableAgencies.map((agency) => {
-                const isSelected = selectedAgencies.includes(agency.id);
-                return (
-                  <div
-                    key={agency.id}
-                    onClick={() => toggleAgency(agency.id)}
-                    className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
-                      isSelected
-                        ? 'bg-blue-50/70 border-blue-500 shadow-2xs'
-                        : 'bg-slate-50 border-slate-200/80 hover:bg-slate-100/80'
-                    }`}
-                  >
-                    <div
-                      className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${
-                        isSelected ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 bg-white'
-                      }`}
-                    >
-                      {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-800 leading-tight">{agency.name}</p>
-                      <p className="text-[10px] font-semibold text-slate-400 mt-0.5">{agency.location}</p>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
 

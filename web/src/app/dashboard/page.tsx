@@ -37,43 +37,48 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function loadAllData() {
-      // Read local caches for instant, guaranteed zero-data-loss calculation
-      const farmersCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
-      const purchasesCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_purchases_cache') : null;
-      const salesCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
-      const paymentsCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_payments_cache') : null;
-
-      const farmers = farmersCache ? JSON.parse(farmersCache) : [];
-      const purchases = purchasesCache ? JSON.parse(purchasesCache) : [];
-      const sales = salesCache ? JSON.parse(salesCache) : [];
-      const payments = paymentsCache ? JSON.parse(paymentsCache) : [];
-
-      const parseNum = (val: any): number => {
-        if (typeof val === 'number') return val;
-        if (!val) return 0;
-        return Number(String(val).replace(/[^0-9.-]+/g, '')) || 0;
-      };
-
-      const calcPurchase = purchases.reduce((acc: number, p: any) => acc + parseNum(p.totalAmount || p.grossAmount || p.netAmount || p.rawAmount), 0);
-      const calcDue = purchases.reduce((acc: number, p: any) => acc + parseNum(p.dueAmount || p.rawDue), 0);
-      const calcSales = sales.reduce((acc: number, s: any) => acc + parseNum(s.totalAmount), 0);
-      const calcPayments = payments.reduce((acc: number, p: any) => acc + parseNum(p.amount), 0);
-
-      const initialStats = {
-        todaysPurchase: `₹${calcPurchase.toLocaleString('en-IN')}`,
-        todaysSales: `₹${calcSales.toLocaleString('en-IN')}`,
-        todaysPayment: `₹${calcPayments.toLocaleString('en-IN')}`,
-        pendingAmount: `₹${calcDue.toLocaleString('en-IN')}`,
-        totalFarmers: farmers.length,
-        activeFarmers: farmers.filter((f: any) => f.status !== 'INACTIVE').length || farmers.length,
-        inventoryValue: `₹${Math.round(calcPurchase * 0.4).toLocaleString('en-IN')}`,
-      };
-      setStats(initialStats);
-
-      // Fetch live API if available
+      // First, fetch live API directly for real-time KPI accuracy
       const apiRes = await apiGetDashboardStats();
-      if (apiRes && apiRes.totalFarmers) {
+      if (apiRes && apiRes.totalFarmers !== undefined) {
         setStats((prev: any) => ({ ...prev, ...apiRes }));
+      } else {
+        // Fallback to reading local caches if API fails or offline
+        const farmersCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+        const purchasesCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_purchases_cache') : null;
+        const salesCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
+        const paymentsCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_payments_cache') : null;
+
+        const farmers = farmersCache ? JSON.parse(farmersCache) : [];
+        const purchases = purchasesCache ? JSON.parse(purchasesCache) : [];
+        const sales = salesCache ? JSON.parse(salesCache) : [];
+        const payments = paymentsCache ? JSON.parse(paymentsCache) : [];
+
+        const parseNum = (val: any): number => {
+          if (typeof val === 'number') return val;
+          if (!val) return 0;
+          return Number(String(val).replace(/[^0-9.-]+/g, '')) || 0;
+        };
+
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todaysPurchasesList = purchases.filter((p: any) => p.purchaseDate?.startsWith(todayStr));
+        const todaysSalesList = sales.filter((s: any) => s.saleDate?.startsWith(todayStr));
+        const todaysPaymentsList = payments.filter((p: any) => p.paymentDate?.startsWith(todayStr));
+
+        const calcPurchase = todaysPurchasesList.reduce((acc: number, p: any) => acc + parseNum(p.amount || p.totalAmount), 0);
+        const calcDue = purchases.reduce((acc: number, p: any) => acc + parseNum(p.dueAmount || p.rawDue), 0);
+        const calcSales = todaysSalesList.reduce((acc: number, s: any) => acc + parseNum(s.amount || s.totalAmount), 0);
+        const calcPayments = todaysPaymentsList.reduce((acc: number, p: any) => acc + parseNum(p.amount), 0);
+
+        const initialStats = {
+          todaysPurchase: `₹${calcPurchase.toLocaleString('en-IN')}`,
+          todaysSales: `₹${calcSales.toLocaleString('en-IN')}`,
+          todaysPayment: `₹${calcPayments.toLocaleString('en-IN')}`,
+          pendingAmount: `₹${calcDue.toLocaleString('en-IN')}`,
+          totalFarmers: farmers.length,
+          activeFarmers: farmers.filter((f: any) => f.status !== 'INACTIVE').length || farmers.length,
+          inventoryValue: `₹0`, // Requires real API for inventory aggregate
+        };
+        setStats(initialStats);
       }
     }
     loadAllData();

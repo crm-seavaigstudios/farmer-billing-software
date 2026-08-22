@@ -33,7 +33,7 @@ export default function ExpensesPage() {
 
     async function loadData() {
       const res = await apiGetExpenses();
-      if (res && Array.isArray(res) && res.length > 0) {
+      if (res && Array.isArray(res)) {
         const formatted = res.map((e: any) => ({
           id: e.expenseNo,
           title: e.notes || 'Expense',
@@ -121,9 +121,9 @@ export default function ExpensesPage() {
                 <DollarSign className="w-6 h-6" />
               </div>
               <div>
-                <span className="text-[11px] font-semibold text-slate-500">Monthly Expenses</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹1,03,800</h3>
-                <span className="text-[10px] font-bold text-rose-600">August 2026 Operational</span>
+                <span className="text-[11px] font-semibold text-slate-500">Total Expenses</span>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{expenses.reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
+                <span className="text-[10px] font-bold text-rose-600">Operational</span>
               </div>
             </div>
 
@@ -133,7 +133,7 @@ export default function ExpensesPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Freight & Fuel</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹14,500</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{expenses.filter(e => e.category === 'Transport & Freight').reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-blue-600">Transport Costs</span>
               </div>
             </div>
@@ -144,7 +144,7 @@ export default function ExpensesPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Cold Storage Utility</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹42,800</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{expenses.filter(e => e.category === 'Cold Storage Electricity').reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-amber-600">Electricity Power</span>
               </div>
             </div>
@@ -155,8 +155,8 @@ export default function ExpensesPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Packaging Crates</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹28,000</h3>
-                <span className="text-[10px] font-bold text-purple-600">5,000 Punnets</span>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{expenses.filter(e => e.category === 'Packaging & Crates').reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
+                <span className="text-[10px] font-bold text-purple-600">Punnets</span>
               </div>
             </div>
           </div>
