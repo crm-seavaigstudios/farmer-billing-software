@@ -487,9 +487,9 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     console.error(e);
   }
   
-  const current = getLocalCache(seavaig_purchases_cache_${tenantId}, []);
+  const current = getLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
   const updated = [purchaseObj, ...current];
-  setLocalCache(seavaig_purchases_cache_${tenantId}, updated);
+  setLocalCache(`seavaig_purchases_cache_${tenantId}`, updated);
   if (purchaseData.farmerId) {
     await updateFarmerOutstanding(purchaseData.farmerId, purchaseObj.dueAmount, purchaseObj.paidAmount);
   }
