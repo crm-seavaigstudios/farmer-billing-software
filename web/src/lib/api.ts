@@ -141,7 +141,7 @@ export const apiCreateFarmer = async (farmerData: any) => {
   const farmerObj = {
     id: newId,
     tenantId: tenantId,
-    farmerCode: farmerData.farmerIdCode || autoCode,
+    farmerIdCode: farmerData.farmerIdCode || autoCode,
     name: farmerData.name,
     phone: farmerData.phone,
     password: farmerData.phone, // Default password for APK
