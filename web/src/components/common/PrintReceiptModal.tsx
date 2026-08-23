@@ -189,14 +189,25 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
             className={`bg-white border border-slate-300 shadow-md rounded-2xl text-slate-900 mx-auto transition-all ${getFormatClassName()}`}
           >
             {/* Header / Brand */}
-            <div className="text-center pb-4 border-b border-slate-200">
-              <h2 className="font-black text-slate-900 uppercase tracking-tight text-base">
-                {tenant?.businessName || 'Agri CRM'}
-              </h2>
-              <p className="text-[11px] font-bold text-slate-500 mt-0.5">
-                {tenant?.address || 'नांदगाव शाखा, जि. नाशिक (मंडी पावती / Billing Voucher)'}
-              </p>
-              <p className="text-[10px] text-slate-400">मोबाईल: {tenant?.phone || '+९१ ९८२३४ ५६७८९'} | GSTIN: {tenant?.gstin || '27AAAAA0000A1Z5'}</p>
+            <div className="flex items-center gap-3 pb-4 border-b border-slate-200">
+              <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center border border-blue-100 flex-shrink-0">
+                {tenant?.logoUrl ? (
+                  <img src={tenant.logoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                ) : (
+                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v16h16V4zm0 8h16M8 12v8m8-8v8M4 8h16" />
+                  </svg>
+                )}
+              </div>
+              <div className="flex-1">
+                <h2 className="font-black text-slate-900 uppercase tracking-tight text-base text-left">
+                  {tenant?.businessName || tenant?.companyName || 'Agri CRM'}
+                </h2>
+                <p className="text-[11px] font-bold text-slate-500 mt-0.5 text-left">
+                  {tenant?.address || 'नांदगाव शाखा, जि. नाशिक (मंडी पावती / Billing Voucher)'}
+                </p>
+                <p className="text-[10px] text-slate-400 text-left">मोबाईल: {tenant?.phone || '+९१ ९८२३४ ५६७८९'} | GSTIN: {tenant?.gstin || '27AAAAA0000A1Z5'}</p>
+              </div>
             </div>
 
             {/* Title & Receipt Meta */}

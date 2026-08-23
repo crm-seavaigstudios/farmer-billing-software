@@ -122,7 +122,21 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
     const targetCust = customers.find((c) => c.id === selectedCustomerId) || customers[0];
 
     const newSale = {
-      id: `INV-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: (() => {
+      const d = new Date();
+      const prefix = `${String(d.getDate()).padStart(2,'0')}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getFullYear()).slice(-2)}`;
+      const todayStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+      let count = 1;
+      const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
+      if (cached) {
+          try {
+              const list = JSON.parse(cached);
+              const todays = list.filter((p:any) => p.date === todayStr || p.saleDate === todayStr);
+              count = todays.length + 1;
+          } catch {}
+      }
+      return `${prefix}-${count}`;
+  })(),
       customerName: targetCust?.name || targetCust?.company || 'Reliance Fresh Ltd',
       phone: targetCust?.phone || '9876543210',
       address: targetCust?.address || 'Mumbai Central Hub',
@@ -135,6 +149,7 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
       driverPhone,
       farmerBatches: selectedPurchaseIds,
       date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      photoUrl: vehiclePhotoUrl,
     };
 
     await apiCreateSale(newSale);
@@ -314,13 +329,22 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
               <div>
                 <label className="font-extrabold text-slate-700 block mb-1 flex items-center gap-1">
                   <Camera className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Loaded Vehicle Photo URL</span>
+                  <span>Loaded Vehicle Photo (Camera)</span>
                 </label>
                 <input
-                  type="text"
-                  value={vehiclePhotoUrl}
-                  onChange={(e) => setVehiclePhotoUrl(e.target.value)}
-                  className="w-full p-2 bg-white border border-slate-200 rounded-xl font-medium text-[11px]"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      // Compress and convert to base64 for simple saving
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setVehiclePhotoUrl(ev.target?.result as string);
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="w-full p-1.5 bg-white border border-slate-200 rounded-xl font-medium text-[11px] file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />
               </div>
               <div>

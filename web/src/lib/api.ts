@@ -46,15 +46,16 @@ export const apiGetDashboardStats = async () => {
       return Number(String(val).replace(/[^0-9.-]+/g, '')) || 0;
     };
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const d = new Date();
+    const todayStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}`;
 
     const totalFarmers = farmers.length;
     const activeFarmers = farmers.filter((f: any) => f.status !== 'INACTIVE').length || totalFarmers;
     
     // Filter for today
-    const todaysPurchasesList = purchases.filter((p: any) => p.purchaseDate?.startsWith(todayStr));
-    const todaysSalesList = sales.filter((s: any) => s.saleDate?.startsWith(todayStr));
-    const todaysPaymentsList = payments.filter((p: any) => p.paymentDate?.startsWith(todayStr));
+    const todaysPurchasesList = purchases.filter((p: any) => isToday(p.purchaseDate || p.date));
+    const todaysSalesList = sales.filter((s: any) => isToday(s.saleDate || s.date));
+    const todaysPaymentsList = payments.filter((p: any) => isToday(p.paymentDate || p.date));
 
     const todaysPurchase = todaysPurchasesList.reduce((acc: number, p: any) => acc + parseNum(p.totalAmount || p.amount), 0);
     const todaysSales = todaysSalesList.reduce((acc: number, s: any) => acc + parseNum(s.totalAmount || s.amount), 0);
@@ -427,14 +428,14 @@ export const apiCreatePurchase = async (purchaseData: any) => {
 
   const item = purchaseData.items?.[0];
   const purAmt = Number((item?.weightKg || 0) * (item?.ratePerKg || 0));
-    const today = new Date();
+  const today = new Date();
   const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
   
   const { data: latestData } = await supabase
     .from('Purchase')
     .select('purchaseNo')
     .eq('tenantId', tenantId)
-    .like('purchaseNo', `PUR${ddmmyy}-%`)
+    .like('purchaseNo', `${ddmmyy}-%`)
     .order('createdAt', { ascending: false })
     .limit(1);
 
@@ -446,7 +447,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
       serial = parseInt(parts[parts.length - 1], 10) + 1;
     }
   }
-  const newId = `PUR${ddmmyy}-${serial}`;
+  const newId = `${ddmmyy}-${serial}`;
   
   const purchaseObj = {
     id: newId,
@@ -461,11 +462,11 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     paidAmount: Number(purchaseData.paidAmount || 0),
     dueAmount: Number(purchaseData.dueAmount ?? purAmt),
     paymentStatus: purchaseData.paymentStatus || 'UNPAID',
-    date: new Date().toISOString().split('T')[0],
+    date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    storageLocation: purchaseData.storageLocation || 'Main Cold Room'
   };
 
   try {
-    // 1. Insert Purchase
     await supabase.from('Purchase').insert([{
       id: purchaseObj.id,
       tenantId,
@@ -476,402 +477,12 @@ export const apiCreatePurchase = async (purchaseData: any) => {
       paidAmount: Number(purchaseObj.paidAmount),
       dueAmount: Number(purchaseObj.dueAmount),
       paymentStatus: purchaseObj.paymentStatus,
-      purchaseDate: new Date(),
+      purchaseDate: purchaseObj.date,
+      date: purchaseObj.date,
+      storageLocation: purchaseObj.storageLocation
     }]);
-
-    // 2. Insert Purchase Item
-    await supabase.from('PurchaseItem').insert([{
-      id: `item-${Date.now()}`,
-      tenantId,
-      purchaseId: purchaseObj.id,
-      cropName: purchaseObj.crop,
-      grade: 'A_GRADE',
-      weightKg: Number(item?.weightKg || 0),
-      ratePerKg: Number(item?.ratePerKg || 0),
-      unit: item?.unit || 'KG',
-      packagingCategory: item?.packagingCategory || 'कॅरेट',
-      totalAmount: Number(purchaseObj.amount),
-    }]);
-
-    if (purchaseData.farmerId) {
-      await apiUpdateFarmerBalance(purchaseData.farmerId, purchaseObj.paidAmount, purchaseObj.dueAmount);
-    }
-  } catch {}
-
-  const current = getLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
-  const updated = [purchaseObj, ...current];
-  setLocalCache(`seavaig_purchases_cache_${tenantId}`, updated);
-
-  return purchaseObj;
-};
-
-// ----------------------------------------------------
-// B2B SALES API (SUPABASE + RESILIENT FALLBACK)
-// ----------------------------------------------------
-export const apiGetSales = async () => {
-  const tenantId = getTenantId();
-  if (!tenantId) return [];
-  try {
-    const { data, error } = await supabase
-      .from('Sale')
-      .select('*, customer:Customer(*), items:SaleItem(*)')
-      .eq('tenantId', tenantId)
-      .order('createdAt', { ascending: false });
-    if (!error && data && data.length > 0) {
-      const mapped = data.map((s: any) => ({
-        id: s.id,
-        invoiceNo: s.invoiceNo || s.id,
-        customerName: s.customer?.name || 'Wholesale Customer',
-        amount: Number(s.totalAmount || 0),
-        totalWeight: Number(s.totalWeight || 0),
-        vehicleNo: s.vehicleNo || '',
-        date: s.saleDate ? new Date(s.saleDate).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN'),
-        status: s.paymentStatus || 'PAID',
-        items: s.items?.[0]?.cropName || 'Strawberry Box Shipment',
-        farmerBatches: s.traceabilityLotId ? s.traceabilityLotId.split(',') : [],
-      }));
-      setLocalCache(`seavaig_sales_cache_${tenantId}`, mapped);
-      return mapped;
-    }
-  } catch {}
-  return getLocalCache(`seavaig_sales_cache_${tenantId}`, []);
-};
-
-export const apiCreateSale = async (saleData: any) => {
-  const tenantId = getTenantId();
-  if (!tenantId) throw new Error('No tenant');
-
-    const today = new Date();
-  const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
-  
-  const { data: latestData } = await supabase
-    .from('Sale')
-    .select('saleNo')
-    .eq('tenantId', tenantId)
-    .like('saleNo', `SAL${ddmmyy}-%`)
-    .order('createdAt', { ascending: false })
-    .limit(1);
-
-  let serial = 1;
-  if (latestData && latestData.length > 0) {
-    const latestStr = latestData[0].saleNo || '';
-    const parts = latestStr.split('-');
-    if (parts.length > 1) {
-      serial = parseInt(parts[parts.length - 1], 10) + 1;
-    }
-  }
-  const newId = `SAL${ddmmyy}-${serial}`;
-  const saleObj = {
-    id: newId,
-    tenantId,
-    invoiceNo: newId,
-    saleNo: newId,
-    customerName: saleData.customerName || 'Wholesale Customer',
-    cropName: saleData.cropName || 'Strawberry A Grade',
-    totalWeight: Number(saleData.totalWeight || 0),
-    amount: Number(saleData.amount || 0),
-    vehicleNo: saleData.vehicleNo || 'MH-15-EG-1234',
-    status: saleData.status || 'DISPATCHED',
-    date: saleData.date || new Date().toISOString().split('T')[0],
-    items: saleData.items || 'Strawberry Box Shipment',
-    farmerBatches: saleData.farmerBatches || [],
-  };
-
-  try {
-    // 1. Insert B2B Sale
-    await supabase.from('Sale').insert([{
-      id: saleObj.id,
-      tenantId,
-      invoiceNo: saleObj.invoiceNo,
-      customerId: saleData.customerId || 'cust-01',
-      totalWeight: Number(saleObj.totalWeight),
-      totalAmount: Number(saleObj.amount),
-      paidAmount: Number(saleObj.amount),
-      dueAmount: 0,
-      paymentStatus: 'PAID',
-      saleDate: new Date(saleObj.date),
-      vehicleNo: saleObj.vehicleNo,
-      vehicleType: saleData.vehicleType || '14-FT Eicher Container',
-      driverName: saleData.driverName || 'Santosh Gaikwad',
-      driverPhone: saleData.driverPhone || '9876543210',
-      ownerName: saleData.ownerName || 'VRL Transport Logistics',
-      ownerPhone: saleData.ownerPhone || '9898989898',
-      vehiclePhotoUrl: saleData.vehiclePhotoUrl || '',
-      driverSignature: 'SIGNED_DIGITALLY',
-      ownerSignature: 'APPROVED_VRL_STAMP',
-      traceabilityLotId: saleObj.farmerBatches.join(','),
-    }]);
-
-    // 2. Insert Sale Item
-    await supabase.from('SaleItem').insert([{
-      id: `sale-item-${Date.now()}`,
-      tenantId,
-      saleId: saleObj.id,
-      cropName: saleObj.cropName,
-      grade: 'A_GRADE',
-      weightKg: Number(saleObj.totalWeight),
-      ratePerKg: Number(saleObj.amount / (saleObj.totalWeight || 1)),
-      totalAmount: Number(saleObj.amount),
-    }]);
-  } catch {}
-
-  const current = getLocalCache(`seavaig_sales_cache_${tenantId}`, []);
-  const updated = [saleObj, ...current];
-  setLocalCache(`seavaig_sales_cache_${tenantId}`, updated);
-  return saleObj;
-};
-
-// ----------------------------------------------------
-// PAYMENTS API (SUPABASE + RESILIENT FALLBACK)
-// ----------------------------------------------------
-export const apiGetPayments = async () => {
-  const tenantId = getTenantId();
-  if (!tenantId) return [];
-  try {
-    const { data, error } = await supabase
-      .from('Payment')
-      .select('*, farmer:Farmer(*)')
-      .eq('tenantId', tenantId)
-      .order('createdAt', { ascending: false });
-    if (!error && data && data.length > 0) {
-      const mapped = data.map((p: any) => ({
-        id: p.id,
-        paymentNo: p.paymentNo || p.id,
-        farmerId: p.farmerId || '',
-        farmerName: p.farmer?.name || p.farmerName || 'Farmer',
-        amount: Number(p.amount || 0),
-        method: p.paymentMode || 'CASH',
-        notes: p.notes || '',
-        date: p.paymentDate ? new Date(p.paymentDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-      }));
-      setLocalCache(`seavaig_payments_cache_${tenantId}`, mapped);
-      return mapped;
-    }
-  } catch {}
-  return getLocalCache(`seavaig_payments_cache_${tenantId}`, []);
-};
-
-export const apiCreatePayment = async (payData: any) => {
-  const tenantId = getTenantId();
-  if (!tenantId) throw new Error('No tenant');
-
-    const today = new Date();
-  const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
-  
-  const { data: latestData } = await supabase
-    .from('Sale')
-    .select('saleNo')
-    .eq('tenantId', tenantId)
-    .like('saleNo', `SAL${ddmmyy}-%`)
-    .order('createdAt', { ascending: false })
-    .limit(1);
-
-  let serial = 1;
-  if (latestData && latestData.length > 0) {
-    const latestStr = latestData[0].saleNo || '';
-    const parts = latestStr.split('-');
-    if (parts.length > 1) {
-      serial = parseInt(parts[parts.length - 1], 10) + 1;
-    }
-  }
-  const newId = `SAL${ddmmyy}-${serial}`;
-  const payObj = {
-    id: newId,
-    tenantId,
-    paymentNo: `PAY-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-    farmerId: payData.farmerId,
-    amount: Number(payData.amount || 0),
-    method: payData.paymentMode || 'CASH',
-    notes: payData.notes || 'Payment Settlement',
-    date: new Date().toISOString().split('T')[0],
-  };
-
-  try {
-    await supabase.from('Payment').insert([{
-      id: payObj.id,
-      tenantId,
-      paymentNo: payObj.paymentNo,
-      farmerId: payObj.farmerId,
-      purchaseId: payData.purchaseId || null,
-      paymentType: payData.paymentType || 'GENERAL_PAYOUT',
-      amount: payObj.amount,
-      paymentMode: payObj.method,
-      paymentDate: new Date(),
-      notes: payObj.notes,
-    }]);
-
-    if (payData.farmerId) {
-      await apiUpdateFarmerBalance(payData.farmerId, payObj.amount, -payObj.amount);
-
-      // FIFO Allocation to Purchases in Supabase
-      let remainingPayment = payObj.amount;
-      const { data: pendingPurchases } = await supabase
-        .from('Purchase')
-        .select('*')
-        .eq('farmerId', payData.farmerId)
-        .gt('dueAmount', 0)
-        .order('purchaseDate', { ascending: true });
-
-      if (pendingPurchases && pendingPurchases.length > 0) {
-        for (const p of pendingPurchases) {
-          if (remainingPayment <= 0) break;
-          
-          const currentDue = Number(p.dueAmount || 0);
-          const currentPaid = Number(p.paidAmount || 0);
-          const allocation = Math.min(currentDue, remainingPayment);
-          
-          const newDue = currentDue - allocation;
-          const newPaid = currentPaid + allocation;
-          const newStatus = newDue <= 0 ? 'PAID' : 'PARTIAL';
-          
-          await supabase.from('Purchase').update({
-            dueAmount: newDue,
-            paidAmount: newPaid,
-            paymentStatus: newStatus
-          }).eq('id', p.id);
-          
-          remainingPayment -= allocation;
-        }
-      }
-    }
-  } catch {}
-
-  // Update Purchases Cache for FIFO
-  const purchasesCache = getLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
-  let remainingPaymentCache = payObj.amount;
-  // Purchases cache is newest first, so we iterate backwards (oldest first)
-  for (let i = purchasesCache.length - 1; i >= 0; i--) {
-    const p = purchasesCache[i];
-    if (p.farmerId === payData.farmerId && remainingPaymentCache > 0 && p.dueAmount > 0) {
-      const allocation = Math.min(p.dueAmount, remainingPaymentCache);
-      remainingPaymentCache -= allocation;
-      const newDue = p.dueAmount - allocation;
-      const newPaid = (p.paidAmount || 0) + allocation;
-      const newStatus = newDue <= 0 ? 'PAID' : 'PARTIAL';
-      purchasesCache[i] = { ...p, dueAmount: newDue, paidAmount: newPaid, paymentStatus: newStatus };
-    }
-  }
-  setLocalCache(`seavaig_purchases_cache_${tenantId}`, purchasesCache);
-
-  const current = getLocalCache(`seavaig_payments_cache_${tenantId}`, []);
-  const farmers = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
-  const f = farmers.find(f => f.id === payObj.farmerId);
-  const cacheObj = {
-    ...payObj,
-    farmerName: f ? f.name : (payData.farmerName || 'Farmer'),
-  };
-  const updated = [cacheObj, ...current];
-  setLocalCache(`seavaig_payments_cache_${tenantId}`, updated);
-
-  return cacheObj;
-};
-
-// ----------------------------------------------------
-// OTHER MODULE APIS (CUSTOMERS, WORKERS, TRADERS, EXPENSES)
-// ----------------------------------------------------
-export const apiGetCustomers = async () => {
-  const tenantId = getTenantId();
-  if (!tenantId) return [];
-  try {
-    const { data, error } = await supabase.from('Customer').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
-    if (!error && data && data.length > 0) {
-      setLocalCache(`seavaig_customers_cache_${tenantId}`, data);
-      return data;
-    }
-  } catch {}
-  return getLocalCache(`seavaig_customers_cache_${tenantId}`, []);
-};
-
-export const apiCreateCustomer = async (custData: any) => {
-  const tenantId = getTenantId();
-  if (!tenantId) throw new Error('No tenant');
-  
-  const current = getLocalCache(`seavaig_customers_cache_${tenantId}`, []);
-  const newId = `cust-${Date.now()}`;
-  const customerObj = {
-    id: newId,
-    tenantId,
-    customerIdCode: custData.customerIdCode || `CUST-2026-${Math.floor(100 + Math.random() * 900)}`,
-    name: custData.name,
-    contactPerson: custData.contactPerson || '',
-    phone: custData.phone,
-    email: custData.email || '',
-    gstNumber: custData.gstNumber || '',
-    address: custData.address || '',
-    totalSales: 0,
-    totalReceived: 0,
-    outstandingAmount: 0,
-    status: 'ACTIVE',
-  };
-
-  try {
-    await supabase.from('Customer').insert([customerObj]);
-  } catch {}
-
-  const updated = [customerObj, ...current];
-  setLocalCache(`seavaig_customers_cache_${tenantId}`, updated);
-  return customerObj;
-};
-
-export const apiGetExpenses = async () => {
-  const tenantId = getTenantId();
-  if (!tenantId) return [];
-  try {
-    const { data, error } = await supabase.from('Expense').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
-    if (!error && data && data.length > 0) {
-      setLocalCache(`seavaig_expenses_cache_${tenantId}`, data);
-      return data;
-    }
-  } catch {}
-  return getLocalCache(`seavaig_expenses_cache_${tenantId}`, []);
-};
-
-export const apiCreateExpense = async (data: any) => {
-  const tenantId = getTenantId();
-  if (!tenantId) throw new Error('No tenant');
-  
-  const newId = `exp-${Date.now()}`;
-  const expenseObj = { ...data, id: newId, tenantId, expenseNo: newId, date: data.date || new Date().toISOString() };
-  try {
-    await supabase.from('Expense').insert([expenseObj]);
-  } catch {}
-  
-  const current = getLocalCache(`seavaig_expenses_cache_${tenantId}`, []);
-  const updated = [expenseObj, ...current];
-  setLocalCache(`seavaig_expenses_cache_${tenantId}`, updated);
-  return expenseObj;
-};
-
-export const apiGetWorkers = async () => {
-  const tenantId = getTenantId();
-  if (!tenantId) return [];
-  try {
-    const { data, error } = await supabase.from('Worker').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
-    if (!error && data) {
-      setLocalCache(`seavaig_workers_cache_${tenantId}`, data);
-      return data;
-    }
-  } catch {}
-  return getLocalCache(`seavaig_workers_cache_${tenantId}`, []);
-};
-
-export const apiCreateWorker = async (data: any) => {
-  const tenantId = getTenantId();
-  if (!tenantId) throw new Error('No tenant');
-  
-  const current = getLocalCache(`seavaig_workers_cache_${tenantId}`, []);
-  const nextNum = current.length + 1;
-  const autoCode = `WRK-${String(nextNum).padStart(2, '0')}`;
-  
-  const workerObj = {
-    ...data,
-    id: `wrk-${Date.now()}`,
-    workerCode: autoCode,
-    tenantId
-  };
-  
-  try {
-    await supabase.from('Worker').insert([workerObj]);
+    
+    // Also save legacy object in localstate if we wanted to
   } catch (e) {
     console.error(e);
   }
@@ -1383,5 +994,50 @@ export const apiUpdateTenant = async (tenantId: string, data: any) => {
   } catch (error) {
     console.error('Error updating tenant:', error);
     return false;
+  }
+};
+
+
+export const apiGetSales = async () => {
+  const tenantId = getTenantId();
+  if (!tenantId) return getLocalCache('seavaig_sales_cache', []);
+  const { data } = await supabase.from('Sale').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+  return data || [];
+};
+
+export const apiCreateSale = async (saleData: any) => {
+  const tenantId = getTenantId();
+  if (!tenantId) throw new Error('No tenant');
+  
+  const today = new Date();
+  const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
+  
+  const { data: latestData } = await supabase
+    .from('Sale')
+    .select('billNo')
+    .eq('tenantId', tenantId)
+    .like('billNo', `${ddmmyy}-%`)
+    .order('createdAt', { ascending: false })
+    .limit(1);
+
+  let serial = 1;
+  if (latestData && latestData.length > 0) {
+    const latestStr = latestData[0].billNo || '';
+    const parts = latestStr.split('-');
+    if (parts.length > 1) {
+      serial = parseInt(parts[parts.length - 1], 10) + 1;
+    }
+  }
+  const newId = `${ddmmyy}-${serial}`;
+  
+  try {
+    await supabase.from('Sale').insert([{
+      ...saleData,
+      id: newId,
+      billNo: newId,
+      tenantId
+    }]);
+  } catch (e) {
+    console.error(e);
   }
 };

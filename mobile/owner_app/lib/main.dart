@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'screens/login_screen.dart';
 import 'updater.dart';
 
 void main() {
@@ -6,7 +9,8 @@ void main() {
 }
 
 class SeavaigOwnerApp extends StatefulWidget {
-  const SeavaigOwnerApp({super.key});
+  final String? initialTenantId;
+  const SeavaigOwnerApp({super.key, this.initialTenantId});
 
   @override
   State<SeavaigOwnerApp> createState() => _SeavaigOwnerAppState();
@@ -29,23 +33,41 @@ class _SeavaigOwnerAppState extends State<SeavaigOwnerApp> {
 
   @override
   Widget build(BuildContext context) {
- 
-    // Check for updates on load
     WidgetsBinding.instance.addPostFrameCallback((_) {
       checkForUpdates(context);
     });
-   return MaterialApp(
+
+    Color primaryColor = const Color(0xFF2563EB); // Default blue
+
+    return FutureBuilder<SharedPreferences>(
+      future: SharedPreferences.getInstance(),
+      builder: (context, snapshot) {
+        if (snapshot.hasData) {
+          final colorString = snapshot.data!.getString('tenantPrimaryColor');
+          if (colorString != null && colorString.startsWith('#')) {
+            try {
+              primaryColor = Color(int.parse(colorString.substring(1, 7), radix: 16) + 0xFF000000);
+            } catch (e) {}
+          }
+        }
+
+        return MaterialApp(
       title: 'SEAVAIG Owner Enterprise Mobile CRM',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB)),
+        colorScheme: ColorScheme.fromSeed(seedColor: primaryColor),
         fontFamily: 'Roboto',
         useMaterial3: true,
       ),
-      home: OwnerMainScreen(
-        currentLanguage: _currentLanguage,
-        onCycleLanguage: _cycleLanguage,
-      ),
+      home: widget.initialTenantId == null 
+        ? const LoginScreen() 
+        : OwnerMainScreen(
+            currentLanguage: _currentLanguage,
+            onCycleLanguage: _cycleLanguage,
+            tenantId: widget.initialTenantId!,
+          ),
+      );
+    });
     );
   }
 }
@@ -53,11 +75,13 @@ class _SeavaigOwnerAppState extends State<SeavaigOwnerApp> {
 class OwnerMainScreen extends StatefulWidget {
   final String currentLanguage;
   final VoidCallback onCycleLanguage;
+  final String tenantId;
 
   const OwnerMainScreen({
     super.key,
     required this.currentLanguage,
     required this.onCycleLanguage,
+    required this.tenantId,
   });
 
   @override
