@@ -42,7 +42,7 @@ export default function FarmerPortalPage() {
     // 2. Payments / Advances (Debits)
     const { data: payData } = await supabase.from('Payment').select('*').eq('entityId', farmerId).eq('entityType', 'FARMER').eq('tenantId', tenantId);
     
-    const parseCustomDate = (dateStr) => {
+    const parseCustomDate = (dateStr: any) => {
       if (!dateStr) return new Date(0);
       try {
         if (dateStr.includes('/')) {
@@ -126,7 +126,7 @@ export default function FarmerPortalPage() {
               ledger.map((item, idx) => (
                 <div key={idx} className="flex justify-between items-center border-b border-slate-50 pb-3 last:border-0">
                   <div className="flex items-start gap-3">
-                    <div className={\`mt-1 \${item._type === 'HARVEST' ? 'text-emerald-500' : 'text-rose-500'}\`}>
+                    <div className={`mt-1 \${item._type === 'HARVEST' ? 'text-emerald-500' : 'text-rose-500'}`}>
                       {item._type === 'HARVEST' ? <ArrowUpCircle className="w-6 h-6" /> : <ArrowDownCircle className="w-6 h-6" />}
                     </div>
                     <div>
@@ -140,7 +140,7 @@ export default function FarmerPortalPage() {
                   </div>
                   
                   <div className="text-right">
-                    <p className={\`font-black \${item._type === 'HARVEST' ? 'text-emerald-600' : 'text-rose-600'}\`}>
+                    <p className={`font-black \${item._type === 'HARVEST' ? 'text-emerald-600' : 'text-rose-600'}`}>
                       {item._type === 'HARVEST' ? '+' : '-'} ₹{item.netAmount || item.totalAmount || item.amount}
                     </p>
                     <p className="text-[10px] font-bold text-slate-400">

@@ -108,7 +108,7 @@ export default function LoginPage() {
           // See if they exist in Customer table but not GlobalSeller yet (legacy sync)
           const { data: custData } = await supabase.from('Customer').select('*').eq('phone', identifier).limit(1);
           if (custData && custData.length > 0) {
-            const newGs = { id: \`gs-\${Date.now()}\`, phone: identifier, name: custData[0].name };
+            const newGs = { id: `gs-\${Date.now()}`, phone: identifier, name: custData[0].name };
             await supabase.from('GlobalSeller').insert([newGs]);
             globalSeller = newGs;
           } else {
@@ -163,9 +163,9 @@ export default function LoginPage() {
                 setErrorMsg('');
                 if (role !== 'OWNER') setIdentifier('');
               }}
-              className={\`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-md transition-all \${
+              className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-md transition-all \${
                 roleTab === role ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }\`}
+              }`}
             >
               {role} PORTAL
             </button>

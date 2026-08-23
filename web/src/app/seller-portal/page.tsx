@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { LogOut, Truck, TrendingUp, Search, Image as ImageIcon } from 'lucide-react';
+import { LogOut, Truck, TrendingUp, Search, Image as ImageIcon, ArrowRight } from "lucide-react";
 
 export default function SellerPortalPage() {
   const router = useRouter();
@@ -65,7 +65,7 @@ export default function SellerPortalPage() {
     if (!newCropName || !newCropRate || !selectedTenant) return;
     
     const rateData = {
-      id: \`rate-\${Date.now()}\`,
+      id: `rate-\${Date.now()}`,
       sellerId: seller.id,
       tenantId: selectedTenant.id,
       cropName: newCropName,
@@ -148,13 +148,13 @@ export default function SellerPortalPage() {
       <div className="flex p-4 gap-2">
         <button 
           onClick={() => setActiveTab('DISPATCHES')}
-          className={\`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-sm transition-all \${activeTab === 'DISPATCHES' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200'}\`}
+          className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-sm transition-all \${activeTab === 'DISPATCHES' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200'}`}
         >
           <Truck className="w-4 h-4" /> Dispatches
         </button>
         <button 
           onClick={() => setActiveTab('RATES')}
-          className={\`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-sm transition-all \${activeTab === 'RATES' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200'}\`}
+          className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-sm transition-all \${activeTab === 'RATES' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200'}`}
         >
           <TrendingUp className="w-4 h-4" /> Market Rates
         </button>

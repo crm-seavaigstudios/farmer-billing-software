@@ -1041,3 +1041,49 @@ export const apiCreateSale = async (saleData: any) => {
     console.error(e);
   }
 };
+
+
+export const apiGetWorkers = async () => {
+  const tenantId = getTenantId();
+  if (!tenantId) return getLocalCache('seavaig_workers_cache', []);
+  const { data } = await supabase.from('Worker').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+  return data || [];
+};
+
+export const apiCreateWorker = async (workerData: any) => {
+  const tenantId = getTenantId();
+  if (!tenantId) throw new Error('No tenant');
+  try {
+    await supabase.from('Worker').insert([{ ...workerData, id: `W${Date.now()}`, tenantId }]);
+  } catch (e) { console.error(e); }
+};
+
+export const apiGetPayments = async () => {
+  const tenantId = getTenantId();
+  if (!tenantId) return getLocalCache('seavaig_payments_cache', []);
+  const { data } = await supabase.from('Payment').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+  return data || [];
+};
+
+export const apiCreatePayment = async (payData: any) => {
+  const tenantId = getTenantId();
+  if (!tenantId) throw new Error('No tenant');
+  try {
+    await supabase.from('Payment').insert([{ ...payData, id: `PAY${Date.now()}`, tenantId }]);
+  } catch (e) { console.error(e); }
+};
+
+export const apiGetCustomers = async () => {
+  const tenantId = getTenantId();
+  if (!tenantId) return getLocalCache('seavaig_customers_cache', []);
+  const { data } = await supabase.from('Customer').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+  return data || [];
+};
+
+export const apiGetExpenses = async () => {
+  const tenantId = getTenantId();
+  if (!tenantId) return getLocalCache('seavaig_expenses_cache', []);
+  const { data } = await supabase.from('Expense').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+  return data || [];
+};
+
