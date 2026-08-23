@@ -53,9 +53,9 @@ export const apiGetDashboardStats = async () => {
     const activeFarmers = farmers.filter((f: any) => f.status !== 'INACTIVE').length || totalFarmers;
     
     // Filter for today
-    const todaysPurchasesList = purchases.filter((p: any) => isToday(p.purchaseDate || p.date));
-    const todaysSalesList = sales.filter((s: any) => isToday(s.saleDate || s.date));
-    const todaysPaymentsList = payments.filter((p: any) => isToday(p.paymentDate || p.date));
+    const todaysPurchasesList = purchases.filter((p: any) => (p.purchaseDate || p.date) === todayStr);
+    const todaysSalesList = sales.filter((s: any) => (s.saleDate || s.date) === todayStr);
+    const todaysPaymentsList = payments.filter((p: any) => (p.paymentDate || p.date) === todayStr);
 
     const todaysPurchase = todaysPurchasesList.reduce((acc: number, p: any) => acc + parseNum(p.totalAmount || p.amount), 0);
     const todaysSales = todaysSalesList.reduce((acc: number, s: any) => acc + parseNum(s.totalAmount || s.amount), 0);
