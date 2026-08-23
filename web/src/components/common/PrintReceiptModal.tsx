@@ -201,7 +201,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
               </div>
               <div className="flex-1">
                 <h2 className="font-black text-slate-900 uppercase tracking-tight text-base text-left">
-                  {tenant?.businessName || tenant?.companyName || 'Agri CRM'}
+                  {tenant?.businessName || 'Agri CRM'}
                 </h2>
                 <p className="text-[11px] font-bold text-slate-500 mt-0.5 text-left">
                   {tenant?.address || 'नांदगाव शाखा, जि. नाशिक (मंडी पावती / Billing Voucher)'}
