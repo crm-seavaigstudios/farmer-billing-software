@@ -14,7 +14,7 @@ export function DailyRatePINWidget() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    if (isUnlocked && tenant?.id) {
+    if (isUnlocked && tenant?.tenantId) {
       loadSellerRates();
     }
   }, [isUnlocked, tenant]);
@@ -25,7 +25,7 @@ export function DailyRatePINWidget() {
     const { data: ratesData } = await supabase
       .from('SellerCropRates')
       .select('*')
-      .eq('tenantId', tenant.id)
+      .eq('tenantId', tenant.tenantId)
       .order('date', { ascending: false });
 
     if (ratesData) {
