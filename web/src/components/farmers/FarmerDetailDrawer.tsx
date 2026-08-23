@@ -142,7 +142,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
         purchase: totalPurchase, 
         paid: totalPaid, 
         material: totalMaterial,
-        outstanding: currentBalance 
+        outstanding: bal 
       });
       setRealTransactions(computed.reverse()); // Newest first for view
     };
