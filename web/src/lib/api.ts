@@ -487,9 +487,13 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     console.error(e);
   }
   
-  const updated = [workerObj, ...current];
-  setLocalCache(`seavaig_workers_cache_${tenantId}`, updated);
-  return workerObj;
+  const current = getLocalCache(seavaig_purchases_cache_${tenantId}, []);
+  const updated = [purchaseObj, ...current];
+  setLocalCache(seavaig_purchases_cache_${tenantId}, updated);
+  if (purchaseData.farmerId) {
+    await updateFarmerOutstanding(purchaseData.farmerId, purchaseObj.dueAmount, purchaseObj.paidAmount);
+  }
+  return purchaseObj;
 };
 // ----------------------------------------------------
 // TRADERS API (SUPABASE INTEGRATED)
