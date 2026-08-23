@@ -167,7 +167,7 @@ export const apiCreateFarmer = async (farmerData: any) => {
   // Update isolated cache
   const mappedObj = {
     ...farmerObj,
-    farmerIdCode: farmerObj.farmerCode
+    farmerIdCode: farmerObj.farmerIdCode
   };
   const updated = [mappedObj, ...current];
   setLocalCache(`seavaig_farmers_cache_${tenantId}`, updated);
