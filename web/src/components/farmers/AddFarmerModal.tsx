@@ -19,7 +19,7 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
     village: '',
     taluka: '',
     district: '',
-    grade: 'A Grade Supplier',
+    grade: 'A_GRADE',
     status: 'ACTIVE',
     aadhaar: '',
     bankName: '',
@@ -99,7 +99,7 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
     onAddFarmer(resultFarmer);
     setFormData({
       name: '', phone: '', village: '', taluka: '', district: '',
-      grade: 'A Grade Supplier', status: 'ACTIVE', aadhaar: '', bankName: '', accountNumber: '', ifscCode: ''
+      grade: 'A_GRADE', status: 'ACTIVE', aadhaar: '', bankName: '', accountNumber: '', ifscCode: ''
     });
     onClose();
   };
