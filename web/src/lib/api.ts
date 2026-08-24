@@ -160,9 +160,7 @@ export const apiCreateFarmer = async (farmerData: any) => {
 
   try {
     await supabase.from('Farmer').insert([farmerObj]).throwOnError();
-  } catch (e) {
-    console.error(e);
-  }
+  } catch (e) { console.error(e); throw e; }
 
   // Update isolated cache
   const mappedObj = {
@@ -483,9 +481,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     }]);
     
     // Also save legacy object in localstate if we wanted to
-  } catch (e) {
-    console.error(e);
-  }
+  } catch (e) { console.error(e); throw e; }
   
   const current = getLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
   const updated = [purchaseObj, ...current];
@@ -794,7 +790,7 @@ export const apiGetUsers = async () => {
   const tenantId = getTenantId();
   if (!tenantId) return [];
   try {
-    const { data, error } = await supabase.from('Worker').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+    const { data, error } = await supabase.from('DailyWorker').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
     if (!error && data) {
       return data.map((u: any) => ({
         id: u.id,
@@ -1041,16 +1037,14 @@ export const apiCreateSale = async (saleData: any) => {
       billNo: newId,
       tenantId
     }]).throwOnError();
-  } catch (e) {
-    console.error(e);
-  }
+  } catch (e) { console.error(e); throw e; }
 };
 
 
 export const apiGetWorkers = async () => {
   const tenantId = getTenantId();
   if (!tenantId) return getLocalCache('seavaig_workers_cache', []);
-  const { data } = await supabase.from('Worker').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+  const { data } = await supabase.from('DailyWorker').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
   return data || [];
 };
 
@@ -1058,8 +1052,8 @@ export const apiCreateWorker = async (workerData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
   try {
-    await supabase.from('Worker').insert([{ ...workerData, id: `W${Date.now()}`, tenantId }]);
-  } catch (e) { console.error(e); }
+    await supabase.from('DailyWorker').insert([{ ...workerData, id: `W${Date.now()}`, tenantId }]);
+  } catch (e) { console.error(e); throw e; }
 };
 
 export const apiGetPayments = async () => {
@@ -1074,7 +1068,7 @@ export const apiCreatePayment = async (payData: any) => {
   if (!tenantId) throw new Error('No tenant');
   try {
     await supabase.from('Payment').insert([{ ...payData, id: `PAY${Date.now()}`, tenantId }]);
-  } catch (e) { console.error(e); }
+  } catch (e) { console.error(e); throw e; }
 };
 
 export const apiGetCustomers = async () => {
