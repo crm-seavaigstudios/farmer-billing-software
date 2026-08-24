@@ -101,16 +101,16 @@ export const apiGetFarmers = async () => {
           farmerIdCode: f.farmerCode || `FAR-${f.id.toString().slice(0, 5)}`,
           name: f.name,
           phone: f.phone,
-          village: f.village || 'Nandgaon',
-          taluka: f.taluka || 'Nashik',
+          village: f.village || '',
+          taluka: f.taluka || '',
           grade: f.grade || 'A_GRADE',
           totalPurchase,
           totalPaid,
           advanceBalance: f.advanceBalance || 0,
           outstandingAmount: due,
-          bankName: f.bankName || 'State Bank of India',
-          accountNumber: f.accountNumber || '30987654321',
-          ifscCode: f.ifscCode || 'SBIN0001234',
+          bankName: f.bankName || '',
+          accountNumber: f.accountNumber || '',
+          ifscCode: f.ifscCode || '',
         };
       });
       setLocalCache(`seavaig_farmers_cache_${tenantId}`, mapped);
@@ -145,16 +145,16 @@ export const apiCreateFarmer = async (farmerData: any) => {
     name: farmerData.name,
     phone: farmerData.phone,
     password: farmerData.phone, // Default password for APK
-    village: farmerData.village || 'Nandgaon',
-    taluka: farmerData.taluka || 'Nashik',
+    village: farmerData.village || '',
+    taluka: farmerData.taluka || '',
     grade: farmerData.grade || 'A_GRADE',
     totalPurchase: 0,
     totalPaid: 0,
     advanceBalance: Number(farmerData.advanceBalance || 0),
     outstandingAmount: 0,
-    bankName: farmerData.bankName || 'State Bank of India',
-    accountNumber: farmerData.accountNumber || '30987654321',
-    ifscCode: farmerData.ifscCode || 'SBIN0001234',
+    bankName: farmerData.bankName || '',
+    accountNumber: farmerData.accountNumber || '',
+    ifscCode: farmerData.ifscCode || '',
     status: 'ACTIVE'
   };
 
@@ -346,8 +346,8 @@ export const apiGetPurchases = async () => {
           farmerId: p.farmerId || '',
           farmerName: p.farmerName || farmer?.name || 'Farmer',
           phone: farmer?.phone || '',
-          village: farmer?.village || 'Nandgaon',
-          crop: p.items?.[0]?.cropName || p.crop || 'Strawberry',
+          village: farmer?.village || '',
+          crop: p.items?.[0]?.cropName || p.crop || '',
           weight: p.totalWeight ? `${p.totalWeight} ${p.items?.[0]?.unit || 'KG'}` : (p.weight || '0 KG'),
           rate: p.items?.[0]?.ratePerKg ? `₹${p.items[0].ratePerKg}/${p.items[0].unit || 'KG'}` : (p.rate || '₹0/KG'),
           amount: parseFloat(p.totalAmount) || 0,
@@ -453,7 +453,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     purchaseNo: newId,
     farmerId: purchaseData.farmerId,
     farmerName: purchaseData.farmerName || 'Farmer',
-    crop: item?.cropName || 'Strawberry',
+    crop: item?.cropName || '',
     weight: `${item?.weightKg || 0} ${item?.unit || 'KG'}`,
     rate: `₹${item?.ratePerKg || 0}/${item?.unit || 'KG'}`,
     amount: purAmt,
@@ -461,7 +461,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     dueAmount: Number(purchaseData.dueAmount ?? purAmt),
     paymentStatus: purchaseData.paymentStatus || 'UNPAID',
     date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-    storageLocation: purchaseData.storageLocation || 'Main Cold Room'
+    storageLocation: purchaseData.storageLocation || ''
   };
 
   try {
