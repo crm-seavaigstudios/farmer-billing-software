@@ -359,7 +359,7 @@ export const apiGetPurchases = async () => {
           paidAmount: parseFloat(p.paidAmount) || 0,
           dueAmount: parseFloat(p.dueAmount) || 0,
           paymentStatus: p.paymentStatus || 'UNPAID',
-          date: p.purchaseDate ? new Date(p.purchaseDate).toISOString().split('T')[0] : (p.date || new Date().toISOString().split('T')[0]),
+          date: p.date || (p.purchaseDate ? p.purchaseDate.split('T')[0] : new Date().toLocaleDateString('en-CA')),
         };
       });
       setLocalCache(`seavaig_purchases_cache_${tenantId}`, mapped);
@@ -1064,8 +1064,21 @@ export const apiCreateWorker = async (workerData: any) => {
 export const apiGetPayments = async () => {
   const tenantId = getTenantId();
   if (!tenantId) return getLocalCache('seavaig_payments_cache', []);
-  const { data } = await supabase.from('Payment').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
-  return data || [];
+  const { data } = await supabase.from('Payment').select('*, farmer:Farmer(name, phone, village)').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+  if (data && data.length > 0) {
+    const mapped = data.map(p => ({
+      ...p,
+      farmerName: p.farmerName || p.farmer?.name || 'Unknown Farmer',
+      phone: p.farmer?.phone || '',
+      village: p.farmer?.village || '',
+      method: p.paymentMode || 'CASH',
+      status: p.status || 'COMPLETED',
+      date: p.date || (p.paymentDate ? p.paymentDate.split('T')[0] : new Date(p.createdAt).toLocaleDateString('en-CA')),
+    }));
+    setLocalCache('seavaig_payments_cache', mapped);
+    return mapped;
+  }
+  return [];
 };
 
 export const apiCreatePayment = async (payData: any) => {
