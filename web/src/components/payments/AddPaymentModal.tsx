@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, ShieldCheck, Receipt } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiCreatePayment, apiGetFarmers } from '@/lib/api';
+import { apiCreatePayment, apiGetFarmers, apiUpdateFarmerBalance, apiUpdatePurchase } from '@/lib/api';
 
 interface AddPaymentModalProps {
   isOpen: boolean;
@@ -89,6 +89,19 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
     };
 
     await apiCreatePayment(payload);
+
+    if (formData.farmerId) {
+      await apiUpdateFarmerBalance(formData.farmerId, numericAmount, -numericAmount);
+    }
+    if (formData.purchaseId && initialAmount !== undefined) {
+      const newPaid = numericAmount;
+      const newDue = Math.max(0, initialAmount - numericAmount);
+      await apiUpdatePurchase(formData.purchaseId, {
+        paidAmount: newPaid,
+        dueAmount: newDue,
+        paymentStatus: newDue === 0 ? 'PAID' : 'PARTIAL'
+      });
+    }
 
     const newPayment = {
       id: `PAY-2026-${Math.floor(1000 + Math.random() * 9000)}`,
