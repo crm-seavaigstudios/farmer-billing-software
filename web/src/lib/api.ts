@@ -98,7 +98,7 @@ export const apiGetFarmers = async () => {
           : Math.max(0, totalPurchase - totalPaid);
         return {
           id: f.id,
-          farmerIdCode: f.farmerCode || `FAR-${f.id.toString().slice(0, 5)}`,
+          farmerIdCode: f.farmerIdCode || `FAR-${f.id.toString().slice(0, 5)}`,
           name: f.name,
           phone: f.phone,
           village: f.village || '',
