@@ -280,15 +280,14 @@ export default function PurchasesPage() {
     return dateMatch && textMatch;
   });
 
-  const totalAdvance = 0;
-  const totalPaid = filteredPurchases.filter(p => p.paymentStatus === 'PAID').reduce((acc, p) => acc + parseNum(p.amount), 0);
-  const paidFarmersCount = filteredPurchases.filter(p => p.paymentStatus === 'PAID').length;
+  const totalPurchased = filteredPurchases.reduce((acc, p) => acc + parseNum(p.amount), 0);
+  const totalPaid = filteredPurchases.reduce((acc, p) => acc + parseNum(p.paidAmount), 0);
+  const paidFarmersCount = new Set(filteredPurchases.filter(p => parseNum(p.paidAmount) > 0).map(p => p.farmerId)).size;
 
-  const totalUnpaid = filteredPurchases.filter(p => p.paymentStatus === 'UNPAID' || p.paymentStatus === 'PARTIAL').reduce((acc, p) => acc + parseNum(p.dueAmount), 0);
-  const unpaidFarmersCount = filteredPurchases.filter(p => p.paymentStatus === 'UNPAID' || p.paymentStatus === 'PARTIAL').length;
+  const totalUnpaid = filteredPurchases.reduce((acc, p) => acc + parseNum(p.dueAmount), 0);
+  const unpaidFarmersCount = new Set(filteredPurchases.filter(p => parseNum(p.dueAmount) > 0).map(p => p.farmerId)).size;
 
-  const totalOutstanding = totalUnpaid;
-  const outstandingFarmersCount = unpaidFarmersCount;
+  const totalFarmers = new Set(filteredPurchases.map(p => p.farmerId)).size;
 
   const handleTimelineChange = (filter: TimelineFilter, startDate?: string, endDate?: string) => {
     setTimelineFilter(filter);
@@ -298,17 +297,20 @@ export default function PurchasesPage() {
 
 
 
-  const handleCategoryClick = (category: 'ADVANCE' | 'PAID' | 'UNPAID' | 'OUTSTANDING') => {
-    setCategoryType(category);
-    if (category === 'ADVANCE') {
-      setCategoryModalTitle('Farmers with Advance Credit (अ‍ॅडव्हान्स जमा)');
-      setCategoryModalFarmers([]);
+  const handleCategoryClick = (category: 'PURCHASED' | 'PAID' | 'UNPAID' | 'FARMERS') => {
+    setCategoryType(category as any);
+    if (category === 'PURCHASED') {
+      setCategoryModalTitle('All Purchases (सर्व खरेदी)');
+      setCategoryModalFarmers(filteredPurchases.map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, dueAmount: parseNum(p.amount) })));
     } else if (category === 'PAID') {
       setCategoryModalTitle(`Fully Paid Purchase Bills (${paidFarmersCount} Farmers)`);
-      setCategoryModalFarmers(filteredPurchases.filter(p => p.paymentStatus === 'PAID').map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, totalPaid: parseNum(p.amount) })));
-    } else if (category === 'UNPAID' || category === 'OUTSTANDING') {
+      setCategoryModalFarmers(filteredPurchases.filter(p => parseNum(p.paidAmount) > 0).map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, totalPaid: parseNum(p.paidAmount) })));
+    } else if (category === 'UNPAID') {
       setCategoryModalTitle(`Farmers with Pending Outstanding Bills (${unpaidFarmersCount} Farmers)`);
-      setCategoryModalFarmers(filteredPurchases.filter(p => p.paymentStatus !== 'PAID').map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, dueAmount: parseNum(p.dueAmount), outstandingAmount: parseNum(p.dueAmount) })));
+      setCategoryModalFarmers(filteredPurchases.filter(p => parseNum(p.dueAmount) > 0).map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village, dueAmount: parseNum(p.dueAmount), outstandingAmount: parseNum(p.dueAmount) })));
+    } else if (category === 'FARMERS') {
+      setCategoryModalTitle(`All Unique Farmers (${totalFarmers} Farmers)`);
+      setCategoryModalFarmers(filteredPurchases.map(p => ({ id: p.farmerId, farmerIdCode: p.id, name: p.farmerName, phone: p.phone, village: p.village })));
     }
     setIsCategoryModalOpen(true);
   };
@@ -350,13 +352,12 @@ export default function PurchasesPage() {
 
           {/* FINANCIAL SUMMARY BAR WITH TIMELINE FILTER & DRILL-DOWN */}
           <FinancialSummaryBar
-            totalAdvance={totalAdvance}
+            totalPurchased={totalPurchased}
             totalPaid={totalPaid}
             paidFarmersCount={paidFarmersCount}
             totalUnpaid={totalUnpaid}
             unpaidFarmersCount={unpaidFarmersCount}
-            totalOutstanding={totalOutstanding}
-            outstandingFarmersCount={outstandingFarmersCount}
+            totalFarmers={totalFarmers}
             onTimelineChange={handleTimelineChange}
             onCategoryClick={handleCategoryClick}
           />

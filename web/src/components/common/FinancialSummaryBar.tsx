@@ -16,25 +16,23 @@ import {
 export type TimelineFilter = 'ALL_TIME' | 'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'WEEK' | 'MONTH' | 'SEASON' | 'CUSTOM';
 
 interface FinancialSummaryBarProps {
-  totalAdvance: number;
+  totalPurchased: number;
   totalPaid: number;
   paidFarmersCount: number;
   totalUnpaid: number;
   unpaidFarmersCount: number;
-  totalOutstanding: number;
-  outstandingFarmersCount: number;
+  totalFarmers: number;
   onTimelineChange: (filter: TimelineFilter, startDate?: string, endDate?: string) => void;
-  onCategoryClick: (category: 'ADVANCE' | 'PAID' | 'UNPAID' | 'OUTSTANDING') => void;
+  onCategoryClick: (category: 'PURCHASED' | 'PAID' | 'UNPAID' | 'FARMERS') => void;
 }
 
 export const FinancialSummaryBar: React.FC<FinancialSummaryBarProps> = ({
-  totalAdvance,
+  totalPurchased,
   totalPaid,
   paidFarmersCount,
   totalUnpaid,
   unpaidFarmersCount,
-  totalOutstanding,
-  outstandingFarmersCount,
+  totalFarmers,
   onTimelineChange,
   onCategoryClick,
 }) => {
@@ -149,9 +147,9 @@ export const FinancialSummaryBar: React.FC<FinancialSummaryBarProps> = ({
 
       {/* 4 INTERACTIVE FINANCIAL SUMMARY CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Advance */}
+        {/* Card 1: Total Purchased */}
         <div
-          onClick={() => onCategoryClick('ADVANCE')}
+          onClick={() => onCategoryClick('PURCHASED')}
           className="bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-blue-500/50 rounded-2xl p-4 cursor-pointer transition-all hover:scale-102 shadow-lg group"
         >
           <div className="flex items-center justify-between">
@@ -161,11 +159,11 @@ export const FinancialSummaryBar: React.FC<FinancialSummaryBarProps> = ({
             <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-blue-400 transition-colors" />
           </div>
           <div className="mt-3">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Advance Issued (अ‍ॅडव्हान्स)</p>
-            <p className="text-xl font-black text-white mt-0.5">₹{totalAdvance.toLocaleString('en-IN')}</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Purchased (एकूण खरेदी)</p>
+            <p className="text-xl font-black text-white mt-0.5">₹{totalPurchased.toLocaleString('en-IN')}</p>
             <p className="text-[10px] font-semibold text-blue-400 mt-1 flex items-center gap-1">
               <Users className="w-3 h-3" />
-              Click to view advance list
+              Click to view all purchases
             </p>
           </div>
         </div>
@@ -203,7 +201,7 @@ export const FinancialSummaryBar: React.FC<FinancialSummaryBarProps> = ({
             <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-rose-400 transition-colors" />
           </div>
           <div className="mt-3">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Unpaid Bills (प्रलंबित बिल)</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pending Outstanding (बाकी देय)</p>
             <p className="text-xl font-black text-rose-400 mt-0.5">₹{totalUnpaid.toLocaleString('en-IN')}</p>
             <p className="text-[10px] font-bold text-slate-300 mt-1 flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full w-fit">
               <Users className="w-3 h-3 text-rose-400" />
@@ -212,23 +210,23 @@ export const FinancialSummaryBar: React.FC<FinancialSummaryBarProps> = ({
           </div>
         </div>
 
-        {/* Card 4: Net Outstanding */}
+        {/* Card 4: Total Farmers */}
         <div
-          onClick={() => onCategoryClick('OUTSTANDING')}
+          onClick={() => onCategoryClick('FARMERS')}
           className="bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-amber-500/50 rounded-2xl p-4 cursor-pointer transition-all hover:scale-102 shadow-lg group"
         >
           <div className="flex items-center justify-between">
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
-              <Clock className="w-5 h-5" />
+              <Users className="w-5 h-5" />
             </div>
             <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 transition-colors" />
           </div>
           <div className="mt-3">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Net Outstanding (बाकी देय)</p>
-            <p className="text-xl font-black text-amber-400 mt-0.5">₹{totalOutstanding.toLocaleString('en-IN')}</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Unique Farmers (शेतकरी)</p>
+            <p className="text-xl font-black text-amber-400 mt-0.5">{totalFarmers}</p>
             <p className="text-[10px] font-bold text-slate-300 mt-1 flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full w-fit">
-              <Users className="w-3 h-3 text-amber-400" />
-              For {outstandingFarmersCount} Farmers (शेतकरी)
+              <CheckCircle2 className="w-3 h-3 text-amber-400" />
+              Active Farmers
             </p>
           </div>
         </div>
