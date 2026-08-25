@@ -125,7 +125,7 @@ export const apiGetFarmerDetails = async (id: string) => {
     const { data } = await supabase.from('Farmer').select('*').eq('id', id).single();
     if (data) return data;
   } catch {}
-  const list = getLocalCache('seavaig_farmers_cache', []);
+  const list = getLocalCache(`seavaig_farmers_cache_${getTenantId()}`, []);
   return list.find((f: any) => f.id === id || f.farmerIdCode === id) || null;
 };
 
@@ -405,7 +405,10 @@ export const apiUpdateFarmerBalance = async (farmerId: string, paidAmt: number, 
     }
   } catch {}
 
-  const farmers = getLocalCache('seavaig_farmers_cache', []);
+  const tenantId = getTenantId();
+  if (!tenantId) return;
+
+  const farmers = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
   const updatedFarmers = farmers.map((f: any) => {
     if (f.id === farmerId) {
       const newTotalPaid = (f.totalPaid || 0) + paidAmt;
@@ -422,7 +425,7 @@ export const apiUpdateFarmerBalance = async (farmerId: string, paidAmt: number, 
     }
     return f;
   });
-  setLocalCache('seavaig_farmers_cache', updatedFarmers);
+  setLocalCache(`seavaig_farmers_cache_${tenantId}`, updatedFarmers);
 };
 
 export const apiCreatePurchase = async (purchaseData: any) => {
