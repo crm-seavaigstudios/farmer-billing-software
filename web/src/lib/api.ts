@@ -330,21 +330,26 @@ export const apiGetPurchases = async () => {
   const tenantId = getTenantId();
   if (!tenantId) return [];
   try {
-    const { data, error } = await supabase
+    const { data: purchaseData, error } = await supabase
       .from('Purchase')
       .select('*, items:PurchaseItem(*)')
       .eq('tenantId', tenantId)
       .order('createdAt', { ascending: false });
 
-    if (!error && data && data.length > 0) {
-      const farmers = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
-      const mapped = data.map((p: any) => {
+    const { data: farmerData } = await supabase
+      .from('Farmer')
+      .select('*')
+      .eq('tenantId', tenantId);
+
+    if (!error && purchaseData && purchaseData.length > 0) {
+      const farmers = farmerData || [];
+      const mapped = purchaseData.map((p: any) => {
         const farmer = farmers.find((f: any) => f.id === p.farmerId);
         return {
           id: p.purchaseNo || p.id,
           purchaseNo: p.purchaseNo || p.id,
           farmerId: p.farmerId || '',
-          farmerName: p.farmerName || farmer?.name || 'Farmer',
+          farmerName: p.farmerName || farmer?.name || 'Unknown Farmer',
           phone: farmer?.phone || '',
           village: farmer?.village || '',
           crop: p.items?.[0]?.cropName || p.crop || '',
@@ -376,9 +381,9 @@ export const apiUpdatePurchase = async (id: string, updateData: any) => {
     await supabase.from('Purchase').update(payload).eq('purchaseNo', id).throwOnError();
   } catch {}
 
-  const current = getLocalCache('seavaig_purchases_cache', []);
+  const current = getLocalCache(`seavaig_purchases_cache_${getTenantId()}`, []);
   const updated = current.map((p: any) => (p.id === id ? { ...p, ...updateData } : p));
-  setLocalCache('seavaig_purchases_cache', updated);
+  setLocalCache(`seavaig_purchases_cache_${getTenantId()}`, updated);
   return updated;
 };
 
