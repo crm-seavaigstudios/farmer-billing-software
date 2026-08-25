@@ -326,6 +326,13 @@ export const apiAddLocation = async (name: string) => {
 // ----------------------------------------------------
 // PURCHASES API
 // ----------------------------------------------------
+export const apiGetPurchaseDetails = async (purchaseNo: string) => {
+  const tenantId = getTenantId();
+  if (!tenantId) return null;
+  const { data } = await supabase.from('Purchase').select('*').eq('purchaseNo', purchaseNo).eq('tenantId', tenantId).single();
+  return data;
+};
+
 export const apiGetPurchases = async () => {
   const tenantId = getTenantId();
   if (!tenantId) return [];

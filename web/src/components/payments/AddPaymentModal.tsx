@@ -93,14 +93,18 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
     if (formData.farmerId) {
       await apiUpdateFarmerBalance(formData.farmerId, numericAmount, -numericAmount);
     }
-    if (formData.purchaseId && initialAmount !== undefined) {
-      const newPaid = numericAmount;
-      const newDue = Math.max(0, initialAmount - numericAmount);
-      await apiUpdatePurchase(formData.purchaseId, {
-        paidAmount: newPaid,
-        dueAmount: newDue,
-        paymentStatus: newDue === 0 ? 'PAID' : 'PARTIAL'
-      });
+    if (formData.purchaseId) {
+      const { apiGetPurchaseDetails } = await import('@/lib/api');
+      const purchase = await apiGetPurchaseDetails(formData.purchaseId);
+      if (purchase) {
+        const newPaid = (purchase.paidAmount || 0) + numericAmount;
+        const newDue = Math.max(0, (purchase.dueAmount || 0) - numericAmount);
+        await apiUpdatePurchase(formData.purchaseId, {
+          paidAmount: newPaid,
+          dueAmount: newDue,
+          paymentStatus: newDue === 0 ? 'PAID' : 'PARTIAL'
+        });
+      }
     }
 
     const newPayment = {
