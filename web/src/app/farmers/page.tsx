@@ -74,34 +74,33 @@ export default function FarmersPage() {
   };
 
   // Dynamic Financial Metrics Calculation
-  const totalAdvance = farmers.reduce((acc, f) => acc + (f.advanceBalance || 0), 0);
+  const totalPurchased = farmers.reduce((acc, f) => acc + (f.totalPurchase || 0), 0);
   const totalPaid = farmers.reduce((acc, f) => acc + (f.totalPaid || 0), 0);
   const paidFarmersCount = farmers.filter((f) => (f.totalPaid || 0) > 0).length;
 
   const totalUnpaid = farmers.reduce((acc, f) => acc + (f.outstandingAmount || 0), 0);
   const unpaidFarmersCount = farmers.filter((f) => (f.outstandingAmount || 0) > 0).length;
 
-  const totalOutstanding = farmers.reduce((acc, f) => acc + (f.outstandingAmount || 0), 0);
-  const outstandingFarmersCount = farmers.filter((f) => (f.outstandingAmount || 0) > 0).length;
+  const totalFarmers = farmers.length;
 
   const handleTimelineChange = (filter: TimelineFilter, startDate?: string, endDate?: string) => {
     console.log('Timeline changed to:', filter, startDate, endDate);
   };
 
-  const handleCategoryClick = (category: 'ADVANCE' | 'PAID' | 'UNPAID' | 'OUTSTANDING') => {
-    setCategoryType(category);
-    if (category === 'ADVANCE') {
-      setCategoryModalTitle('Farmers with Active Advance Credit (अ‍ॅडव्हान्स शेतकरी)');
-      setCategoryModalFarmers(farmers.filter((f) => (f.advanceBalance || 0) > 0));
+  const handleCategoryClick = (category: 'PURCHASED' | 'PAID' | 'UNPAID' | 'FARMERS') => {
+    setCategoryType(category as any);
+    if (category === 'PURCHASED') {
+      setCategoryModalTitle(`All Farmers Purchases (${totalFarmers} Farmers)`);
+      setCategoryModalFarmers(farmers.filter((f) => (f.totalPurchase || 0) > 0));
     } else if (category === 'PAID') {
       setCategoryModalTitle(`Fully / Partially Paid Farmers (${paidFarmersCount} Farmers)`);
       setCategoryModalFarmers(farmers.filter((f) => (f.totalPaid || 0) > 0));
     } else if (category === 'UNPAID') {
       setCategoryModalTitle(`Farmers with Unpaid Bills (${unpaidFarmersCount} Farmers)`);
       setCategoryModalFarmers(farmers.filter((f) => (f.outstandingAmount || 0) > 0));
-    } else if (category === 'OUTSTANDING') {
-      setCategoryModalTitle(`Farmers with Outstanding Balance (${outstandingFarmersCount} Farmers)`);
-      setCategoryModalFarmers(farmers.filter((f) => (f.outstandingAmount || 0) > 0));
+    } else if (category === 'FARMERS') {
+      setCategoryModalTitle(`All Active Farmers (${totalFarmers} Farmers)`);
+      setCategoryModalFarmers(farmers);
     }
     setIsCategoryModalOpen(true);
   };
@@ -150,13 +149,12 @@ export default function FarmersPage() {
 
           {/* FINANCIAL SUMMARY BAR WITH TIMELINE FILTER & DRILL-DOWN */}
           <FinancialSummaryBar
-            totalAdvance={totalAdvance}
+            totalPurchased={totalPurchased}
             totalPaid={totalPaid}
             paidFarmersCount={paidFarmersCount}
             totalUnpaid={totalUnpaid}
             unpaidFarmersCount={unpaidFarmersCount}
-            totalOutstanding={totalOutstanding}
-            outstandingFarmersCount={outstandingFarmersCount}
+            totalFarmers={totalFarmers}
             onTimelineChange={handleTimelineChange}
             onCategoryClick={handleCategoryClick}
           />
