@@ -1,6 +1,0 @@
-250826-1: {
-  id: '250826-1',
-  purchaseNo: '250826-1',
-  paidAmount: 1001,
-  dueAmount: 28999
-}
