@@ -35,7 +35,7 @@ export function AddFarmerAdvanceModal({
       farmerId,
       amount: amountNum,
       paymentMode,
-      paymentType: 'PRE_HARVEST_ADVANCE',
+      paymentType: 'ADVANCE_PAYOUT',
       notes,
     });
 

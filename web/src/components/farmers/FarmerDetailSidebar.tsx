@@ -171,7 +171,7 @@ export function FarmerDetailSidebar({ farmerId, refreshKey, onClose, onOpenMater
     combinedEvents.push({
       id: p.purchaseNo || p.purchaseBillNo || p.id,
       date: dateStr,
-      rawDate: parseDateRobust(dateStr).getTime() || Date.now(),
+      rawDate: p.createdAt ? new Date(p.createdAt).getTime() : parseDateRobust(dateStr).getTime() || Date.now(),
       type: 'CREDIT',
       title: `Harvest Purchase: ${p.crop || p.cropName || 'Crop Harvest'}`,
       subtitle: `${p.weight || p.totalQuantityKg || ''} @ ${p.rate || p.ratePerKg || ''}`,
@@ -187,7 +187,7 @@ export function FarmerDetailSidebar({ farmerId, refreshKey, onClose, onOpenMater
     combinedEvents.push({
       id: pay.id,
       date: dateStr,
-      rawDate: parseDateRobust(dateStr).getTime() || Date.now(),
+      rawDate: pay.createdAt ? new Date(pay.createdAt).getTime() : parseDateRobust(dateStr).getTime() || Date.now(),
       type: 'DEBIT',
       title: pay.paymentType === 'PRE_HARVEST_ADVANCE' || pay.paymentType === 'ADVANCE_PAYOUT' ? `Advance Given: ${pay.notes || pay.method}` : `Farmer Payout: ${pay.notes || pay.method || 'Payout Settlement'}`,
       subtitle: `Payment via ${pay.method || pay.paymentMode || 'Cash/Bank'}`,
@@ -203,7 +203,7 @@ export function FarmerDetailSidebar({ farmerId, refreshKey, onClose, onOpenMater
     combinedEvents.push({
       id: m.id,
       date: dateStr,
-      rawDate: parseDateRobust(dateStr).getTime() || Date.now(),
+      rawDate: m.createdAt ? new Date(m.createdAt).getTime() : parseDateRobust(dateStr).getTime() || Date.now(),
       type: 'DEBIT',
       title: `Material Supply: ${m.itemName}`,
       subtitle: `Qty: ${m.quantity} @ ₹${m.unitPrice || 0}/unit`,

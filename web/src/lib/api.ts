@@ -358,7 +358,11 @@ export const apiAddLocation = async (name: string) => {
 export const apiGetPurchaseDetails = async (purchaseNo: string) => {
   const tenantId = getTenantId();
   if (!tenantId) return null;
-  const { data } = await supabase.from('Purchase').select('*').eq('purchaseNo', purchaseNo).eq('tenantId', tenantId).single();
+  const { data } = await supabase.from('Purchase')
+    .select('*')
+    .or(`id.eq.${purchaseNo},purchaseNo.eq.${purchaseNo}`)
+    .eq('tenantId', tenantId)
+    .single();
   return data;
 };
 
@@ -420,7 +424,7 @@ export const apiUpdatePurchase = async (id: string, updateData: any) => {
   }
   
   try {
-    await supabase.from('Purchase').update(payload).eq('purchaseNo', id).throwOnError();
+    await supabase.from('Purchase').update(payload).or(`id.eq.${id},purchaseNo.eq.${id}`).throwOnError();
     
     // Update PurchaseItem crop details if modified
     if (updateData.crop !== undefined || updateData.rate !== undefined || updateData.weight !== undefined) {

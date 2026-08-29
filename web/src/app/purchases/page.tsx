@@ -206,7 +206,7 @@ export default function PurchasesPage() {
       const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
       allItems.push({
          dateStr: x.date,
-         timestamp: parseDateRobust(x.purchaseDate || x.date).getTime() || 0,
+         timestamp: x.createdAt ? new Date(x.createdAt).getTime() : parseDateRobust(x.purchaseDate || x.date).getTime() || 0,
          refNo: x.id,
          type: 'PURCHASE',
          description: x.crop || 'Crop Purchase',
@@ -219,7 +219,7 @@ export default function PurchasesPage() {
       const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
       allItems.push({
          dateStr: x.date,
-         timestamp: parseDateRobust(x.date).getTime() || 0,
+         timestamp: x.createdAt ? new Date(x.createdAt).getTime() : parseDateRobust(x.date).getTime() || 0,
          refNo: x.id,
          type: 'PAYMENT',
          description: `Payment (${x.method})`,
@@ -232,7 +232,7 @@ export default function PurchasesPage() {
       const amt = typeof x.totalAmount === 'number' ? x.totalAmount : parseFloat(String(x.totalAmount).replace(/[^0-9.-]+/g, '')) || 0;
       allItems.push({
          dateStr: x.createdAt ? parseDateRobust(x.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Unknown',
-         timestamp: parseDateRobust(x.createdAt || 0).getTime(),
+         timestamp: x.createdAt ? new Date(x.createdAt).getTime() : 0,
          refNo: x.id,
          type: 'MATERIAL',
          description: `Material Issue: ${x.itemName}`,
