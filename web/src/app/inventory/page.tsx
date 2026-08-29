@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetInventory, apiGetPurchases, apiGetSales, apiGetAllFarmerMaterials, apiGetTraderPurchases, apiGetLocations, apiAddLocation } from '@/lib/api';
+import { apiGetInventory, apiGetPurchases, apiGetSales, apiGetAllFarmerMaterials, apiGetTraderPurchases, apiGetLocations, apiAddLocation, getTenantId } from '@/lib/api';
 import {
   Package,
   Thermometer,
@@ -44,7 +44,9 @@ export default function InventoryPage() {
   const defaultBatches: any[] = [];
 
   useEffect(() => {
-    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_inventory_cache') : null;
+    const tenantId = getTenantId();
+    const cacheKey = tenantId ? `seavaig_inventory_cache_${tenantId}` : 'seavaig_inventory_cache';
+    const cached = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
@@ -156,8 +158,10 @@ export default function InventoryPage() {
       });
 
       setBatches(formatted);
+      const tenantId = getTenantId();
+      const cacheKey = tenantId ? `seavaig_inventory_cache_${tenantId}` : 'seavaig_inventory_cache';
       if (typeof window !== 'undefined') {
-        localStorage.setItem('seavaig_inventory_cache', JSON.stringify(formatted));
+        localStorage.setItem(cacheKey, JSON.stringify(formatted));
       }
     }
     loadData();
@@ -184,8 +188,10 @@ export default function InventoryPage() {
     };
     const updated = [newB, ...batches];
     setBatches(updated);
+    const tenantId = getTenantId();
+    const cacheKey = tenantId ? `seavaig_inventory_cache_${tenantId}` : 'seavaig_inventory_cache';
     if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_inventory_cache', JSON.stringify(updated));
+      localStorage.setItem(cacheKey, JSON.stringify(updated));
     }
     setIsAddStockOpen(false);
   };
@@ -195,8 +201,10 @@ export default function InventoryPage() {
       b.id === id ? { ...b, room: b.room.includes('Transferred') ? b.room : `${b.room} (Transferred)` } : b
     );
     setBatches(updated);
+    const tenantId = getTenantId();
+    const cacheKey = tenantId ? `seavaig_inventory_cache_${tenantId}` : 'seavaig_inventory_cache';
     if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_inventory_cache', JSON.stringify(updated));
+      localStorage.setItem(cacheKey, JSON.stringify(updated));
     }
     setTransferSuccess(true);
     setTimeout(() => setTransferSuccess(false), 3000);

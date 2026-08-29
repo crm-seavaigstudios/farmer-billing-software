@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, ShoppingBag, Calculator, ShieldCheck, Plus, Sparkles, Search, Check, ChevronDown } from 'lucide-react';
-import { apiGetCrops, apiCreateCrop, apiGetFarmers, apiCreatePurchase, apiGetFarmerMaterials, apiGetPayments, apiGetLocations } from '@/lib/api';
+import { apiGetCrops, apiCreateCrop, apiGetFarmers, apiCreatePurchase, apiGetFarmerMaterials, apiGetPayments, apiGetLocations, getTenantId } from '@/lib/api';
 interface AddPurchaseModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -52,7 +52,9 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
       }
 
       // Check local cache first for instant zero-data-loss farmer list
-      const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+      const tenantId = getTenantId();
+      const cacheKey = tenantId ? `seavaig_farmers_cache_${tenantId}` : 'seavaig_farmers_cache';
+      const cached = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
       let cachedFarmers: any[] = [];
       if (cached) {
         try {
@@ -165,6 +167,10 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     const activeCropName = isAddingCustomCrop ? customCropName : selectedCrop;
     const activeCategory = isCustomCategoryActive ? customCategoryText : packagingCategory;
 
+    const activeAdvanceApplied = deductionMode === 'AUTO_FIFO'
+      ? Math.min(selectedFarmer?.advanceBalance || 0, calculatedTotal)
+      : customAdvancesTotal;
+
     const payload = {
       farmerId: selectedFarmer?.id || 'far-01',
       farmerName: selectedFarmer?.name || 'Farmer',
@@ -179,7 +185,9 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
         unit: unit,
         packagingCategory: activeCategory
       }],
-      storageLocation: selectedLocation
+      storageLocation: selectedLocation,
+      advanceApplied: activeAdvanceApplied,
+      deductedMaterialIds: deductionMode === 'CUSTOM' ? selectedMaterialIds : []
     };
 
     const savedPurchase = await apiCreatePurchase(payload);
@@ -191,19 +199,24 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
       category: activeCategory,
     };
 
-    // Mark checked materials as deducted in cache
+    // Mark checked materials as deducted in DB and local cache
     if (deductionMode === 'CUSTOM' && selectedMaterialIds.length > 0) {
-      const cachedMats = typeof window !== 'undefined' ? localStorage.getItem('seavaig_material_supplies_cache') : null;
+      const { apiDeductFarmerMaterials, getTenantId } = await import('@/lib/api');
+      await apiDeductFarmerMaterials(selectedMaterialIds, savedPurchase.id);
+      
+      const tenantId = getTenantId();
+      const cacheKey = tenantId ? `seavaig_material_supplies_cache_${tenantId}` : 'seavaig_material_supplies_cache';
+      const cachedMats = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
       if (cachedMats) {
         try {
           const list = JSON.parse(cachedMats);
           const updated = list.map((m: any) => {
             if (selectedMaterialIds.includes(m.id)) {
-              return { ...m, isDeductedFromBill: true, deductedFromBillNo: savedPurchase.id };
+              return { ...m, isDeductedFromBill: true, purchaseBillId: savedPurchase.id };
             }
             return m;
           });
-          localStorage.setItem('seavaig_material_supplies_cache', JSON.stringify(updated));
+          localStorage.setItem(cacheKey, JSON.stringify(updated));
         } catch {}
       }
     }

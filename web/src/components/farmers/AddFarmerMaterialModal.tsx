@@ -43,26 +43,7 @@ export function AddFarmerMaterialModal({ isOpen, onClose, farmerId, onSuccess }:
       notes,
     });
 
-    // Instantly update farmer advance balance in local cache
-    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
-    if (cached) {
-      try {
-        const farmersList = JSON.parse(cached);
-        if (Array.isArray(farmersList)) {
-          const updated = farmersList.map((f: any) => {
-            if (f.id === farmerId) {
-              return {
-                ...f,
-                advanceBalance: (f.advanceBalance || 0) + materialTotal,
-              };
-            }
-            return f;
-          });
-          localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updated));
-        }
-      } catch {}
-    }
-
+    // Database and tenant-specific cache are updated inside apiCreateFarmerMaterialPurchase
     setLoading(false);
     onSuccess();
     onClose();

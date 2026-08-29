@@ -10,7 +10,39 @@ import { PrintReceiptModal, ReceiptData } from '@/components/common/PrintReceipt
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetPurchases, apiUpdatePurchase, apiCreatePayment, apiUpdateFarmerBalance } from '@/lib/api';
+import { apiGetPurchases, apiUpdatePurchase, apiCreatePayment, apiUpdateFarmerBalance, getTenantId } from '@/lib/api';
+
+const parseDateRobust = (dateStr: string): Date => {
+  if (!dateStr) return new Date(0);
+  let d = new Date(dateStr);
+  if (!isNaN(d.getTime())) return d;
+  
+  if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  
+  const months: { [key: string]: number } = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+  };
+  const cleaned = dateStr.replace(/\s+/g, ' ').trim();
+  const parts = cleaned.split(' ');
+  if (parts.length === 3) {
+    const day = parseInt(parts[0], 10);
+    const monthStr = parts[1].toLowerCase().substring(0, 3);
+    const year = parseInt(parts[2], 10);
+    if (months[monthStr] !== undefined && !isNaN(day) && !isNaN(year)) {
+      d = new Date(year, months[monthStr], day);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  
+  return new Date(dateStr);
+};
 import {
   ShoppingBag,
   Scale,
@@ -85,7 +117,7 @@ export default function PurchasesPage() {
   const [categoryType, setCategoryType] = useState<'ADVANCE' | 'PAID' | 'UNPAID' | 'OUTSTANDING'>('PAID');
   const [categoryModalFarmers, setCategoryModalFarmers] = useState<any[]>([]);
 
-  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('TODAY');
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('MONTH');
   const [customStartDate, setCustomStartDate] = useState<string | undefined>();
   const [customEndDate, setCustomEndDate] = useState<string | undefined>();
 
@@ -96,7 +128,9 @@ export default function PurchasesPage() {
       if (search) setSearchQuery(search);
     }
 
-    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_purchases_cache') : null;
+    const tenantId = getTenantId();
+    const cacheKey = tenantId ? `seavaig_purchases_cache_${tenantId}` : 'seavaig_purchases_cache';
+    const cached = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
@@ -121,7 +155,7 @@ export default function PurchasesPage() {
         setPurchases(dbPurchases);
         setIsLiveSynced(true);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('seavaig_purchases_cache', JSON.stringify(dbPurchases));
+          localStorage.setItem(cacheKey, JSON.stringify(dbPurchases));
         }
       }
     }
@@ -131,8 +165,10 @@ export default function PurchasesPage() {
   const handleAddPurchase = (newPurchase: any) => {
     const updated = [newPurchase, ...purchases];
     setPurchases(updated);
+    const tenantId = getTenantId();
+    const cacheKey = tenantId ? `seavaig_purchases_cache_${tenantId}` : 'seavaig_purchases_cache';
     if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_purchases_cache', JSON.stringify(updated));
+      localStorage.setItem(cacheKey, JSON.stringify(updated));
     }
   };
 
@@ -157,7 +193,7 @@ export default function PurchasesPage() {
       const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
       allItems.push({
          dateStr: x.date,
-         timestamp: new Date(x.date).getTime() || 0,
+         timestamp: parseDateRobust(x.purchaseDate || x.date).getTime() || 0,
          refNo: x.id,
          type: 'PURCHASE',
          description: x.crop || 'Crop Purchase',
@@ -170,7 +206,7 @@ export default function PurchasesPage() {
       const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
       allItems.push({
          dateStr: x.date,
-         timestamp: new Date(x.date).getTime() || 0,
+         timestamp: parseDateRobust(x.date).getTime() || 0,
          refNo: x.id,
          type: 'PAYMENT',
          description: `Payment (${x.method})`,
@@ -182,8 +218,8 @@ export default function PurchasesPage() {
     fmat.forEach((x: any) => {
       const amt = typeof x.totalAmount === 'number' ? x.totalAmount : parseFloat(String(x.totalAmount).replace(/[^0-9.-]+/g, '')) || 0;
       allItems.push({
-         dateStr: x.createdAt ? new Date(x.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Unknown',
-         timestamp: new Date(x.createdAt || 0).getTime(),
+         dateStr: x.createdAt ? parseDateRobust(x.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Unknown',
+         timestamp: parseDateRobust(x.createdAt || 0).getTime(),
          refNo: x.id,
          type: 'MATERIAL',
          description: `Material Issue: ${x.itemName}`,
@@ -245,8 +281,8 @@ export default function PurchasesPage() {
 
   const filteredPurchases = purchases.filter((p) => {
     let dateMatch = true;
-    if (timelineFilter !== 'ALL_TIME' && p.date) {
-      const pDate = new Date(p.date.split('/').reverse().join('-') || p.date);
+    if (timelineFilter !== 'ALL_TIME' && (p.purchaseDate || p.date)) {
+      const pDate = parseDateRobust(p.purchaseDate || p.date);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
@@ -256,11 +292,11 @@ export default function PurchasesPage() {
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
         dateMatch = pDate >= yesterday && pDate < today;
-      } else if (timelineFilter === 'THIS_WEEK') {
+      } else if (timelineFilter === 'THIS_WEEK' || timelineFilter === 'WEEK') {
         const weekAgo = new Date(today);
         weekAgo.setDate(weekAgo.getDate() - 7);
         dateMatch = pDate >= weekAgo;
-      } else if (timelineFilter === 'THIS_MONTH') {
+      } else if (timelineFilter === 'THIS_MONTH' || timelineFilter === 'MONTH') {
         const monthAgo = new Date(today);
         monthAgo.setMonth(monthAgo.getMonth() - 1);
         dateMatch = pDate >= monthAgo;

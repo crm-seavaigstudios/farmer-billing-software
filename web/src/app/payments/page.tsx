@@ -6,7 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { AddPaymentModal } from '@/components/payments/AddPaymentModal';
 import { PrintReceiptModal, ReceiptData } from '@/components/common/PrintReceiptModal';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetPayments } from '@/lib/api';
+import { apiGetPayments, getTenantId } from '@/lib/api';
 import {
   CreditCard,
   CheckCircle,
@@ -32,7 +32,9 @@ export default function PaymentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_payments_cache') : null;
+    const tenantId = getTenantId();
+    const cacheKey = tenantId ? `seavaig_payments_cache_${tenantId}` : 'seavaig_payments_cache';
+    const cached = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
@@ -45,7 +47,7 @@ export default function PaymentsPage() {
       if (dbPayments && Array.isArray(dbPayments) && dbPayments.length > 0) {
         setPayments(dbPayments);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('seavaig_payments_cache', JSON.stringify(dbPayments));
+          localStorage.setItem(cacheKey, JSON.stringify(dbPayments));
         }
       }
     }
@@ -55,8 +57,10 @@ export default function PaymentsPage() {
   const handleAddPayment = (newPay: any) => {
     const updated = [newPay, ...payments];
     setPayments(updated);
+    const tenantId = getTenantId();
+    const cacheKey = tenantId ? `seavaig_payments_cache_${tenantId}` : 'seavaig_payments_cache';
     if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_payments_cache', JSON.stringify(updated));
+      localStorage.setItem(cacheKey, JSON.stringify(updated));
     }
   };
 

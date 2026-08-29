@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { X, DollarSign, Calendar, FileText, CheckCircle2 } from 'lucide-react';
-import { apiCreatePayment } from '@/lib/api';
+import { apiCreatePayment, apiUpdateFarmerAdvance, getTenantId } from '@/lib/api';
 
 interface AddFarmerAdvanceModalProps {
   isOpen: boolean;
@@ -39,25 +39,8 @@ export function AddFarmerAdvanceModal({
       notes,
     });
 
-    // Update farmer cache advance balance
-    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
-    if (cached) {
-      try {
-        const farmersList = JSON.parse(cached);
-        if (Array.isArray(farmersList)) {
-          const updated = farmersList.map((f: any) => {
-            if (f.id === farmerId) {
-              return {
-                ...f,
-                advanceBalance: (f.advanceBalance || 0) + amountNum,
-              };
-            }
-            return f;
-          });
-          localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updated));
-        }
-      } catch {}
-    }
+    // Update database & tenant-specific local cache
+    await apiUpdateFarmerAdvance(farmerId, amountNum);
 
     setLoading(false);
     onSuccess();

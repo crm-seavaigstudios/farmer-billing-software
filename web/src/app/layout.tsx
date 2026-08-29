@@ -9,12 +9,15 @@ export const metadata = {
   title: 'Agricultural Procurement & Billing Management System',
   description: 'Enterprise Multi-Tenant Strawberry Procurement Platform',
   manifest: '/manifest.json',
-  themeColor: '#2563EB',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'Seavaig Agro CRM',
   },
+};
+
+export const viewport = {
+  themeColor: '#2563EB',
 };
 
 export default function RootLayout({

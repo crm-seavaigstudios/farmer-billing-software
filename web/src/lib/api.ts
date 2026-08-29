@@ -46,16 +46,15 @@ export const apiGetDashboardStats = async () => {
       return Number(String(val).replace(/[^0-9.-]+/g, '')) || 0;
     };
 
-    const d = new Date();
-    const todayStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}`;
+    const todayStr = new Date().toLocaleDateString('en-CA');
 
     const totalFarmers = farmers.length;
     const activeFarmers = farmers.filter((f: any) => f.status !== 'INACTIVE').length || totalFarmers;
     
-    // Filter for today
-    const todaysPurchasesList = purchases.filter((p: any) => (p.purchaseDate || p.date) === todayStr);
-    const todaysSalesList = sales.filter((s: any) => (s.saleDate || s.date) === todayStr);
-    const todaysPaymentsList = payments.filter((p: any) => (p.paymentDate || p.date) === todayStr);
+    // Filter for today using the standard YYYY-MM-DD date property
+    const todaysPurchasesList = purchases.filter((p: any) => p.date === todayStr);
+    const todaysSalesList = sales.filter((s: any) => s.date === todayStr);
+    const todaysPaymentsList = payments.filter((p: any) => p.date === todayStr);
 
     const todaysPurchase = todaysPurchasesList.reduce((acc: number, p: any) => acc + parseNum(p.totalAmount || p.amount), 0);
     const todaysSales = todaysSalesList.reduce((acc: number, s: any) => acc + parseNum(s.totalAmount || s.amount), 0);
@@ -95,7 +94,7 @@ export const apiGetFarmers = async () => {
         const totalPaid = f.totalPaid || 0;
         const due = f.outstandingAmount !== undefined && f.outstandingAmount !== null 
           ? f.outstandingAmount 
-          : Math.max(0, totalPurchase - totalPaid);
+          : totalPurchase - totalPaid;
         return {
           id: f.id,
           farmerIdCode: f.farmerIdCode || `FAR-${f.id.toString().slice(0, 5)}`,
@@ -173,6 +172,8 @@ export const apiCreateFarmer = async (farmerData: any) => {
 };
 
 export const apiGetFarmerMaterials = async (farmerId: string) => {
+  const tenantId = getTenantId();
+  const cacheKey = tenantId ? `seavaig_material_supplies_cache_${tenantId}` : 'seavaig_material_supplies_cache';
   try {
     const { data, error } = await supabase
       .from('FarmerMaterialPurchase')
@@ -192,14 +193,16 @@ export const apiGetFarmerMaterials = async (farmerId: string) => {
         date: m.date ? new Date(m.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         isDeductedFromBill: m.isDeductedFromBill,
       }));
-      setLocalCache('seavaig_material_supplies_cache', mapped);
+      setLocalCache(cacheKey, mapped);
       return mapped;
     }
   } catch {}
-  return getLocalCache('seavaig_material_supplies_cache', []).filter((m: any) => m.farmerId === farmerId);
+  return getLocalCache(cacheKey, []).filter((m: any) => m.farmerId === farmerId);
 };
 
 export const apiGetAllFarmerMaterials = async () => {
+  const tenantId = getTenantId();
+  const cacheKey = tenantId ? `seavaig_material_supplies_cache_${tenantId}` : 'seavaig_material_supplies_cache';
   try {
     const { data, error } = await supabase
       .from('FarmerMaterialPurchase')
@@ -218,14 +221,40 @@ export const apiGetAllFarmerMaterials = async () => {
         date: m.date ? new Date(m.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         isDeductedFromBill: m.isDeductedFromBill,
       }));
-      setLocalCache('seavaig_material_supplies_cache', mapped);
+      setLocalCache(cacheKey, mapped);
       return mapped;
     }
   } catch {}
-  return getLocalCache('seavaig_material_supplies_cache', []);
+  return getLocalCache(cacheKey, []);
+};
+
+export const apiDeductFarmerMaterials = async (materialIds: string[], purchaseId: string) => {
+  const tenantId = getTenantId();
+  if (!tenantId) return;
+  try {
+    await supabase
+      .from('FarmerMaterialPurchase')
+      .update({ isDeductedFromBill: true, purchaseBillId: purchaseId })
+      .in('id', materialIds);
+      
+    // Update local cache
+    const cacheKey = `seavaig_material_supplies_cache_${tenantId}`;
+    const cached = getLocalCache(cacheKey, []);
+    const updated = cached.map((m: any) => {
+      if (materialIds.includes(m.id)) {
+        return { ...m, isDeductedFromBill: true };
+      }
+      return m;
+    });
+    setLocalCache(cacheKey, updated);
+  } catch (e) {
+    console.error('Error deducting materials:', e);
+  }
 };
 
 export const apiCreateFarmerMaterialPurchase = async (matData: any) => {
+  const tenantId = getTenantId();
+  const cacheKey = tenantId ? `seavaig_material_supplies_cache_${tenantId}` : 'seavaig_material_supplies_cache';
   const newId = `mat-${Date.now()}`;
   const matObj = {
     id: newId,
@@ -252,12 +281,12 @@ export const apiCreateFarmerMaterialPurchase = async (matData: any) => {
       isDeductedFromBill: false,
     }]);
 
-    await apiUpdateFarmerBalance(matObj.farmerId, 0, matObj.totalPrice);
+    await apiUpdateFarmerBalance(matObj.farmerId, 0, matObj.totalPrice, 'MATERIAL');
   } catch {}
 
-  const current = getLocalCache('seavaig_material_supplies_cache', []);
+  const current = getLocalCache(cacheKey, []);
   const updated = [matObj, ...current];
-  setLocalCache('seavaig_material_supplies_cache', updated);
+  setLocalCache(cacheKey, updated);
   return updated[0];
 };
 
@@ -367,6 +396,8 @@ export const apiGetPurchases = async () => {
           dueAmount: parseFloat(p.dueAmount) || 0,
           paymentStatus: p.paymentStatus || 'UNPAID',
           date: p.date || (p.purchaseDate ? p.purchaseDate.split('T')[0] : new Date().toLocaleDateString('en-CA')),
+          purchaseDate: p.purchaseDate || p.createdAt || p.date || null,
+          storageLocation: p.storageLocation || '',
         };
       });
       setLocalCache(`seavaig_purchases_cache_${tenantId}`, mapped);
@@ -383,9 +414,30 @@ export const apiUpdatePurchase = async (id: string, updateData: any) => {
   if (updateData.paidAmount !== undefined) payload.paidAmount = updateData.paidAmount;
   if (updateData.dueAmount !== undefined) payload.dueAmount = updateData.dueAmount;
   if (updateData.paymentStatus !== undefined) payload.paymentStatus = updateData.paymentStatus;
+  if (updateData.storageLocation !== undefined) payload.storageLocation = updateData.storageLocation;
+  if (updateData.weight !== undefined) {
+    payload.totalWeight = parseFloat(String(updateData.weight).replace(/[^0-9.-]+/g, '')) || 0;
+  }
   
   try {
     await supabase.from('Purchase').update(payload).eq('purchaseNo', id).throwOnError();
+    
+    // Update PurchaseItem crop details if modified
+    if (updateData.crop !== undefined || updateData.rate !== undefined || updateData.weight !== undefined) {
+      const { data: itemData } = await supabase.from('PurchaseItem').select('id').eq('purchaseId', id).limit(1);
+      if (itemData && itemData.length > 0) {
+        const itemId = itemData[0].id;
+        const itemPayload: any = {};
+        if (updateData.crop !== undefined) itemPayload.cropName = updateData.crop;
+        if (updateData.rate !== undefined) {
+          itemPayload.ratePerKg = parseFloat(String(updateData.rate).replace(/[^0-9.-]+/g, '')) || 0;
+        }
+        if (updateData.weight !== undefined) {
+          itemPayload.weightKg = parseFloat(String(updateData.weight).replace(/[^0-9.-]+/g, '')) || 0;
+        }
+        await supabase.from('PurchaseItem').update(itemPayload).eq('id', itemId);
+      }
+    }
   } catch {}
 
   const current = getLocalCache(`seavaig_purchases_cache_${getTenantId()}`, []);
@@ -394,14 +446,64 @@ export const apiUpdatePurchase = async (id: string, updateData: any) => {
   return updated;
 };
 
-export const apiUpdateFarmerBalance = async (farmerId: string, paidAmt: number, dueAmt: number) => {
+export const apiUpdateFarmerAdvance = async (farmerId: string, amount: number) => {
   try {
     const { data } = await supabase.from('Farmer').select('*').eq('id', farmerId).single();
     if (data) {
-      const newTotalPaid = (data.totalPaid || 0) + paidAmt;
-      const newOutstanding = Math.max(0, (data.outstandingAmount || 0) + dueAmt);
-      const newAdvance = Math.max(0, (data.advanceBalance || 0) - paidAmt);
-      const newTotalPurchase = (data.totalPurchase || 0) + (dueAmt + paidAmt);
+      const newAdvance = (data.advanceBalance || 0) + amount;
+      const newTotalPaid = (data.totalPaid || 0) + amount;
+      const newOutstanding = (data.outstandingAmount || 0) - amount;
+      await supabase.from('Farmer').update({
+        advanceBalance: newAdvance,
+        totalPaid: newTotalPaid,
+        outstandingAmount: newOutstanding
+      }).eq('id', farmerId).throwOnError();
+    }
+  } catch {}
+  
+  const tenantId = getTenantId();
+  if (!tenantId) return;
+  const farmers = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
+  const updatedFarmers = farmers.map((f: any) => {
+    if (f.id === farmerId) {
+      return {
+        ...f,
+        advanceBalance: (f.advanceBalance || 0) + amount,
+        totalPaid: (f.totalPaid || 0) + amount,
+        outstandingAmount: (f.outstandingAmount || 0) - amount
+      };
+    }
+    return f;
+  });
+  setLocalCache(`seavaig_farmers_cache_${tenantId}`, updatedFarmers);
+};
+
+export const apiUpdateFarmerBalance = async (
+  farmerId: string, 
+  paidAmt: number, 
+  dueAmt: number, 
+  type: 'PURCHASE' | 'PAYMENT' | 'MATERIAL' = 'PURCHASE',
+  advanceApplied: number = 0
+) => {
+  try {
+    const { data } = await supabase.from('Farmer').select('*').eq('id', farmerId).single();
+    if (data) {
+      let newTotalPaid = data.totalPaid || 0;
+      let newOutstanding = data.outstandingAmount || 0;
+      let newAdvance = data.advanceBalance || 0;
+      let newTotalPurchase = data.totalPurchase || 0;
+      
+      if (type === 'PURCHASE') {
+        newTotalPaid += paidAmt; // any fresh cash paid on the spot (default 0)
+        newOutstanding += dueAmt; // gross purchase amount
+        newAdvance = Math.max(0, newAdvance - advanceApplied);
+        newTotalPurchase += dueAmt;
+      } else if (type === 'PAYMENT') {
+        newTotalPaid += paidAmt;
+        newOutstanding += dueAmt; // dueAmt is negative, e.g. -paidAmt
+      } else if (type === 'MATERIAL') {
+        newOutstanding -= dueAmt; // subtract from outstanding (debit/farmer owes us)
+      }
       
       await supabase.from('Farmer').update({
         totalPaid: newTotalPaid,
@@ -418,10 +520,23 @@ export const apiUpdateFarmerBalance = async (farmerId: string, paidAmt: number, 
   const farmers = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
   const updatedFarmers = farmers.map((f: any) => {
     if (f.id === farmerId) {
-      const newTotalPaid = (f.totalPaid || 0) + paidAmt;
-      const newOutstanding = Math.max(0, (f.outstandingAmount || 0) + dueAmt);
-      const newAdvance = Math.max(0, (f.advanceBalance || 0) - paidAmt);
-      const newTotalPurchase = (f.totalPurchase || 0) + (dueAmt + paidAmt);
+      let newTotalPaid = f.totalPaid || 0;
+      let newOutstanding = f.outstandingAmount || 0;
+      let newAdvance = f.advanceBalance || 0;
+      let newTotalPurchase = f.totalPurchase || 0;
+      
+      if (type === 'PURCHASE') {
+        newTotalPaid += paidAmt;
+        newOutstanding += dueAmt;
+        newAdvance = Math.max(0, newAdvance - advanceApplied);
+        newTotalPurchase += dueAmt;
+      } else if (type === 'PAYMENT') {
+        newTotalPaid += paidAmt;
+        newOutstanding += dueAmt;
+      } else if (type === 'MATERIAL') {
+        newOutstanding -= dueAmt;
+      }
+      
       return {
         ...f,
         totalPaid: newTotalPaid,
@@ -493,16 +608,27 @@ export const apiCreatePurchase = async (purchaseData: any) => {
       purchaseDate: purchaseObj.date,
       date: purchaseObj.date,
       storageLocation: purchaseObj.storageLocation
-    }]);
+    }]).throwOnError();
     
-    // Also save legacy object in localstate if we wanted to
+    if (item) {
+      await supabase.from('PurchaseItem').insert([{
+        id: `pitem-${Date.now()}`,
+        purchaseId: purchaseObj.id,
+        cropName: item.cropName || '',
+        weightKg: Number(item.weightKg || 0),
+        ratePerKg: Number(item.ratePerKg || 0),
+        totalAmount: Number(item.weightKg || 0) * Number(item.ratePerKg || 0),
+        unit: item.unit || 'KG',
+        grade: item.grade || 'A_GRADE'
+      }]).throwOnError();
+    }
   } catch (e) { console.error(e); throw e; }
   
   const current = getLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
   const updated = [purchaseObj, ...current];
   setLocalCache(`seavaig_purchases_cache_${tenantId}`, updated);
   if (purchaseData.farmerId) {
-    await apiUpdateFarmerBalance(purchaseData.farmerId, purchaseObj.paidAmount, purchaseObj.dueAmount);
+    await apiUpdateFarmerBalance(purchaseData.farmerId, 0, purAmt, 'PURCHASE', purchaseData.advanceApplied || 0);
   }
   return purchaseObj;
 };
@@ -743,12 +869,32 @@ export const apiGetInventory = async () => {
 
   // Subtract sales (Stock OUT)
   sales.forEach((s: any) => {
-    (s.items || []).forEach((item: any) => {
-      const key = `${item.cropName}_${item.grade}`;
-      if (inventoryMap[key]) {
-        inventoryMap[key].availableKg -= Number(item.weightKg) || 0;
-      }
-    });
+    if (typeof s.items === 'string') {
+      const parts = s.items.split(',');
+      parts.forEach((part: string) => {
+        const match = part.match(/^\s*(.*?)\s*\(\s*(\d+)\s*KG\s*\)/i);
+        if (match) {
+          const cropName = match[1].trim();
+          const weightKg = Number(match[2]) || 0;
+          const key = `${cropName}_A_GRADE`;
+          if (inventoryMap[key]) {
+            inventoryMap[key].availableKg -= weightKg;
+          } else {
+            const matchedKey = Object.keys(inventoryMap).find(k => k.toLowerCase().startsWith(cropName.toLowerCase()));
+            if (matchedKey) {
+              inventoryMap[matchedKey].availableKg -= weightKg;
+            }
+          }
+        }
+      });
+    } else if (Array.isArray(s.items)) {
+      s.items.forEach((item: any) => {
+        const key = `${item.cropName}_${item.grade || 'A_GRADE'}`;
+        if (inventoryMap[key]) {
+          inventoryMap[key].availableKg -= Number(item.weightKg) || 0;
+        }
+      });
+    }
   });
 
   // Filter out empty stock
@@ -1085,7 +1231,7 @@ export const apiGetPayments = async () => {
       status: p.status || 'COMPLETED',
       date: p.date || (p.paymentDate ? p.paymentDate.split('T')[0] : new Date(p.createdAt).toLocaleDateString('en-CA')),
     }));
-    setLocalCache('seavaig_payments_cache', mapped);
+    setLocalCache(`seavaig_payments_cache_${tenantId}`, mapped);
     return mapped;
   }
   return [];

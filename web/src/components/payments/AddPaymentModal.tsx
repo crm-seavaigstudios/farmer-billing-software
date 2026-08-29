@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, ShieldCheck, Receipt } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiCreatePayment, apiGetFarmers, apiUpdateFarmerBalance, apiUpdatePurchase } from '@/lib/api';
+import { apiCreatePayment, apiGetFarmers, apiUpdateFarmerBalance, apiUpdatePurchase, getTenantId } from '@/lib/api';
 
 interface AddPaymentModalProps {
   isOpen: boolean;
@@ -33,11 +33,34 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
     paymentMode: 'UPI',
     notes: '',
   });
+  const [farmerPurchases, setFarmerPurchases] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!formData.farmerId) {
+      setFarmerPurchases([]);
+      return;
+    }
+    async function loadPurchases() {
+      const { apiGetPurchases } = await import('@/lib/api');
+      const allPurchases = await apiGetPurchases();
+      if (allPurchases && Array.isArray(allPurchases)) {
+        const fp = allPurchases.filter(
+          (p: any) =>
+            p.farmerId === formData.farmerId &&
+            p.paymentStatus !== 'PAID'
+        );
+        setFarmerPurchases(fp);
+      }
+    }
+    loadPurchases();
+  }, [formData.farmerId]);
 
   useEffect(() => {
     if (!isOpen) return;
     async function loadFarmers() {
-      const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+      const tenantId = getTenantId();
+      const cacheKey = tenantId ? `seavaig_farmers_cache_${tenantId}` : 'seavaig_farmers_cache';
+      const cached = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
       let cachedList: any[] = [];
       if (cached) {
         try {
@@ -91,7 +114,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
     await apiCreatePayment(payload);
 
     if (formData.farmerId) {
-      await apiUpdateFarmerBalance(formData.farmerId, numericAmount, -numericAmount);
+      await apiUpdateFarmerBalance(formData.farmerId, numericAmount, -numericAmount, 'PAYMENT');
     }
     if (formData.purchaseId) {
       const { apiGetPurchaseDetails } = await import('@/lib/api');
@@ -199,9 +222,19 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
               className="w-full px-3 py-2 bg-slate-50 border border-blue-200 rounded-xl text-xs font-semibold text-slate-800"
             >
               <option value="">-- Pay against General Account Balance --</option>
-              <option value="pur-1052">Bill #PUR-2026-1052 (Strawberry A - ₹23,600 Due)</option>
-              <option value="pur-1051">Bill #PUR-2026-1051 (Strawberry B - ₹27,000 Due)</option>
-              <option value="pur-1050">Bill #PUR-2026-1050 (Strawberry A - ₹50,400 Due)</option>
+              {farmerPurchases.map((p: any) => {
+                const dueNum = typeof p.dueAmount === 'number' ? p.dueAmount : parseFloat(String(p.dueAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+                return (
+                  <option key={p.id} value={p.id}>
+                    Bill #{p.purchaseNo || p.id} ({p.crop || 'Crop'} - ₹{dueNum.toLocaleString('en-IN')} Due)
+                  </option>
+                );
+              })}
+              {initialPurchaseId && !farmerPurchases.some((p: any) => p.id === initialPurchaseId) && (
+                <option value={initialPurchaseId}>
+                  Bill #{initialPurchaseId} (Initial Selected)
+                </option>
+              )}
             </select>
           </div>
 

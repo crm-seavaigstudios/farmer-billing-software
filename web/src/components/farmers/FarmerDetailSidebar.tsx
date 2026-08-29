@@ -19,16 +19,49 @@ import {
   ArrowDownRight,
   ArrowUpRight
 } from 'lucide-react';
-import { apiGetFarmerDetails, apiGetFarmerMaterials, apiGetPurchases, apiGetPayments } from '@/lib/api';
+import { apiGetFarmerDetails, apiGetFarmerMaterials, apiGetPurchases, apiGetPayments, getTenantId } from '@/lib/api';
+
+const parseDateRobust = (dateStr: string): Date => {
+  if (!dateStr) return new Date(0);
+  let d = new Date(dateStr);
+  if (!isNaN(d.getTime())) return d;
+  
+  if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  
+  const months: { [key: string]: number } = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+  };
+  const cleaned = dateStr.replace(/\s+/g, ' ').trim();
+  const parts = cleaned.split(' ');
+  if (parts.length === 3) {
+    const day = parseInt(parts[0], 10);
+    const monthStr = parts[1].toLowerCase().substring(0, 3);
+    const year = parseInt(parts[2], 10);
+    if (months[monthStr] !== undefined && !isNaN(day) && !isNaN(year)) {
+      d = new Date(year, months[monthStr], day);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  
+  return new Date(dateStr);
+};
 
 interface FarmerDetailSidebarProps {
   farmerId: string | null;
+  refreshKey?: number;
   onClose: () => void;
   onOpenMaterialModal: (farmerId: string) => void;
   onOpenAdvanceModal?: (farmerId: string) => void;
 }
 
-export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, onOpenAdvanceModal }: FarmerDetailSidebarProps) {
+export function FarmerDetailSidebar({ farmerId, refreshKey, onClose, onOpenMaterialModal, onOpenAdvanceModal }: FarmerDetailSidebarProps) {
   const [farmer, setFarmer] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'SUMMARY' | 'BILLS' | 'MATERIALS' | 'LEDGER'>('SUMMARY');
@@ -39,7 +72,12 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
       setLoading(true);
       let targetFarmer: any = null;
 
-      const cachedFarmers = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+      const tenantId = getTenantId();
+      const farmersCacheKey = tenantId ? `seavaig_farmers_cache_${tenantId}` : 'seavaig_farmers_cache';
+      const purchasesCacheKey = tenantId ? `seavaig_purchases_cache_${tenantId}` : 'seavaig_purchases_cache';
+      const paymentsCacheKey = tenantId ? `seavaig_payments_cache_${tenantId}` : 'seavaig_payments_cache';
+
+      const cachedFarmers = typeof window !== 'undefined' ? localStorage.getItem(farmersCacheKey) : null;
       if (cachedFarmers) {
         try {
           const list = JSON.parse(cachedFarmers);
@@ -75,7 +113,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
         farmerPurchases = allPurchases.filter((p: any) => p.farmerId === farmerId || p.farmerName === targetFarmer.name);
       }
       if (farmerPurchases.length === 0) {
-        const cachedPurchases = typeof window !== 'undefined' ? localStorage.getItem('seavaig_purchases_cache') : null;
+        const cachedPurchases = typeof window !== 'undefined' ? localStorage.getItem(purchasesCacheKey) : null;
         if (cachedPurchases) {
           try {
             const pList = JSON.parse(cachedPurchases);
@@ -93,7 +131,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
         farmerPayments = allPayments.filter((pay: any) => pay.farmerId === farmerId || pay.farmerName === targetFarmer.name);
       }
       if (farmerPayments.length === 0) {
-        const cachedPayments = typeof window !== 'undefined' ? localStorage.getItem('seavaig_payments_cache') : null;
+        const cachedPayments = typeof window !== 'undefined' ? localStorage.getItem(paymentsCacheKey) : null;
         if (cachedPayments) {
           try {
             const payList = JSON.parse(cachedPayments);
@@ -117,7 +155,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
       setLoading(false);
     }
     fetchDetails();
-  }, [farmerId]);
+  }, [farmerId, refreshKey]);
 
   if (!farmerId) return null;
 
@@ -133,7 +171,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
     combinedEvents.push({
       id: p.purchaseNo || p.purchaseBillNo || p.id,
       date: dateStr,
-      rawDate: new Date(dateStr).getTime() || Date.now(),
+      rawDate: parseDateRobust(dateStr).getTime() || Date.now(),
       type: 'CREDIT',
       title: `Harvest Purchase: ${p.crop || p.cropName || 'Crop Harvest'}`,
       subtitle: `${p.weight || p.totalQuantityKg || ''} @ ${p.rate || p.ratePerKg || ''}`,
@@ -149,7 +187,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
     combinedEvents.push({
       id: pay.id,
       date: dateStr,
-      rawDate: new Date(dateStr).getTime() || Date.now(),
+      rawDate: parseDateRobust(dateStr).getTime() || Date.now(),
       type: 'DEBIT',
       title: `Farmer Payout: ${pay.notes || pay.method || 'Payout Settlement'}`,
       subtitle: `Payment via ${pay.method || pay.paymentMode || 'Cash/Bank'}`,
@@ -165,7 +203,7 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
     combinedEvents.push({
       id: m.id,
       date: dateStr,
-      rawDate: new Date(dateStr).getTime() || Date.now(),
+      rawDate: parseDateRobust(dateStr).getTime() || Date.now(),
       type: 'DEBIT',
       title: `Material Supply: ${m.itemName}`,
       subtitle: `Qty: ${m.quantity} @ ₹${m.unitPrice || 0}/unit`,
@@ -311,7 +349,12 @@ export function FarmerDetailSidebar({ farmerId, onClose, onOpenMaterialModal, on
                 <div className="bg-amber-50/70 border border-amber-100 rounded-2xl p-3.5 text-center">
                   <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block">Outstanding Due</span>
                   <span className="text-base font-black text-amber-700 mt-1 block">
-                    ₹{(farmer?.outstandingAmount || 0).toLocaleString('en-IN')}
+                    {(() => {
+                      const dueVal = farmer?.outstandingAmount || 0;
+                      return dueVal < 0 
+                        ? `-₹${Math.abs(dueVal).toLocaleString('en-IN')}` 
+                        : `₹${dueVal.toLocaleString('en-IN')}`;
+                    })()}
                   </span>
                 </div>
               </div>

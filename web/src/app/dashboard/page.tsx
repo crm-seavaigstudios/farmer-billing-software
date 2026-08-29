@@ -12,7 +12,7 @@ import { RecentPaymentsTable } from '@/components/dashboard/RecentPaymentsTable'
 import { RecentActivitiesFeed } from '@/components/dashboard/RecentActivitiesFeed';
 import { QuickActionsWidget } from '@/components/dashboard/QuickActionsWidget';
 import { DailyRatePINWidget } from '@/components/common/DailyRatePINModal';
-import { apiGetDashboardStats, apiGetFarmers, apiGetPurchases } from '@/lib/api';
+import { apiGetDashboardStats, apiGetFarmers, apiGetPurchases, getTenantId } from '@/lib/api';
 
 import {
   ShoppingBag,
@@ -43,10 +43,11 @@ export default function DashboardPage() {
         setStats((prev: any) => ({ ...prev, ...apiRes }));
       } else {
         // Fallback to reading local caches if API fails or offline
-        const farmersCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
-        const purchasesCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_purchases_cache') : null;
-        const salesCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
-        const paymentsCache = typeof window !== 'undefined' ? localStorage.getItem('seavaig_payments_cache') : null;
+        const tenantId = getTenantId() || '';
+        const farmersCache = typeof window !== 'undefined' ? localStorage.getItem(`seavaig_farmers_cache_${tenantId}`) : null;
+        const purchasesCache = typeof window !== 'undefined' ? localStorage.getItem(`seavaig_purchases_cache_${tenantId}`) : null;
+        const salesCache = typeof window !== 'undefined' ? localStorage.getItem(`seavaig_sales_cache_${tenantId}`) : null;
+        const paymentsCache = typeof window !== 'undefined' ? localStorage.getItem(`seavaig_payments_cache_${tenantId}`) : null;
 
         const farmers = farmersCache ? JSON.parse(farmersCache) : [];
         const purchases = purchasesCache ? JSON.parse(purchasesCache) : [];

@@ -11,7 +11,7 @@ import { AddFarmerAdvanceModal } from '@/components/farmers/AddFarmerAdvanceModa
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetFarmers } from '@/lib/api';
+import { apiGetFarmers, getTenantId } from '@/lib/api';
 import {
   Users,
   Search,
@@ -35,6 +35,7 @@ export default function FarmersPage() {
 
   // Detail Drawer, Material & Advance Modal State
   const [selectedDetailFarmerId, setSelectedDetailFarmerId] = useState<string | null>(null);
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
   const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
 
@@ -60,16 +61,20 @@ export default function FarmersPage() {
   const handleAddFarmer = (newFarmer: any) => {
     const updated = [newFarmer, ...farmers];
     setFarmers(updated);
+    const tenantId = getTenantId();
+    const cacheKey = tenantId ? `seavaig_farmers_cache_${tenantId}` : 'seavaig_farmers_cache';
     if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updated));
+      localStorage.setItem(cacheKey, JSON.stringify(updated));
     }
   };
 
   const handleSaveFarmer = (updatedFarmer: any) => {
     const updated = farmers.map((f) => (f.id === updatedFarmer.id ? updatedFarmer : f));
     setFarmers(updated);
+    const tenantId = getTenantId();
+    const cacheKey = tenantId ? `seavaig_farmers_cache_${tenantId}` : 'seavaig_farmers_cache';
     if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_farmers_cache', JSON.stringify(updated));
+      localStorage.setItem(cacheKey, JSON.stringify(updated));
     }
   };
 
@@ -229,7 +234,7 @@ export default function FarmersPage() {
                             const adv = Number(f.advanceBalance || 0);
                             let label = 'COMPLETED';
                             let color = 'bg-slate-50 text-slate-700 border-slate-100';
-                            if (adv > 0) {
+                            if (adv > 0 || due < 0) {
                               label = 'ADVANCE (अ‍ॅडव्हान्स जमा)';
                               color = 'bg-indigo-50 text-indigo-700 border-indigo-100';
                             } else if (due > 0) {
@@ -251,7 +256,14 @@ export default function FarmersPage() {
                         </td>
                         <td className="py-3.5 px-4 font-bold text-slate-900">₹{(f.totalPurchase || 0).toLocaleString('en-IN')}</td>
                         <td className="py-3.5 px-4 font-extrabold text-emerald-600">₹{(f.totalPaid || 0).toLocaleString('en-IN')}</td>
-                        <td className="py-3.5 px-4 font-extrabold text-amber-600">₹{(f.outstandingAmount || 0).toLocaleString('en-IN')}</td>
+                        <td className="py-3.5 px-4 font-extrabold text-amber-600">
+                          {(() => {
+                            const dueVal = f.outstandingAmount || 0;
+                            return dueVal < 0 
+                              ? `-₹${Math.abs(dueVal).toLocaleString('en-IN')}` 
+                              : `₹${dueVal.toLocaleString('en-IN')}`;
+                          })()}
+                        </td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
@@ -304,6 +316,7 @@ export default function FarmersPage() {
 
       <FarmerDetailSidebar
         farmerId={selectedDetailFarmerId}
+        refreshKey={sidebarRefreshKey}
         onClose={() => setSelectedDetailFarmerId(null)}
         onOpenMaterialModal={(fId) => {
           setSelectedDetailFarmerId(fId);
@@ -321,7 +334,10 @@ export default function FarmersPage() {
         farmerId={selectedDetailFarmerId}
         onSuccess={() => {
           setIsMaterialModalOpen(false);
-          const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+          setSidebarRefreshKey((prev) => prev + 1);
+          const tenantId = getTenantId();
+          const cacheKey = tenantId ? `seavaig_farmers_cache_${tenantId}` : 'seavaig_farmers_cache';
+          const cached = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
           if (cached) {
             try {
               setFarmers(JSON.parse(cached));
@@ -337,7 +353,10 @@ export default function FarmersPage() {
         farmerName={farmers.find((f) => f.id === selectedDetailFarmerId)?.name}
         onSuccess={() => {
           setIsAdvanceModalOpen(false);
-          const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_farmers_cache') : null;
+          setSidebarRefreshKey((prev) => prev + 1);
+          const tenantId = getTenantId();
+          const cacheKey = tenantId ? `seavaig_farmers_cache_${tenantId}` : 'seavaig_farmers_cache';
+          const cached = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
           if (cached) {
             try {
               setFarmers(JSON.parse(cached));
