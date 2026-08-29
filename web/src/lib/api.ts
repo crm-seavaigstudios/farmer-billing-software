@@ -443,6 +443,7 @@ export const apiUpdatePurchase = async (id: string, updateData: any) => {
   const current = getLocalCache(`seavaig_purchases_cache_${getTenantId()}`, []);
   const updated = current.map((p: any) => (p.id === id ? { ...p, ...updateData } : p));
   setLocalCache(`seavaig_purchases_cache_${getTenantId()}`, updated);
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('purchases_changed'));
   return updated;
 };
 
@@ -476,6 +477,7 @@ export const apiUpdateFarmerAdvance = async (farmerId: string, amount: number) =
     return f;
   });
   setLocalCache(`seavaig_farmers_cache_${tenantId}`, updatedFarmers);
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('farmers_changed'));
 };
 
 export const apiUpdateFarmerBalance = async (

@@ -115,6 +115,10 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
 
     if (formData.farmerId) {
       await apiUpdateFarmerBalance(formData.farmerId, numericAmount, -numericAmount, 'PAYMENT');
+      if (formData.paymentType === 'ADVANCE_PAYOUT') {
+        const { apiUpdateFarmerAdvance } = await import('@/lib/api');
+        await apiUpdateFarmerAdvance(formData.farmerId, numericAmount);
+      }
     }
     if (formData.purchaseId) {
       const { apiGetPurchaseDetails } = await import('@/lib/api');

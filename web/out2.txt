@@ -1,0 +1,3 @@
+Original dueAmount type: number 29000
+Original paidAmount type: number 1000
+newPaid: 1100 newDue: 28900

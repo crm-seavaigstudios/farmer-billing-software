@@ -189,11 +189,11 @@ export function FarmerDetailSidebar({ farmerId, refreshKey, onClose, onOpenMater
       date: dateStr,
       rawDate: parseDateRobust(dateStr).getTime() || Date.now(),
       type: 'DEBIT',
-      title: `Farmer Payout: ${pay.notes || pay.method || 'Payout Settlement'}`,
+      title: pay.paymentType === 'PRE_HARVEST_ADVANCE' || pay.paymentType === 'ADVANCE_PAYOUT' ? `Advance Given: ${pay.notes || pay.method}` : `Farmer Payout: ${pay.notes || pay.method || 'Payout Settlement'}`,
       subtitle: `Payment via ${pay.method || pay.paymentMode || 'Cash/Bank'}`,
       credit: 0,
       debit: amt,
-      badge: 'PAYOUT',
+      badge: pay.paymentType === 'PRE_HARVEST_ADVANCE' || pay.paymentType === 'ADVANCE_PAYOUT' ? 'ADVANCE' : 'PAYOUT',
     });
   });
 

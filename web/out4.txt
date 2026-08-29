@@ -1,0 +1,8 @@
+Original purchase: {
+  id: '250826-2',
+  purchaseNo: '250826-2',
+  paidAmount: 1000,
+  dueAmount: 27000
+}
+Payload: { paidAmount: 1001, dueAmount: 26999 }
+Update result: null Error: null

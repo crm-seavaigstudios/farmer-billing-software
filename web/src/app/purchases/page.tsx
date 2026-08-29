@@ -160,6 +160,19 @@ export default function PurchasesPage() {
       }
     }
     loadData();
+
+    const handleUpdate = () => {
+      const tenantId = getTenantId();
+      const cached = localStorage.getItem(tenantId ? `seavaig_purchases_cache_${tenantId}` : 'seavaig_purchases_cache');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) setPurchases(parsed);
+        } catch {}
+      }
+    };
+    window.addEventListener('purchases_changed', handleUpdate);
+    return () => window.removeEventListener('purchases_changed', handleUpdate);
   }, []);
 
   const handleAddPurchase = (newPurchase: any) => {

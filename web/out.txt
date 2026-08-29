@@ -1,0 +1,9 @@
+Keys of Purchase row: [
+  'id',              'purchaseNo',
+  'farmerId',        'totalWeight',
+  'totalAmount',     'purchaseDate',
+  'tenantId',        'createdAt',
+  'advanceApplied',  'dueAmount',
+  'paidAmount',      'paymentStatus',
+  'storageLocation', 'date'
+]
