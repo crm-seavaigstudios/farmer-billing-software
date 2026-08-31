@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { LogOut, FileText, IndianRupee, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { LogOut, FileText, IndianRupee, ArrowDownCircle, ArrowUpCircle, ChevronDown, ChevronRight } from 'lucide-react';
 
 export default function FarmerPortalPage() {
   const router = useRouter();
@@ -12,6 +12,7 @@ export default function FarmerPortalPage() {
   const [ledger, setLedger] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'SUMMARY' | 'PURCHASES' | 'ADVANCES'>('SUMMARY');
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   useEffect(() => {
     loadFarmerProfile();
@@ -125,19 +126,19 @@ export default function FarmerPortalPage() {
             onClick={() => setActiveTab('SUMMARY')} 
             className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${activeTab === 'SUMMARY' ? 'bg-emerald-100 text-emerald-800' : 'text-slate-500 hover:bg-slate-50'}`}
           >
-            Summary
+            मुख्य सारांश
           </button>
           <button 
             onClick={() => setActiveTab('PURCHASES')} 
             className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${activeTab === 'PURCHASES' ? 'bg-emerald-100 text-emerald-800' : 'text-slate-500 hover:bg-slate-50'}`}
           >
-            Purchases
+            एकूण खरेदी
           </button>
           <button 
             onClick={() => setActiveTab('ADVANCES')} 
             className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${activeTab === 'ADVANCES' ? 'bg-emerald-100 text-emerald-800' : 'text-slate-500 hover:bg-slate-50'}`}
           >
-            Advances
+            एकूण जमा
           </button>
         </div>
       </div>
@@ -185,25 +186,56 @@ export default function FarmerPortalPage() {
                       ledger.map((item, idx) => {
                         const isHarvest = item._type === 'HARVEST';
                         const amt = parseFloat(item.netAmount || item.totalAmount || item.amount || '0');
+                        const refId = item.billNo || item.paymentId || item.id;
                         return (
-                          <tr key={idx} className="hover:bg-slate-50">
-                            <td className="py-3 px-3 text-slate-500 font-medium whitespace-nowrap">
-                              {item._dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                            </td>
-                            <td className="py-3 px-3 text-slate-800">
-                              <span className="font-bold block">{isHarvest ? 'Crop Harvest Sold' : 'Advance / Payment'}</span>
-                              <span className="text-[10px] text-slate-400">{isHarvest ? item.billNo || item.id : item.paymentId || item.id}</span>
-                            </td>
-                            <td className={`py-3 px-3 text-right font-bold ${!isHarvest ? 'text-rose-600' : 'text-slate-400'}`}>
-                              {!isHarvest ? `-₹${amt.toLocaleString('en-IN')}` : '—'}
-                            </td>
-                            <td className={`py-3 px-3 text-right font-bold ${isHarvest ? 'text-emerald-600' : 'text-slate-400'}`}>
-                              {isHarvest ? `+₹${amt.toLocaleString('en-IN')}` : '—'}
-                            </td>
-                            <td className="py-3 px-3 text-right font-black text-slate-900">
-                              ₹{item._runningBalance.toLocaleString('en-IN')}
-                            </td>
-                          </tr>
+                          <React.Fragment key={idx}>
+                            <tr 
+                              onClick={() => setExpandedRowId(expandedRowId === refId ? null : refId)}
+                              className={`hover:bg-slate-50 cursor-pointer transition-colors ${expandedRowId === refId ? 'bg-slate-50' : ''}`}
+                            >
+                              <td className="py-3 px-3 text-slate-500 font-medium whitespace-nowrap">
+                                <div className="flex items-center gap-1">
+                                  {expandedRowId === refId ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
+                                  {item._dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </div>
+                              </td>
+                              <td className="py-3 px-3 text-slate-800">
+                                <span className="font-bold block">{isHarvest ? 'Crop Harvest Sold' : 'Advance / Payment'}</span>
+                                <span className="text-[10px] text-slate-400">{refId}</span>
+                              </td>
+                              <td className={`py-3 px-3 text-right font-bold ${!isHarvest ? 'text-rose-600' : 'text-slate-400'}`}>
+                                {!isHarvest ? `-₹${amt.toLocaleString('en-IN')}` : '—'}
+                              </td>
+                              <td className={`py-3 px-3 text-right font-bold ${isHarvest ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                {isHarvest ? `+₹${amt.toLocaleString('en-IN')}` : '—'}
+                              </td>
+                              <td className="py-3 px-3 text-right font-black text-slate-900">
+                                ₹{item._runningBalance.toLocaleString('en-IN')}
+                              </td>
+                            </tr>
+                            {expandedRowId === refId && (
+                              <tr className="bg-slate-50/50">
+                                <td colSpan={5} className="py-3 px-4 border-b border-slate-100">
+                                  <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm text-xs cursor-default">
+                                    {isHarvest ? (
+                                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                        <div><span className="text-slate-400 block mb-1">Crop / Grade</span><span className="font-bold">{item.cropName || item.crop} {item.grade ? `(${item.grade})` : ''}</span></div>
+                                        <div><span className="text-slate-400 block mb-1">Weight</span><span className="font-bold">{item.netWeight || item.weight} kg</span></div>
+                                        <div><span className="text-slate-400 block mb-1">Rate / kg</span><span className="font-bold">₹{item.rate}</span></div>
+                                        <div><span className="text-slate-400 block mb-1">Deductions</span><span className="font-bold text-rose-500">{item.deductions || 'None'}</span></div>
+                                      </div>
+                                    ) : (
+                                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                        <div><span className="text-slate-400 block mb-1">Payment Mode</span><span className="font-bold">{item.method || item.paymentMethod || 'Cash'}</span></div>
+                                        <div><span className="text-slate-400 block mb-1">Reference</span><span className="font-bold">{item.reference || item.transactionId || 'N/A'}</span></div>
+                                        <div><span className="text-slate-400 block mb-1">Notes</span><span className="font-bold">{item.notes || 'None'}</span></div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       })
                     )}

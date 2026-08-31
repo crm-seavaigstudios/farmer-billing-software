@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useTenant } from '@/context/TenantContext';
+import { useSidebar } from '@/context/SidebarContext';
 import {
   LayoutDashboard,
   Users,
@@ -23,13 +24,15 @@ import {
   Smartphone,
   ArrowRight,
   Clock,
-  Truck
+  Truck,
+  X
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
   const { t, language } = useLanguage();
   const { tenant } = useTenant();
+  const { isMobileSidebarOpen, closeMobileSidebar } = useSidebar();
 
   const navItems = [
     { name: t.dashboard, href: '/dashboard', icon: LayoutDashboard, hasSubmenu: false },
@@ -51,18 +54,30 @@ export const Sidebar: React.FC = () => {
   const displayName = language === 'mr' ? tenant.businessNameMr : tenant.businessName;
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200/80 flex flex-col justify-between h-screen sticky top-0 left-0 z-30 select-none font-sans">
-      {/* Brand Header */}
-      <div>
-        <div className="h-16 px-5 flex items-center justify-between border-b border-slate-100">
-          <Link href="/dashboard" className="flex items-center gap-3 min-w-0">
-            {tenant.logoUrl ? (
-              <img src={tenant.logoUrl} alt={displayName} className="w-9 h-9 rounded-xl object-cover shadow-2xs" />
-            ) : (
-              <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20 flex-shrink-0">
-                <span className="text-xl font-extrabold">{displayName.charAt(0)}</span>
-              </div>
-            )}
+    <>
+      {/* Mobile Overlay */}
+      {isMobileSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 z-40 md:hidden"
+          onClick={closeMobileSidebar}
+        />
+      )}
+      <aside
+        className={`w-64 bg-white border-r border-slate-200/80 flex flex-col justify-between h-screen fixed top-0 left-0 z-50 select-none font-sans transition-transform duration-300 ease-in-out ${
+          isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } md:sticky md:translate-x-0`}
+      >
+        {/* Brand Header */}
+        <div>
+          <div className="h-16 px-5 flex items-center justify-between border-b border-slate-100">
+            <Link href="/dashboard" className="flex items-center gap-3 min-w-0" onClick={() => closeMobileSidebar()}>
+              {tenant.logoUrl ? (
+                <img src={tenant.logoUrl} alt={displayName} className="w-9 h-9 rounded-xl object-cover shadow-2xs" />
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20 flex-shrink-0">
+                  <span className="text-xl font-extrabold">{displayName.charAt(0)}</span>
+                </div>
+              )}
             <div className="truncate">
               <span className="font-extrabold text-xs tracking-tight text-slate-900 block leading-tight truncate">
                 {displayName}
@@ -87,6 +102,7 @@ export const Sidebar: React.FC = () => {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={closeMobileSidebar}
                 className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 group ${
                   isActive
                     ? 'bg-blue-50 text-blue-600 shadow-sm'
@@ -151,5 +167,6 @@ export const Sidebar: React.FC = () => {
         </div>
       </div>
     </aside>
+    </>
   );
 };

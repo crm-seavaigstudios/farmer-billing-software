@@ -39,7 +39,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
   const { language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'LEDGER'>('PROFILE');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   if (!farmer) return null;
 
@@ -435,12 +435,12 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                     {realTransactions.map((tx, idx) => (
                       <React.Fragment key={idx}>
                         <tr 
-                          onClick={() => setExpandedRow(expandedRow === idx ? null : idx)}
-                          className={`hover:bg-slate-50 font-medium cursor-pointer transition-colors ${expandedRow === idx ? 'bg-slate-50' : ''}`}
+                          onClick={() => setExpandedRowId(expandedRowId === tx.refNo ? null : tx.refNo)}
+                          className={`hover:bg-slate-50 font-medium cursor-pointer transition-colors ${expandedRowId === tx.refNo ? 'bg-slate-50' : ''}`}
                         >
                           <td className="py-2.5 px-3 text-slate-500 text-[11px]">
                              <div className="flex items-center gap-1">
-                               {expandedRow === idx ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
+                               {expandedRowId === tx.refNo ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
                                {tx.date}
                              </div>
                           </td>
@@ -452,7 +452,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                           <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{tx.credit}</td>
                           <td className="py-2.5 px-3 text-right font-black text-slate-900">{tx.balance}</td>
                         </tr>
-                        {expandedRow === idx && (
+                        {expandedRowId === tx.refNo && (
                           <tr className="bg-slate-50/50">
                             <td colSpan={5} className="py-3 px-4 border-b border-slate-100">
                               <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm text-xs cursor-default">

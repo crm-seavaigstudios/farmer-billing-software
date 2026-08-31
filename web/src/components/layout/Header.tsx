@@ -4,8 +4,10 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useTenant } from '@/context/TenantContext';
+import { useSidebar } from '@/context/SidebarContext';
 import { initProductionData } from '@/lib/seedData';
 import {
+  Menu,
   Search,
   Plus,
   Bell,
@@ -29,6 +31,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { language, setLanguage } = useLanguage();
   const { tenant } = useTenant();
+  const { toggleMobileSidebar } = useSidebar();
   const router = useRouter();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -57,10 +60,16 @@ export const Header: React.FC<HeaderProps> = ({
   const displayName = language === 'mr' ? tenant.businessNameMr : tenant.businessName;
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between sticky top-0 z-20 font-sans select-none">
-      {/* Global Search Bar */}
-      <div className="flex items-center gap-2.5 w-96">
-        <div className="relative w-full">
+    <header className="h-16 bg-white border-b border-slate-200/80 px-4 md:px-6 flex items-center justify-between sticky top-0 z-20 font-sans select-none">
+      {/* Global Search Bar & Mobile Menu Toggle */}
+      <div className="flex items-center gap-2.5 w-full md:w-96">
+        <button 
+          onClick={toggleMobileSidebar}
+          className="p-2 -ml-2 text-slate-500 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors md:hidden"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <div className="relative w-full hidden md:block">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
           <input
             type="text"
@@ -102,7 +111,7 @@ export const Header: React.FC<HeaderProps> = ({
               window.location.reload();
             }
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs font-black text-emerald-700 transition-all cursor-pointer shadow-2xs"
+          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs font-black text-emerald-700 transition-all cursor-pointer shadow-2xs"
           title="Clear local browser cache, re-seed production master data, and sync Supabase"
         >
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />

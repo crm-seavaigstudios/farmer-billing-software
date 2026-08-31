@@ -2,6 +2,7 @@ import React from 'react';
 import './globals.css';
 import { LanguageProvider } from '@/context/LanguageContext';
 import { TenantProvider } from '@/context/TenantContext';
+import { SidebarProvider } from '@/context/SidebarContext';
 import AuthGuard from '@/components/common/AuthGuard';
 import InstallPwaPopup from '@/components/common/InstallPwaPopup';
 
@@ -32,7 +33,9 @@ export default function RootLayout({
         <TenantProvider>
           <LanguageProvider>
             <AuthGuard>
-              {children}
+              <SidebarProvider>
+                {children}
+              </SidebarProvider>
             </AuthGuard>
           </LanguageProvider>
         </TenantProvider>
