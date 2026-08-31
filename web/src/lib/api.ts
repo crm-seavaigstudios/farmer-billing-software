@@ -971,6 +971,7 @@ export const apiRegisterStaff = async (data: any) => {
       password: data.password || '123456',
       phone: data.phone || '',
       role: data.role || 'MANAGER',
+      updatedAt: new Date().toISOString(),
     };
     await supabase.from('User').insert([userObj]).throwOnError();
     return userObj;
