@@ -481,33 +481,56 @@ export function FarmerDetailSidebar({ farmerId, refreshKey, onClose, onOpenMater
 
               {activeTab === 'LEDGER' && (
                 <div className="space-y-3">
-                  <h3 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Passbook Ledger Statement</h3>
-                  <div className="space-y-2">
-                    {ledgerRows.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-8">No transactions recorded yet in passbook.</p>
-                    ) : (
-                      ledgerRows.map((row: any, idx: number) => (
-                        <div key={idx} className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-1 text-xs">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                                row.type === 'CREDIT' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-                              }`}>
-                                {row.type}
-                              </span>
-                              <span className="font-bold text-slate-900">{row.title}</span>
-                            </div>
-                            <span className={`font-black ${row.type === 'CREDIT' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                              {row.type === 'CREDIT' ? `+₹${row.credit.toLocaleString('en-IN')}` : `-₹${row.debit.toLocaleString('en-IN')}`}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
-                            <span>{row.subtitle} • {row.date}</span>
-                            <span className="font-bold text-slate-700">Bal: ₹{row.runningBalance.toLocaleString('en-IN')}</span>
-                          </div>
-                        </div>
-                      ))
-                    )}
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Passbook Ledger Statement</h3>
+                  </div>
+                  
+                  <div className="overflow-hidden border border-slate-200 rounded-xl bg-white shadow-sm">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-500 font-extrabold uppercase border-b border-slate-200">
+                        <tr>
+                          <th className="py-2.5 px-3">Date</th>
+                          <th className="py-2.5 px-3">Description</th>
+                          <th className="py-2.5 px-3 text-right">Debit</th>
+                          <th className="py-2.5 px-3 text-right">Credit</th>
+                          <th className="py-2.5 px-3 text-right">Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {ledgerRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="py-8 text-center text-slate-400 font-bold">No transactions recorded yet in passbook.</td>
+                          </tr>
+                        ) : (
+                          [...ledgerRows].reverse().map((row: any, idx: number) => {
+                            const isCredit = row.type === 'CREDIT';
+                            // Format date cleanly
+                            const displayDate = row.createdAt ? new Date(row.createdAt).toLocaleDateString('en-GB') : (row.date?.split('T')[0] || row.date);
+                            
+                            return (
+                              <tr key={idx} className="hover:bg-slate-50">
+                                <td className="py-2.5 px-3 text-slate-500 font-medium whitespace-nowrap">
+                                  {displayDate}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-800 max-w-[200px]">
+                                  <span className="font-bold block truncate" title={row.title}>{row.title}</span>
+                                  <span className="text-[10px] text-slate-400 block truncate" title={row.subtitle}>{row.subtitle}</span>
+                                </td>
+                                <td className={`py-2.5 px-3 text-right font-bold ${!isCredit ? 'text-rose-600' : 'text-slate-300'}`}>
+                                  {!isCredit ? `-₹${row.debit.toLocaleString('en-IN')}` : '—'}
+                                </td>
+                                <td className={`py-2.5 px-3 text-right font-bold ${isCredit ? 'text-emerald-600' : 'text-slate-300'}`}>
+                                  {isCredit ? `+₹${row.credit.toLocaleString('en-IN')}` : '—'}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-black text-slate-900 bg-slate-50/50">
+                                  ₹{row.runningBalance.toLocaleString('en-IN')}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
