@@ -142,10 +142,10 @@ export default function FarmersPage() {
       setCategoryModalTitle(`All Farmers Purchases (${totalFarmers} Farmers)`);
       setCategoryModalFarmers(farmers.filter((f) => (f.totalPurchase || 0) > 0));
     } else if (category === 'PAID') {
-      setCategoryModalTitle(`Fully / Partially Paid Farmers (${paidFarmersCount} Farmers)`);
+      setCategoryModalTitle(`Fully / Partially Paid Farmers (${displayPaidCount} Farmers)`);
       setCategoryModalFarmers(farmers.filter((f) => (f.totalPaid || 0) > 0));
     } else if (category === 'UNPAID') {
-      setCategoryModalTitle(`Farmers with Unpaid Bills (${unpaidFarmersCount} Farmers)`);
+      setCategoryModalTitle(`Farmers with Unpaid Bills (${displayUnpaidCount} Farmers)`);
       setCategoryModalFarmers(farmers.filter((f) => (f.outstandingAmount || 0) > 0));
     } else if (category === 'FARMERS') {
       setCategoryModalTitle(`All Active Farmers (${totalFarmers} Farmers)`);
