@@ -967,15 +967,16 @@ export const apiRegisterStaff = async (data: any) => {
       id: `usr-${Date.now()}`,
       tenantId,
       name: data.name,
-      email: data.email,
+      email: data.email || `staff${Date.now()}@seavaig.com`,
+      password: data.password || '123456',
       phone: data.phone || '',
-      role: data.role || 'STAFF',
+      role: data.role || 'MANAGER',
     };
     await supabase.from('User').insert([userObj]).throwOnError();
     return userObj;
   } catch (e) {
     console.error('Error registering staff:', e);
-    return data;
+    throw e;
   }
 };
 
@@ -1240,8 +1241,22 @@ export const apiCreateWorker = async (workerData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
   try {
-    const workerCode = workerData.workerCode || `W-${Date.now()}`;
-    await supabase.from('DailyWorker').insert([{ ...workerData, id: `W${Date.now()}`, workerCode, tenantId }]);
+    const workerObj = {
+      id: `W${Date.now()}`,
+      workerCode: workerData.workerCode || workerData.workerIdCode || `W-${Date.now()}`,
+      name: workerData.name,
+      phone: workerData.phone || '',
+      role: workerData.role || 'LABOUR',
+      dailyRate: Number(workerData.dailyRate || 0),
+      status: workerData.status || 'ACTIVE',
+      totalEarned: Number(workerData.totalEarned || 0),
+      totalPaid: Number(workerData.totalPaid || 0),
+      outstandingBalance: Number(workerData.outstandingBalance || 0),
+      tenantId,
+      updatedAt: new Date().toISOString(),
+    };
+    await supabase.from('DailyWorker').insert([workerObj]).throwOnError();
+    return workerObj;
   } catch (e) { console.error(e); throw e; }
 };
 
@@ -1289,17 +1304,19 @@ export const apiCreateCustomer = async (custData: any) => {
   
   const customerObj = {
     id: newId,
+    customerIdCode: custData.customerIdCode || `C-${Math.floor(1000 + Math.random() * 9000)}`,
     tenantId,
     name: custData.name,
-    company: custData.company || custData.name,
+    contactPerson: custData.company || custData.name,
     phone: custData.phone,
     email: custData.email || '',
+    gstNumber: custData.gstin || custData.gstNumber || '',
     address: custData.address || '',
-    gstin: custData.gstin || '',
-    creditLimit: typeof custData.creditLimit === 'number' ? custData.creditLimit : Number(String(custData.creditLimit || '0').replace(/[^0-9.-]+/g, '')),
-    outstanding: typeof custData.outstanding === 'number' ? custData.outstanding : Number(String(custData.outstanding || '0').replace(/[^0-9.-]+/g, '')),
+    totalSales: typeof custData.totalPurchases === 'number' ? custData.totalPurchases : Number(String(custData.totalPurchases || '0').replace(/[^0-9.-]+/g, '')),
+    totalReceived: 0,
+    outstandingAmount: typeof custData.outstanding === 'number' ? custData.outstanding : Number(String(custData.outstanding || '0').replace(/[^0-9.-]+/g, '')),
     status: custData.status || 'ACTIVE',
-    totalPurchases: typeof custData.totalPurchases === 'number' ? custData.totalPurchases : Number(String(custData.totalPurchases || '0').replace(/[^0-9.-]+/g, '')),
+    updatedAt: new Date().toISOString(),
   };
 
   try {
