@@ -11,7 +11,7 @@ import { AddFarmerAdvanceModal } from '@/components/farmers/AddFarmerAdvanceModa
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetFarmers, getTenantId } from '@/lib/api';
+import { apiGetFarmers, apiGetPurchases, apiGetPayments, getTenantId } from '@/lib/api';
 import {
   Users,
   Search,
@@ -47,13 +47,21 @@ export default function FarmersPage() {
 
   const defaultFarmers: any[] = [];
 
+  const [purchases, setPurchases] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [timelineFilter, setTimelineFilter] = useState<{ filter: TimelineFilter; start?: string; end?: string }>({ filter: 'all_time' });
+
   useEffect(() => {
     async function loadData() {
-      const response = await apiGetFarmers();
-      if (response && Array.isArray(response)) {
-        setFarmers(response);
-        setIsLiveSynced(true);
-      }
+      const [fRes, purRes, payRes] = await Promise.all([
+        apiGetFarmers(),
+        apiGetPurchases(),
+        apiGetPayments(),
+      ]);
+      if (fRes && Array.isArray(fRes)) setFarmers(fRes);
+      if (purRes && Array.isArray(purRes)) setPurchases(purRes);
+      if (payRes && Array.isArray(payRes)) setPayments(payRes);
+      setIsLiveSynced(true);
     }
     loadData();
   }, []);
@@ -79,17 +87,53 @@ export default function FarmersPage() {
   };
 
   // Dynamic Financial Metrics Calculation
-  const totalPurchased = farmers.reduce((acc, f) => acc + (f.totalPurchase || 0), 0);
-  const totalPaid = farmers.reduce((acc, f) => acc + (f.totalPaid || 0), 0);
-  const paidFarmersCount = farmers.filter((f) => (f.totalPaid || 0) > 0).length;
+  let displayPurchased = 0;
+  let displayPaid = 0;
+  let displayPaidCount = 0;
+  let displayUnpaid = 0;
+  let displayUnpaidCount = 0;
 
-  const totalUnpaid = farmers.reduce((acc, f) => acc + (f.outstandingAmount || 0), 0);
-  const unpaidFarmersCount = farmers.filter((f) => (f.outstandingAmount || 0) > 0).length;
+  if (timelineFilter.filter === 'all_time') {
+    displayPurchased = farmers.reduce((acc, f) => acc + (f.totalPurchase || 0), 0);
+    displayPaid = farmers.reduce((acc, f) => acc + (f.totalPaid || 0), 0);
+    displayPaidCount = farmers.filter((f) => (f.totalPaid || 0) > 0).length;
+    displayUnpaid = farmers.reduce((acc, f) => acc + (f.outstandingAmount || 0), 0);
+    displayUnpaidCount = farmers.filter((f) => (f.outstandingAmount || 0) > 0).length;
+  } else {
+    // Filter purchases and payments by date range
+    const startObj = timelineFilter.start ? new Date(timelineFilter.start) : new Date(0);
+    startObj.setHours(0,0,0,0);
+    const endObj = timelineFilter.end ? new Date(timelineFilter.end) : new Date();
+    endObj.setHours(23,59,59,999);
+    
+    const start = startObj.getTime();
+    const end = endObj.getTime();
+
+    const filteredPurchases = purchases.filter(p => {
+      const t = new Date(p.createdAt).getTime();
+      return t >= start && t <= end;
+    });
+
+    const filteredPayments = payments.filter(p => {
+      const t = new Date(p.createdAt).getTime();
+      return t >= start && t <= end && p.paymentType !== 'ADVANCE_PAYOUT';
+    });
+
+    displayPurchased = filteredPurchases.reduce((acc, p) => acc + Number(p.netAmount || 0), 0);
+    displayPaid = filteredPayments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+    
+    const paidFarmerIds = new Set(filteredPayments.map(p => p.farmerId));
+    displayPaidCount = paidFarmerIds.size;
+    
+    // For unpaid, we'd need a more complex calculation, but for now we just show overall unpaid
+    displayUnpaid = farmers.reduce((acc, f) => acc + (f.outstandingAmount || 0), 0);
+    displayUnpaidCount = farmers.filter((f) => (f.outstandingAmount || 0) > 0).length;
+  }
 
   const totalFarmers = farmers.length;
 
   const handleTimelineChange = (filter: TimelineFilter, startDate?: string, endDate?: string) => {
-    console.log('Timeline changed to:', filter, startDate, endDate);
+    setTimelineFilter({ filter, start: startDate, end: endDate });
   };
 
   const handleCategoryClick = (category: 'PURCHASED' | 'PAID' | 'UNPAID' | 'FARMERS') => {
@@ -154,11 +198,11 @@ export default function FarmersPage() {
 
           {/* FINANCIAL SUMMARY BAR WITH TIMELINE FILTER & DRILL-DOWN */}
           <FinancialSummaryBar
-            totalPurchased={totalPurchased}
-            totalPaid={totalPaid}
-            paidFarmersCount={paidFarmersCount}
-            totalUnpaid={totalUnpaid}
-            unpaidFarmersCount={unpaidFarmersCount}
+            totalPurchased={displayPurchased}
+            totalPaid={displayPaid}
+            paidFarmersCount={displayPaidCount}
+            totalUnpaid={displayUnpaid}
+            unpaidFarmersCount={displayUnpaidCount}
             totalFarmers={totalFarmers}
             onTimelineChange={handleTimelineChange}
             onCategoryClick={handleCategoryClick}

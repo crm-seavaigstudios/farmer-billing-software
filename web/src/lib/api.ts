@@ -32,7 +32,7 @@ function setLocalCache(key: string, val: any[]) {
 // ----------------------------------------------------
 // EXECUTIVE DASHBOARD & STATS ENGINE
 // ----------------------------------------------------
-export const apiGetDashboardStats = async () => {
+export const apiGetDashboardStats = async (filterStart?: number, filterEnd?: number) => {
   try {
     const farmers = await apiGetFarmers();
     const purchases = await apiGetPurchases();
@@ -46,17 +46,24 @@ export const apiGetDashboardStats = async () => {
       return Number(String(val).replace(/[^0-9.-]+/g, '')) || 0;
     };
 
-    const todayStr = new Date().toLocaleDateString('en-CA');
-
     const totalFarmers = farmers.length;
     const activeFarmers = farmers.filter((f: any) => f.status !== 'INACTIVE').length || totalFarmers;
     
-    // Filter for today using the standard YYYY-MM-DD date property
-    const todaysPurchasesList = purchases.filter((p: any) => p.date === todayStr);
-    const todaysSalesList = sales.filter((s: any) => s.date === todayStr);
-    const todaysPaymentsList = payments.filter((p: any) => p.date === todayStr);
+    // Default to today if no filter passed (for legacy callers)
+    const rangeStart = filterStart ?? new Date(new Date().setHours(0,0,0,0)).getTime();
+    const rangeEnd = filterEnd ?? new Date(new Date().setHours(23,59,59,999)).getTime();
 
-    const todaysPurchase = todaysPurchasesList.reduce((acc: number, p: any) => acc + parseNum(p.totalAmount || p.amount), 0);
+    const inRange = (dStr: string) => {
+      if (!dStr) return false;
+      const t = new Date(dStr).getTime();
+      return t >= rangeStart && t <= rangeEnd;
+    };
+
+    const todaysPurchasesList = purchases.filter((p: any) => inRange(p.createdAt || p.date));
+    const todaysSalesList = sales.filter((s: any) => inRange(s.createdAt || s.date));
+    const todaysPaymentsList = payments.filter((p: any) => inRange(p.createdAt || p.date));
+
+    const todaysPurchase = todaysPurchasesList.reduce((acc: number, p: any) => acc + parseNum(p.totalAmount || p.amount || p.netAmount), 0);
     const todaysSales = todaysSalesList.reduce((acc: number, s: any) => acc + parseNum(s.totalAmount || s.amount), 0);
     const todaysPayment = todaysPaymentsList.reduce((acc: number, p: any) => acc + parseNum(p.amount), 0);
     
@@ -402,6 +409,7 @@ export const apiGetPurchases = async () => {
           date: p.date || (p.purchaseDate ? p.purchaseDate.split('T')[0] : new Date().toLocaleDateString('en-CA')),
           purchaseDate: p.purchaseDate || p.createdAt || p.date || null,
           storageLocation: p.storageLocation || '',
+          items: p.items || [],
         };
       });
       setLocalCache(`seavaig_purchases_cache_${tenantId}`, mapped);
@@ -672,6 +680,7 @@ export const apiCreateTrader = async (trData: any) => {
     totalPurchased: 0,
     totalPaid: 0,
     dueAmount: 0,
+    updatedAt: new Date().toISOString(),
   };
 
   try {
@@ -950,21 +959,33 @@ export const apiDeleteCrop = async (id: string) => {
   return true;
 };
 
-export const apiRegisterStaff = async (data: any) => data; // Handled mostly via Worker table API
+export const apiRegisterStaff = async (data: any) => {
+  const tenantId = getTenantId();
+  if (!tenantId) return data;
+  try {
+    const userObj = {
+      id: `usr-${Date.now()}`,
+      tenantId,
+      name: data.name,
+      email: data.email,
+      phone: data.phone || '',
+      role: data.role || 'STAFF',
+    };
+    await supabase.from('User').insert([userObj]).throwOnError();
+    return userObj;
+  } catch (e) {
+    console.error('Error registering staff:', e);
+    return data;
+  }
+};
 
 export const apiGetUsers = async () => {
-  // Use the Worker table for users/staff
   const tenantId = getTenantId();
   if (!tenantId) return [];
   try {
-    const { data, error } = await supabase.from('DailyWorker').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+    const { data, error } = await supabase.from('User').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
     if (!error && data) {
-      return data.map((u: any) => ({
-        id: u.id,
-        name: u.name,
-        role: u.role || 'STAFF',
-        email: u.phone, // using phone as email display
-      }));
+      return data;
     }
   } catch {}
   return getLocalCache(`seavaig_users_cache_${tenantId}`, []);
@@ -1219,7 +1240,8 @@ export const apiCreateWorker = async (workerData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
   try {
-    await supabase.from('DailyWorker').insert([{ ...workerData, id: `W${Date.now()}`, tenantId }]);
+    const workerCode = workerData.workerCode || `W-${Date.now()}`;
+    await supabase.from('DailyWorker').insert([{ ...workerData, id: `W${Date.now()}`, workerCode, tenantId }]);
   } catch (e) { console.error(e); throw e; }
 };
 
@@ -1258,6 +1280,40 @@ export const apiGetCustomers = async () => {
   return data || [];
 };
 
+export const apiCreateCustomer = async (custData: any) => {
+  const tenantId = getTenantId();
+  if (!tenantId) throw new Error('No tenant');
+  
+  const current = getLocalCache(`seavaig_customers_cache_${tenantId}`, []);
+  const newId = custData.id || `CUST-${Date.now()}`;
+  
+  const customerObj = {
+    id: newId,
+    tenantId,
+    name: custData.name,
+    company: custData.company || custData.name,
+    phone: custData.phone,
+    email: custData.email || '',
+    address: custData.address || '',
+    gstin: custData.gstin || '',
+    creditLimit: typeof custData.creditLimit === 'number' ? custData.creditLimit : Number(String(custData.creditLimit || '0').replace(/[^0-9.-]+/g, '')),
+    outstanding: typeof custData.outstanding === 'number' ? custData.outstanding : Number(String(custData.outstanding || '0').replace(/[^0-9.-]+/g, '')),
+    status: custData.status || 'ACTIVE',
+    totalPurchases: typeof custData.totalPurchases === 'number' ? custData.totalPurchases : Number(String(custData.totalPurchases || '0').replace(/[^0-9.-]+/g, '')),
+  };
+
+  try {
+    await supabase.from('Customer').insert([customerObj]).throwOnError();
+  } catch (e) {
+    console.error('Error creating customer:', e);
+    throw e;
+  }
+
+  const updated = [customerObj, ...current];
+  setLocalCache(`seavaig_customers_cache_${tenantId}`, updated);
+  return customerObj;
+};
+
 export const apiGetExpenses = async () => {
   const tenantId = getTenantId();
   if (!tenantId) return getLocalCache('seavaig_expenses_cache', []);
@@ -1265,3 +1321,40 @@ export const apiGetExpenses = async () => {
   return data || [];
 };
 
+export type TimelineFilter = 'ALL_TIME' | 'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'WEEK' | 'MONTH' | 'SEASON' | 'CUSTOM';
+
+export function getTimelineDateRange(filter: TimelineFilter, customStart?: string, customEnd?: string): { start: number; end: number } {
+  const now = new Date();
+  
+  const endObj = new Date(now);
+  endObj.setHours(23, 59, 59, 999);
+  
+  let startObj = new Date(now);
+  startObj.setHours(0, 0, 0, 0);
+
+  if (filter === 'TODAY') {
+    // Start is already 00:00:00 today
+  } else if (filter === 'YESTERDAY') {
+    startObj.setDate(startObj.getDate() - 1);
+    endObj.setDate(endObj.getDate() - 1);
+    endObj.setHours(23, 59, 59, 999);
+  } else if (filter === 'WEEK' || filter === 'THIS_WEEK') {
+    const day = startObj.getDay();
+    const diff = startObj.getDate() - day + (day === 0 ? -6 : 1);
+    startObj.setDate(diff);
+  } else if (filter === 'MONTH' || filter === 'THIS_MONTH') {
+    startObj.setDate(1);
+  } else if (filter === 'SEASON') {
+    startObj.setMonth(0, 1);
+  } else if (filter === 'CUSTOM' && customStart && customEnd) {
+    startObj = new Date(customStart);
+    startObj.setHours(0, 0, 0, 0);
+    const customEndObj = new Date(customEnd);
+    customEndObj.setHours(23, 59, 59, 999);
+    return { start: startObj.getTime(), end: customEndObj.getTime() };
+  } else if (filter === 'ALL_TIME') {
+    return { start: 0, end: endObj.getTime() };
+  }
+  
+  return { start: startObj.getTime(), end: endObj.getTime() };
+}

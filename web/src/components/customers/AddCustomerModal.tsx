@@ -28,7 +28,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newCust = {
       id: `CUST-2026-${Math.floor(100 + Math.random() * 900)}`,
@@ -43,7 +43,14 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
       status: 'ACTIVE',
       totalPurchases: '₹0',
     };
-    onAddCustomer(newCust);
+    const { apiCreateCustomer } = await import('@/lib/api');
+    try {
+      const savedCust = await apiCreateCustomer(newCust);
+      onAddCustomer(savedCust);
+    } catch (e) {
+      console.error(e);
+      onAddCustomer(newCust); // Fallback to state update even if DB fails
+    }
     onClose();
   };
 
