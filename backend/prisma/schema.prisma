@@ -101,6 +101,7 @@ model Farmer {
   farmerIdCode      String        @unique // e.g. FAR-10001
   name              String
   phone             String
+  password          String?
   village           String
   taluka            String
   district          String
@@ -210,6 +211,7 @@ model Customer {
   name              String
   contactPerson     String?
   phone             String
+  password          String?
   email             String?
   gstNumber         String?
   address           String?

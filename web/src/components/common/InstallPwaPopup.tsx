@@ -6,6 +6,9 @@ export default function InstallPwaPopup() {
   const [isReady, setIsReady] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
 
+  const [dismissed, setDismissed] = useState(false);
+  const [showFallback, setShowFallback] = useState(false);
+
   useEffect(() => {
     // Check if iOS
     const userAgent = window.navigator.userAgent.toLowerCase();
@@ -19,9 +22,15 @@ export default function InstallPwaPopup() {
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    
+    // Timeout to show fallback if prompt never fires
+    const timer = setTimeout(() => {
+      setShowFallback(true);
+    }, 3000);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      clearTimeout(timer);
     };
   }, []);
 
@@ -40,11 +49,9 @@ export default function InstallPwaPopup() {
   if (typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches) {
     return null;
   }
-
-  // If not ready and not iOS, don't show massive popup yet. 
-  // Wait, user wants a massive popup blocking the view for farmers/sellers. 
-  // We can just show a massive blocking overlay if they are on a mobile device and not standalone.
   
+  if (dismissed) return null;
+
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
   const isStandalone = typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true);
 
@@ -57,21 +64,33 @@ export default function InstallPwaPopup() {
         {isReady ? (
           <button 
             onClick={handleInstallClick}
-            className="bg-white text-blue-600 font-bold text-2xl py-4 px-8 rounded-full shadow-lg transform transition active:scale-95"
+            className="bg-white text-blue-600 font-bold text-2xl py-4 px-8 rounded-full shadow-lg transform transition active:scale-95 mb-6"
           >
             ⏬ DOWNLOAD APP NOW
           </button>
         ) : isIOS ? (
-          <div className="bg-white/20 p-6 rounded-lg text-lg">
+          <div className="bg-white/20 p-6 rounded-lg text-lg mb-6">
             <p>To install on iPhone:</p>
             <ol className="list-decimal text-left ml-6 mt-4 space-y-2">
               <li>Tap the <b>Share</b> button at the bottom of Safari.</li>
               <li>Scroll down and tap <b>"Add to Home Screen"</b>.</li>
             </ol>
           </div>
+        ) : showFallback ? (
+          <div className="bg-white/20 p-6 rounded-lg text-lg mb-6 max-w-sm">
+            <p>To install manually:</p>
+            <p className="mt-2 text-sm opacity-90">Tap the browser menu (3 dots) and select <b>"Install App"</b> or <b>"Add to Home screen"</b>.</p>
+          </div>
         ) : (
-          <p className="text-lg animate-pulse">Checking device compatibility...</p>
+          <p className="text-lg animate-pulse mb-6">Checking device compatibility...</p>
         )}
+
+        <button 
+          onClick={() => setDismissed(true)}
+          className="text-white/70 underline mt-4 hover:text-white"
+        >
+          Continue to Website (Skip)
+        </button>
       </div>
     );
   }

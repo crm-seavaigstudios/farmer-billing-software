@@ -119,37 +119,50 @@ export default function FarmerPortalPage() {
             Account Statement (Ledger)
           </h3>
 
-          <div className="space-y-4">
-            {ledger.length === 0 ? (
-              <p className="text-center text-slate-400 py-10 font-semibold text-sm">No transactions found.</p>
-            ) : (
-              ledger.map((item, idx) => (
-                <div key={idx} className="flex justify-between items-center border-b border-slate-50 pb-3 last:border-0">
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-1 \${item._type === 'HARVEST' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                      {item._type === 'HARVEST' ? <ArrowUpCircle className="w-6 h-6" /> : <ArrowDownCircle className="w-6 h-6" />}
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm">
-                        {item._type === 'HARVEST' ? 'Crop Harvest Sold' : 'Advance / Payment'}
-                      </h4>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">
-                        {item._dateObj.toLocaleDateString()} • {item._type === 'HARVEST' ? item.billNo : item.paymentId}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="text-right">
-                    <p className={`font-black \${item._type === 'HARVEST' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {item._type === 'HARVEST' ? '+' : '-'} ₹{item.netAmount || item.totalAmount || item.amount}
-                    </p>
-                    <p className="text-[10px] font-bold text-slate-400">
-                      Bal: ₹{item._runningBalance}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
+          <div className="overflow-hidden border border-slate-100 rounded-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100">
+                <tr>
+                  <th className="py-3 px-3">Date</th>
+                  <th className="py-3 px-3">Description</th>
+                  <th className="py-3 px-3 text-right">Debit</th>
+                  <th className="py-3 px-3 text-right">Credit</th>
+                  <th className="py-3 px-3 text-right">Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {ledger.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-400 font-semibold">No transactions found.</td>
+                  </tr>
+                ) : (
+                  ledger.map((item, idx) => {
+                    const isHarvest = item._type === 'HARVEST';
+                    const amt = parseFloat(item.netAmount || item.totalAmount || item.amount || '0');
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-3 px-3 text-slate-500 font-medium whitespace-nowrap">
+                          {item._dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </td>
+                        <td className="py-3 px-3 text-slate-800">
+                          <span className="font-bold block">{isHarvest ? 'Crop Harvest Sold' : 'Advance / Payment'}</span>
+                          <span className="text-[10px] text-slate-400">{isHarvest ? item.billNo || item.id : item.paymentId || item.id}</span>
+                        </td>
+                        <td className={`py-3 px-3 text-right font-bold ${!isHarvest ? 'text-rose-600' : 'text-slate-400'}`}>
+                          {!isHarvest ? `-₹${amt.toLocaleString('en-IN')}` : '—'}
+                        </td>
+                        <td className={`py-3 px-3 text-right font-bold ${isHarvest ? 'text-emerald-600' : 'text-slate-400'}`}>
+                          {isHarvest ? `+₹${amt.toLocaleString('en-IN')}` : '—'}
+                        </td>
+                        <td className="py-3 px-3 text-right font-black text-slate-900">
+                          ₹{item._runningBalance.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

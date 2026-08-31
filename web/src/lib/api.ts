@@ -746,7 +746,7 @@ export const apiCreateTraderPurchase = async (tpData: any) => {
     }
   }
   const newId = `TBILL${ddmmyy}-${serial}`;
-  const billNo = tpData.id || `TRD-PUR-${Math.floor(1000 + Math.random() * 9000)}`;
+  const billNo = newId; // Make billNo visually consistent with ID
   const totalAmt = Number(tpData.quantity || 1) * Number(tpData.rate || 0);
   const paidAmt = Number(tpData.paidAmount || 0);
   const dueAmt = Math.max(0, totalAmt - paidAmt);
@@ -1241,10 +1241,32 @@ export const apiGetWorkers = async () => {
 export const apiCreateWorker = async (workerData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
+  
+  const today = new Date();
+  const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
+  
+  const { data: latestData } = await supabase
+    .from('DailyWorker')
+    .select('workerCode')
+    .eq('tenantId', tenantId)
+    .like('workerCode', `W-${ddmmyy}-%`)
+    .order('createdAt', { ascending: false })
+    .limit(1);
+
+  let serial = 1;
+  if (latestData && latestData.length > 0) {
+    const latestStr = latestData[0].workerCode || '';
+    const parts = latestStr.split('-');
+    if (parts.length > 2) {
+      serial = parseInt(parts[2], 10) + 1;
+    }
+  }
+  const workerCode = `W-${ddmmyy}-${String(serial).padStart(2, '0')}`;
+  
   try {
     const workerObj = {
       id: `W${Date.now()}`,
-      workerCode: workerData.workerCode || workerData.workerIdCode || `W-${Date.now()}`,
+      workerCode,
       name: workerData.name,
       phone: workerData.phone || '',
       role: workerData.role || 'LABOUR',
@@ -1284,8 +1306,30 @@ export const apiGetPayments = async () => {
 export const apiCreatePayment = async (payData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
+  
+  const today = new Date();
+  const mmyy = String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
+  
+  const { data: latestData } = await supabase
+    .from('Payment')
+    .select('paymentNo')
+    .eq('tenantId', tenantId)
+    .like('paymentNo', `PV-${mmyy}-%`)
+    .order('createdAt', { ascending: false })
+    .limit(1);
+
+  let serial = 1;
+  if (latestData && latestData.length > 0) {
+    const latestStr = latestData[0].paymentNo || '';
+    const parts = latestStr.split('-');
+    if (parts.length > 2) {
+      serial = parseInt(parts[2], 10) + 1;
+    }
+  }
+  const paymentNo = `PV-${mmyy}-${String(serial).padStart(3, '0')}`;
+  
   try {
-    await supabase.from('Payment').insert([{ ...payData, id: `PAY${Date.now()}`, tenantId }]);
+    await supabase.from('Payment').insert([{ ...payData, id: `PAY${Date.now()}`, paymentNo, tenantId }]);
   } catch (e) { console.error(e); throw e; }
 };
 
