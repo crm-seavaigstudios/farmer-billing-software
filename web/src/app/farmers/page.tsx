@@ -49,7 +49,7 @@ export default function FarmersPage() {
 
   const [purchases, setPurchases] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
-  const [timelineFilter, setTimelineFilter] = useState<{ filter: TimelineFilter; start?: string; end?: string }>({ filter: 'all_time' });
+  const [timelineFilter, setTimelineFilter] = useState<{ filter: TimelineFilter; start?: string; end?: string }>({ filter: 'ALL_TIME' });
 
   useEffect(() => {
     async function loadData() {
@@ -93,7 +93,7 @@ export default function FarmersPage() {
   let displayUnpaid = 0;
   let displayUnpaidCount = 0;
 
-  if (timelineFilter.filter === 'all_time') {
+  if (timelineFilter.filter === 'ALL_TIME') {
     displayPurchased = farmers.reduce((acc, f) => acc + (f.totalPurchase || 0), 0);
     displayPaid = farmers.reduce((acc, f) => acc + (f.totalPaid || 0), 0);
     displayPaidCount = farmers.filter((f) => (f.totalPaid || 0) > 0).length;
