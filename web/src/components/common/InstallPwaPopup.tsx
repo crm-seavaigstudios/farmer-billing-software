@@ -89,7 +89,7 @@ export default function InstallPwaPopup() {
           onClick={() => setDismissed(true)}
           className="text-white/70 underline mt-4 hover:text-white"
         >
-          Continue to Website (Skip)
+          Go to Website (Link)
         </button>
       </div>
     );

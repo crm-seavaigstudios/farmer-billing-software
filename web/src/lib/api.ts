@@ -1290,6 +1290,7 @@ export const apiGetPayments = async () => {
   if (data && data.length > 0) {
     const mapped = data.map(p => ({
       ...p,
+      id: p.paymentNo || p.id,
       farmerName: p.farmerName || p.farmer?.name || 'Unknown Farmer',
       phone: p.farmer?.phone || '',
       village: p.farmer?.village || '',
@@ -1329,7 +1330,7 @@ export const apiCreatePayment = async (payData: any) => {
   const paymentNo = `PV-${mmyy}-${String(serial).padStart(3, '0')}`;
   
   try {
-    await supabase.from('Payment').insert([{ ...payData, id: `PAY${Date.now()}`, paymentNo, tenantId }]);
+    await supabase.from('Payment').insert([{ ...payData, id: paymentNo, paymentNo, tenantId }]);
   } catch (e) { console.error(e); throw e; }
 };
 

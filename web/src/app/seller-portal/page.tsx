@@ -49,10 +49,13 @@ export default function SellerPortalPage() {
   const loadTenantData = async (tenantId: string) => {
     // 1. Get Dispatches (Sales) for this Seller under this Tenant
     // Need to find the specific Customer ID for this tenant first
-    const { data: custData } = await supabase.from('Customer').select('id').eq('phone', seller.phone).eq('tenantId', tenantId).maybeSingle();
-    if (custData) {
-      const { data: sales } = await supabase.from('Sale').select('*').eq('customerId', custData.id).eq('tenantId', tenantId).order('date', { ascending: false });
+    const { data: custData } = await supabase.from('Customer').select('id').eq('phone', seller.phone).eq('tenantId', tenantId);
+    if (custData && custData.length > 0) {
+      const custIds = custData.map((c: any) => c.id);
+      const { data: sales } = await supabase.from('Sale').select('*').in('customerId', custIds).eq('tenantId', tenantId).order('createdAt', { ascending: false });
       setDispatches(sales || []);
+    } else {
+      setDispatches([]);
     }
 
     // 2. Get today's crop rates
@@ -64,16 +67,32 @@ export default function SellerPortalPage() {
     e.preventDefault();
     if (!newCropName || !newCropRate || !selectedTenant) return;
     
-    const rateData = {
-      id: `rate-\${Date.now()}`,
-      sellerId: seller.id,
-      tenantId: selectedTenant.id,
-      cropName: newCropName,
-      rate: parseFloat(newCropRate),
-      date: new Date().toISOString()
-    };
+    // Check if rate for this crop already exists
+    const { data: existing } = await supabase
+      .from('SellerCropRates')
+      .select('id')
+      .eq('sellerId', seller.id)
+      .eq('tenantId', selectedTenant.id)
+      .eq('cropName', newCropName)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      await supabase.from('SellerCropRates').update({
+        rate: parseFloat(newCropRate),
+        date: new Date().toISOString()
+      }).eq('id', existing[0].id);
+    } else {
+      const rateData = {
+        id: `rate-${Date.now()}`,
+        sellerId: seller.id,
+        tenantId: selectedTenant.id,
+        cropName: newCropName,
+        rate: parseFloat(newCropRate),
+        date: new Date().toISOString()
+      };
+      await supabase.from('SellerCropRates').insert([rateData]);
+    }
     
-    await supabase.from('SellerCropRates').insert([rateData]);
     setNewCropName('');
     setNewCropRate('');
     loadTenantData(selectedTenant.id); // reload
@@ -250,8 +269,20 @@ export default function SellerPortalPage() {
                       <p className="font-bold text-slate-900">{rate.cropName}</p>
                       <p className="text-[10px] text-slate-400 font-semibold">{new Date(rate.date).toLocaleString()}</p>
                     </div>
-                    <div className="font-black text-emerald-600">
-                      ₹{rate.rate}/KG
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="font-black text-emerald-600">
+                        ₹{rate.rate}/KG
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setNewCropName(rate.cropName);
+                          setNewCropRate(rate.rate.toString());
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-1 rounded-md active:scale-95 transition-transform"
+                      >
+                        EDIT
+                      </button>
                     </div>
                   </div>
                 ))

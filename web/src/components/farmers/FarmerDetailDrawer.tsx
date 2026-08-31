@@ -18,7 +18,9 @@ import {
   Calendar,
   CheckCircle,
   ArrowDownRight,
-  ArrowUpRight
+  ArrowUpRight,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { PrintStatementModal, StatementData } from '@/components/common/PrintStatementModal';
@@ -37,6 +39,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
   const { language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'LEDGER'>('PROFILE');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
   if (!farmer) return null;
 
@@ -79,7 +82,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
            weightOrQty: `${x.weight} @ ${x.rate}`,
            debitVal: 0,
            creditVal: amt,
-           notes: x.notes
+           notes: x.notes,
+           raw: x
         });
       });
       
@@ -95,7 +99,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
            weightOrQty: '-',
            debitVal: amt,
            creditVal: 0,
-           notes: x.notes || x.method
+           notes: x.notes || x.method,
+           raw: x
         });
       });
 
@@ -111,7 +116,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
            weightOrQty: `${x.quantity} ${x.unit}`,
            debitVal: amt,
            creditVal: 0,
-           notes: x.notes
+           notes: x.notes,
+           raw: x
         });
       });
       
@@ -134,7 +140,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
             weightOrQty: item.weightOrQty,
             debit: item.debitVal > 0 ? `-₹${item.debitVal.toLocaleString('en-IN')}` : '—',
             credit: item.creditVal > 0 ? `₹${item.creditVal.toLocaleString('en-IN')}` : '—',
-            balance: `₹${bal.toLocaleString('en-IN')}`
+            balance: `₹${bal.toLocaleString('en-IN')}`,
+            raw: item.raw
          };
       });
       
@@ -426,16 +433,69 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                       </tr>
                     )}
                     {realTransactions.map((tx, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50 font-medium">
-                        <td className="py-2.5 px-3 text-slate-500 text-[11px]">{tx.date}</td>
-                        <td className="py-2.5 px-3 text-slate-800">
-                          <span className="font-bold">{tx.description}</span>
-                          <span className="text-[10px] text-slate-400 block">{tx.refNo}</span>
-                        </td>
-                        <td className={`py-2.5 px-3 text-right font-bold ${tx.debit !== '—' ? 'text-rose-600' : 'text-slate-900'}`}>{tx.debit}</td>
-                        <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{tx.credit}</td>
-                        <td className="py-2.5 px-3 text-right font-black text-slate-900">{tx.balance}</td>
-                      </tr>
+                      <React.Fragment key={idx}>
+                        <tr 
+                          onClick={() => setExpandedRow(expandedRow === idx ? null : idx)}
+                          className={`hover:bg-slate-50 font-medium cursor-pointer transition-colors ${expandedRow === idx ? 'bg-slate-50' : ''}`}
+                        >
+                          <td className="py-2.5 px-3 text-slate-500 text-[11px]">
+                             <div className="flex items-center gap-1">
+                               {expandedRow === idx ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
+                               {tx.date}
+                             </div>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-800">
+                            <span className="font-bold">{tx.description}</span>
+                            <span className="text-[10px] text-slate-400 block">{tx.refNo}</span>
+                          </td>
+                          <td className={`py-2.5 px-3 text-right font-bold ${tx.debit !== '—' ? 'text-rose-600' : 'text-slate-900'}`}>{tx.debit}</td>
+                          <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{tx.credit}</td>
+                          <td className="py-2.5 px-3 text-right font-black text-slate-900">{tx.balance}</td>
+                        </tr>
+                        {expandedRow === idx && (
+                          <tr className="bg-slate-50/50">
+                            <td colSpan={5} className="py-3 px-4 border-b border-slate-100">
+                              <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm text-xs cursor-default">
+                                {tx.type === 'PURCHASE' && (
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                    <div><span className="text-slate-400 block mb-1">Crop / Grade</span><span className="font-bold">{tx.raw.crop} {tx.raw.grade ? `(${tx.raw.grade})` : ''}</span></div>
+                                    <div><span className="text-slate-400 block mb-1">Weight</span><span className="font-bold">{tx.raw.weight} kg</span></div>
+                                    <div><span className="text-slate-400 block mb-1">Rate / kg</span><span className="font-bold">₹{tx.raw.rate}</span></div>
+                                    <div><span className="text-slate-400 block mb-1">Deductions</span><span className="font-bold text-rose-500">{tx.raw.deductions || 'None'}</span></div>
+                                  </div>
+                                )}
+                                {tx.type === 'PAYMENT' && (
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                    <div><span className="text-slate-400 block mb-1">Payment Mode</span><span className="font-bold">{tx.raw.method}</span></div>
+                                    <div><span className="text-slate-400 block mb-1">Reference</span><span className="font-bold">{tx.raw.reference || tx.raw.transactionId || 'N/A'}</span></div>
+                                    <div><span className="text-slate-400 block mb-1">Notes</span><span className="font-bold">{tx.raw.notes || 'None'}</span></div>
+                                  </div>
+                                )}
+                                {tx.type === 'MATERIAL' && (
+                                  <div className="space-y-2">
+                                    <div className="font-bold text-slate-800 border-b border-slate-100 pb-2 mb-2">Itemized Materials</div>
+                                    {tx.raw.materials && tx.raw.materials.length > 0 ? (
+                                      <ul className="space-y-1">
+                                        {tx.raw.materials.map((m: any, mIdx: number) => (
+                                          <li key={mIdx} className="flex justify-between">
+                                            <span className="text-slate-600">{m.itemName}</span>
+                                            <span className="font-bold">{m.quantity} {m.unit}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <div className="flex justify-between items-center">
+                                         <span className="text-slate-600">{tx.raw.itemName || 'Material Item'}</span>
+                                         <span className="font-bold">{tx.raw.quantity} {tx.raw.unit}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>

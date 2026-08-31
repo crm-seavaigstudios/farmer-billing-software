@@ -11,6 +11,7 @@ export default function FarmerPortalPage() {
   
   const [ledger, setLedger] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'PURCHASES' | 'ADVANCES'>('SUMMARY');
 
   useEffect(() => {
     loadFarmerProfile();
@@ -85,6 +86,12 @@ export default function FarmerPortalPage() {
 
   if (loading || !farmer) return <div className="p-8 text-center animate-pulse">Loading Farmer Portal...</div>;
 
+  const purchases = ledger.filter(item => item._type === 'HARVEST');
+  const advances = ledger.filter(item => item._type === 'PAYMENT');
+  
+  const totalLifetimeValue = purchases.reduce((acc, curr) => acc + parseFloat(curr.netAmount || curr.totalAmount || '0'), 0);
+  const totalDisbursed = advances.reduce((acc, curr) => acc + parseFloat(curr.amount || '0'), 0);
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
       {/* Header */}
@@ -111,60 +118,180 @@ export default function FarmerPortalPage() {
         </div>
       </div>
 
-      {/* Ledger Container */}
-      <div className="px-4 -mt-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 min-h-[400px]">
-          <h3 className="font-black text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-emerald-600" />
-            Account Statement (Ledger)
-          </h3>
-
-          <div className="overflow-hidden border border-slate-100 rounded-xl">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100">
-                <tr>
-                  <th className="py-3 px-3">Date</th>
-                  <th className="py-3 px-3">Description</th>
-                  <th className="py-3 px-3 text-right">Debit</th>
-                  <th className="py-3 px-3 text-right">Credit</th>
-                  <th className="py-3 px-3 text-right">Balance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {ledger.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-8 text-center text-slate-400 font-semibold">No transactions found.</td>
-                  </tr>
-                ) : (
-                  ledger.map((item, idx) => {
-                    const isHarvest = item._type === 'HARVEST';
-                    const amt = parseFloat(item.netAmount || item.totalAmount || item.amount || '0');
-                    return (
-                      <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-3 px-3 text-slate-500 font-medium whitespace-nowrap">
-                          {item._dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </td>
-                        <td className="py-3 px-3 text-slate-800">
-                          <span className="font-bold block">{isHarvest ? 'Crop Harvest Sold' : 'Advance / Payment'}</span>
-                          <span className="text-[10px] text-slate-400">{isHarvest ? item.billNo || item.id : item.paymentId || item.id}</span>
-                        </td>
-                        <td className={`py-3 px-3 text-right font-bold ${!isHarvest ? 'text-rose-600' : 'text-slate-400'}`}>
-                          {!isHarvest ? `-₹${amt.toLocaleString('en-IN')}` : '—'}
-                        </td>
-                        <td className={`py-3 px-3 text-right font-bold ${isHarvest ? 'text-emerald-600' : 'text-slate-400'}`}>
-                          {isHarvest ? `+₹${amt.toLocaleString('en-IN')}` : '—'}
-                        </td>
-                        <td className="py-3 px-3 text-right font-black text-slate-900">
-                          ₹{item._runningBalance.toLocaleString('en-IN')}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+      {/* Tab Switcher */}
+      <div className="px-4 -mt-6 relative z-10 mb-4">
+        <div className="flex bg-white rounded-xl shadow-sm border border-slate-200 p-1">
+          <button 
+            onClick={() => setActiveTab('SUMMARY')} 
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${activeTab === 'SUMMARY' ? 'bg-emerald-100 text-emerald-800' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            Summary
+          </button>
+          <button 
+            onClick={() => setActiveTab('PURCHASES')} 
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${activeTab === 'PURCHASES' ? 'bg-emerald-100 text-emerald-800' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            Purchases
+          </button>
+          <button 
+            onClick={() => setActiveTab('ADVANCES')} 
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${activeTab === 'ADVANCES' ? 'bg-emerald-100 text-emerald-800' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            Advances
+          </button>
         </div>
+      </div>
+
+      {/* Tab Content */}
+      <div className="px-4 pb-8">
+        {activeTab === 'SUMMARY' && (
+          <div className="space-y-4">
+            {/* Lifetime Overview */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+                <p className="text-xs font-bold text-slate-500 mb-1">Total Lifetime Value</p>
+                <p className="text-xl font-black text-emerald-600">₹{totalLifetimeValue.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+                <p className="text-xs font-bold text-slate-500 mb-1">Total Disbursed</p>
+                <p className="text-xl font-black text-rose-600">₹{totalDisbursed.toLocaleString('en-IN')}</p>
+              </div>
+            </div>
+
+            {/* Ledger Container */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 min-h-[400px]">
+              <h3 className="font-black text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600" />
+                Account Statement (Ledger)
+              </h3>
+
+              <div className="overflow-hidden border border-slate-100 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100">
+                    <tr>
+                      <th className="py-3 px-3">Date</th>
+                      <th className="py-3 px-3">Description</th>
+                      <th className="py-3 px-3 text-right">Debit</th>
+                      <th className="py-3 px-3 text-right">Credit</th>
+                      <th className="py-3 px-3 text-right">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {ledger.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-400 font-semibold">No transactions found.</td>
+                      </tr>
+                    ) : (
+                      ledger.map((item, idx) => {
+                        const isHarvest = item._type === 'HARVEST';
+                        const amt = parseFloat(item.netAmount || item.totalAmount || item.amount || '0');
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="py-3 px-3 text-slate-500 font-medium whitespace-nowrap">
+                              {item._dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </td>
+                            <td className="py-3 px-3 text-slate-800">
+                              <span className="font-bold block">{isHarvest ? 'Crop Harvest Sold' : 'Advance / Payment'}</span>
+                              <span className="text-[10px] text-slate-400">{isHarvest ? item.billNo || item.id : item.paymentId || item.id}</span>
+                            </td>
+                            <td className={`py-3 px-3 text-right font-bold ${!isHarvest ? 'text-rose-600' : 'text-slate-400'}`}>
+                              {!isHarvest ? `-₹${amt.toLocaleString('en-IN')}` : '—'}
+                            </td>
+                            <td className={`py-3 px-3 text-right font-bold ${isHarvest ? 'text-emerald-600' : 'text-slate-400'}`}>
+                              {isHarvest ? `+₹${amt.toLocaleString('en-IN')}` : '—'}
+                            </td>
+                            <td className="py-3 px-3 text-right font-black text-slate-900">
+                              ₹{item._runningBalance.toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'PURCHASES' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 min-h-[400px]">
+            <h3 className="font-black text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+              <ArrowUpCircle className="w-5 h-5 text-emerald-600" />
+              Harvest Purchases
+            </h3>
+            <div className="overflow-hidden border border-slate-100 rounded-xl">
+              <table className="w-full text-left text-xs">
+                 <thead className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100">
+                    <tr>
+                      <th className="py-3 px-3">Date</th>
+                      <th className="py-3 px-3">Bill No</th>
+                      <th className="py-3 px-3 text-right">Amount</th>
+                    </tr>
+                 </thead>
+                 <tbody className="divide-y divide-slate-100">
+                    {purchases.length === 0 ? (
+                      <tr><td colSpan={3} className="py-8 text-center text-slate-400 font-semibold">No purchases found.</td></tr>
+                    ) : (
+                      purchases.map((item, idx) => {
+                        const amt = parseFloat(item.netAmount || item.totalAmount || '0');
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="py-3 px-3 text-slate-500 font-medium whitespace-nowrap">
+                              {item._dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </td>
+                            <td className="py-3 px-3 text-slate-800 font-bold">{item.billNo || item.id}</td>
+                            <td className="py-3 px-3 text-right font-black text-emerald-600">+₹{amt.toLocaleString('en-IN')}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                 </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'ADVANCES' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 min-h-[400px]">
+            <h3 className="font-black text-slate-800 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+              <ArrowDownCircle className="w-5 h-5 text-rose-600" />
+              Advances & Materials
+            </h3>
+            <div className="overflow-hidden border border-slate-100 rounded-xl">
+              <table className="w-full text-left text-xs">
+                 <thead className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-slate-100">
+                    <tr>
+                      <th className="py-3 px-3">Date</th>
+                      <th className="py-3 px-3">Description</th>
+                      <th className="py-3 px-3 text-right">Amount</th>
+                    </tr>
+                 </thead>
+                 <tbody className="divide-y divide-slate-100">
+                    {advances.length === 0 ? (
+                      <tr><td colSpan={3} className="py-8 text-center text-slate-400 font-semibold">No advances found.</td></tr>
+                    ) : (
+                      advances.map((item, idx) => {
+                        const amt = parseFloat(item.amount || '0');
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="py-3 px-3 text-slate-500 font-medium whitespace-nowrap">
+                              {item._dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </td>
+                            <td className="py-3 px-3 text-slate-800 font-bold">
+                               Cash Advance / Material
+                               <span className="block text-[10px] text-slate-400 font-normal">{item.paymentId || item.id}</span>
+                            </td>
+                            <td className="py-3 px-3 text-right font-black text-rose-600">-₹{amt.toLocaleString('en-IN')}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                 </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Help Footer */}
