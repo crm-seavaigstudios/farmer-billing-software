@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -111,7 +111,7 @@ export default function FarmerPortalPage() {
          refNo: x.billNo || x.id,
          type: 'PURCHASE',
          description: x.crop || 'Crop Purchase',
-         weightOrQty: \\ @ \\,
+         weightOrQty: `${x.weight} @ ${x.rate}`,
          debitVal: 0,
          creditVal: amt,
          notes: x.notes,
