@@ -1230,6 +1230,32 @@ export const apiCreateSale = async (saleData: any) => {
   } catch (e) { console.error(e); throw e; }
 };
 
+export const apiUpdateSale = async (id: string, updateData: any) => {
+  try {
+    await supabase.from('Sale').update(updateData).eq('id', id).throwOnError();
+  } catch (e) {
+    console.error(e);
+    throw e;
+  }
+};
+
+export const apiUploadImage = async (fileBlob: Blob, path: string, bucket: string = 'images') => {
+  try {
+    const { data, error } = await supabase.storage.from(bucket).upload(path, fileBlob, {
+      upsert: true
+    });
+    if (error) {
+      console.error('Upload error:', error);
+      throw error;
+    }
+    const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path);
+    return publicUrl;
+  } catch (err) {
+    console.error('apiUploadImage failed:', err);
+    throw err;
+  }
+};
+
 
 export const apiGetWorkers = async () => {
   const tenantId = getTenantId();
@@ -1281,6 +1307,26 @@ export const apiCreateWorker = async (workerData: any) => {
     await supabase.from('DailyWorker').insert([workerObj]).throwOnError();
     return workerObj;
   } catch (e) { console.error(e); throw e; }
+};
+
+export const apiUpdateWorker = async (id: string, updateData: any) => {
+  try {
+    await supabase.from('DailyWorker').update(updateData).eq('id', id);
+  } catch (e) {
+    console.error(e);
+  }
+  const tenantId = getTenantId();
+  const cacheKey = tenantId ? 'seavaig_workers_cache' : 'seavaig_workers_cache'; // it's just 'seavaig_workers_cache' per api.ts
+  if (typeof window !== 'undefined') {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        const updated = parsed.map((w: any) => w.id === id ? { ...w, ...updateData } : w);
+        localStorage.setItem(cacheKey, JSON.stringify(updated));
+      } catch {}
+    }
+  }
 };
 
 export const apiGetPayments = async () => {

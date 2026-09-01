@@ -19,9 +19,9 @@ export const PaymentStatusChart: React.FC = () => {
         purchases.forEach((p: any) => {
           const amt = parseNum(p.amount || p.totalAmount);
           const due = parseNum(p.dueAmount || p.rawDue);
-          if (due === 0 && amt > 0) paid += 1;
-          else if (due > 0 && due < amt) partial += 1;
-          else pending += 1;
+          if (due === 0 && amt > 0) paid += amt;
+          else if (due > 0 && due < amt) partial += amt;
+          else pending += amt;
           totalDueAmt += due;
         });
 

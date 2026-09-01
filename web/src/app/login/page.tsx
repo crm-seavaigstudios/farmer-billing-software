@@ -9,8 +9,8 @@ import { supabase } from '@/lib/supabase';
 export default function LoginPage() {
   const router = useRouter();
   
-  // Tabs: OWNER | FARMER | SELLER
-  const [roleTab, setRoleTab] = useState<'OWNER' | 'FARMER' | 'SELLER'>('OWNER');
+  // Tabs: OWNER | STAFF | FARMER | SELLER
+  const [roleTab, setRoleTab] = useState<'OWNER' | 'STAFF' | 'FARMER' | 'SELLER'>('OWNER');
   
   const [identifier, setIdentifier] = useState('crm@seavaigstudios.com');
   const [password, setPassword] = useState('');
@@ -52,6 +52,39 @@ export default function LoginPage() {
         }
 
         throw new Error("Invalid Owner credentials.");
+      }
+
+      if (roleTab === 'STAFF') {
+        if (needsPasswordSetup) {
+          if (password.length < 4) throw new Error("Password must be at least 4 characters.");
+          await supabase.from('Worker').update({ password }).eq('id', foundUserId);
+          const { data: workerData } = await supabase.from('Worker').select('*').eq('id', foundUserId).single();
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('active_tenant', JSON.stringify({ id: foundUserId, userRole: 'STAFF', phone: identifier, tenantId: workerData.tenantId, name: workerData.name }));
+          }
+          router.push('/dashboard');
+          return;
+        }
+
+        const { data: workerData } = await supabase.from('Worker').select('*').eq('phone', identifier).maybeSingle();
+        
+        if (!workerData) throw new Error("Mobile number not registered.");
+        
+        if (!workerData.password) {
+          setNeedsPasswordSetup(true);
+          setFoundUserId(workerData.id);
+          setPassword('');
+          setLoading(false);
+          return;
+        }
+
+        if (workerData.password !== password) throw new Error("Incorrect password.");
+
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('active_tenant', JSON.stringify({ id: workerData.id, userRole: 'STAFF', phone: identifier, tenantId: workerData.tenantId, name: workerData.name }));
+        }
+        router.push('/dashboard');
+        return;
       }
 
       if (roleTab === 'FARMER') {
@@ -154,7 +187,7 @@ export default function LoginPage() {
 
         {/* Role Tabs */}
         <div className="flex bg-slate-100 rounded-lg p-1 gap-1">
-          {['OWNER', 'FARMER', 'SELLER'].map((role) => (
+          {['OWNER', 'STAFF', 'FARMER', 'SELLER'].map((role) => (
             <button
               key={role}
               onClick={() => {

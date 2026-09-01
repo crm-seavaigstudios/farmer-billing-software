@@ -1,10 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { 
-  X, Truck, Calendar, Clock, Download, Plus, Search, CheckCircle2, Factory, Trash2, ShieldCheck, Camera, PenTool
-} from 'lucide-react';
-import { apiCreateSale, apiGetCustomers, apiGetPurchases, apiGetSales } from '@/lib/api';
+import { X, Truck, Calendar, Clock, Download, Plus, Search, CheckCircle2, Factory, Trash2, ShieldCheck, Camera, PenTool } from 'lucide-react';
+import { apiCreateSale, apiGetCustomers, apiGetPurchases, apiGetSales, apiUploadImage } from '@/lib/api';
 
 interface AddLogisticsSaleModalProps {
   isOpen: boolean;
@@ -42,7 +40,57 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
     { cropName: 'Strawberry (A Grade)', grade: 'A_GRADE', weightKg: 450, ratePerKg: 350, unit: 'KG', totalAmount: 157500 }
   ]);
 
+  const [amountPaidNow, setAmountPaidNow] = useState<number | ''>('');
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const compressImage = async (file: File): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 800;
+          const MAX_HEIGHT = 800;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob(
+              (blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error('Canvas to Blob failed'));
+              },
+              'image/jpeg',
+              0.6
+            );
+          } else {
+            reject(new Error('Canvas context null'));
+          }
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -120,6 +168,15 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
     e.preventDefault();
     setLoading(true);
     const targetCust = customers.find((c) => c.id === selectedCustomerId) || customers[0];
+    
+    const paidAmount = Number(amountPaidNow) || 0;
+    const dueAmount = totalBillAmount - paidAmount;
+    const paymentStatus = dueAmount <= 0 ? 'PAID' : (paidAmount > 0 ? 'PARTIAL' : 'UNPAID');
+    const paymentHistory = paidAmount > 0 ? [{
+      date: new Date().toISOString(),
+      amount: paidAmount,
+      mode: 'CASH'
+    }] : [];
 
     const newSale = {
       id: (() => {
@@ -142,6 +199,10 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
       address: targetCust?.address || 'Mumbai Central Hub',
       amount: totalBillAmount,
       totalWeight: totalBillWeight,
+      paidAmount,
+      dueAmount,
+      paymentStatus,
+      paymentHistory,
       items: items.map((i) => `${i.cropName} (${i.weightKg} KG)`).join(', '),
       status: 'DISPATCHED',
       vehicleNo,
@@ -335,16 +396,24 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
                   type="file"
                   accept="image/*"
                   capture="environment"
+                  disabled={uploading}
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      // Compress and convert to base64 for simple saving
-                      const reader = new FileReader();
-                      reader.onload = (ev) => setVehiclePhotoUrl(ev.target?.result as string);
-                      reader.readAsDataURL(file);
+                      try {
+                        setUploading(true);
+                        const compressedBlob = await compressImage(file);
+                        const url = await apiUploadImage(compressedBlob, `vehicle_photos/${Date.now()}.jpg`, 'images');
+                        setVehiclePhotoUrl(url);
+                      } catch (error) {
+                        console.error('Image upload failed', error);
+                        alert('Image upload failed');
+                      } finally {
+                        setUploading(false);
+                      }
                     }
                   }}
-                  className="w-full p-1.5 bg-white border border-slate-200 rounded-xl font-medium text-[11px] file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  className="w-full p-1.5 bg-white border border-slate-200 rounded-xl font-medium text-[11px] file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
                 />
               </div>
               <div>
@@ -428,12 +497,32 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
           </div>
 
           {/* Grand Totals */}
-          <div className="p-4 bg-slate-900 text-white rounded-2xl flex items-center justify-between font-black text-sm">
-            <div>
-              <span className="text-xs text-slate-400 font-medium block">Total Weight: {totalBillWeight} KG</span>
-              <span>Grand Total Amount</span>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl">
+              <span className="font-extrabold text-slate-700 text-xs">Amount Paid Now (₹)</span>
+              <input
+                type="number"
+                placeholder="0"
+                value={amountPaidNow}
+                onChange={(e) => setAmountPaidNow(e.target.value === '' ? '' : Number(e.target.value))}
+                className="w-32 p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-right text-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              />
             </div>
-            <span className="text-xl text-emerald-400">₹{totalBillAmount.toLocaleString('en-IN')}</span>
+            
+            <div className="p-4 bg-slate-900 text-white rounded-2xl flex items-center justify-between font-black text-sm">
+              <div>
+                <span className="text-xs text-slate-400 font-medium block">Total Weight: {totalBillWeight} KG</span>
+                <span>Grand Total Amount</span>
+              </div>
+              <div className="text-right">
+                <span className="text-xl text-emerald-400 block">₹{totalBillAmount.toLocaleString('en-IN')}</span>
+                {Number(amountPaidNow) > 0 && (
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    Due: ₹{(totalBillAmount - Number(amountPaidNow)).toLocaleString('en-IN')}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="flex gap-2 pt-2">

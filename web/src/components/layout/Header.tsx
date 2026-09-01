@@ -153,9 +153,13 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setIsProfileOpen(!isProfileOpen)}
             className="flex items-center gap-2.5 p-1 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
           >
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
-              {tenant.businessName.charAt(0)}
-            </div>
+            {tenant.logoUrl ? (
+              <img src={tenant.logoUrl} alt={tenant.businessName} className="w-8 h-8 rounded-xl object-cover shadow-xs border border-slate-200" />
+            ) : (
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
+                {tenant.businessName.charAt(0)}
+              </div>
+            )}
             <div className="text-left hidden md:block">
               <span className="text-xs font-extrabold text-slate-900 block leading-none truncate max-w-[120px]">{tenant.businessName}</span>
               <span className="text-[10px] font-semibold text-slate-400 block mt-0.5">Owner</span>

@@ -173,7 +173,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-2xs flex justify-end animate-in fade-in">
-      <div className="bg-white w-full max-w-2xl h-full shadow-2xl flex flex-col justify-between overflow-hidden animate-in slide-in-from-right duration-200 font-sans">
+      <div className="bg-white w-full sm:w-[600px] h-full shadow-2xl flex flex-col justify-between overflow-hidden animate-in slide-in-from-right duration-200 font-sans">
         {/* Header */}
         <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-3">
@@ -416,7 +416,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
               </div>
 
               <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                <table className="w-full text-left text-xs">
+                <div className="overflow-x-auto pb-2">
+                  <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="bg-slate-50 text-[10px] text-slate-400 font-extrabold uppercase border-b border-slate-100">
                       <th className="py-2.5 px-3">Date</th>
@@ -499,6 +500,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           )}

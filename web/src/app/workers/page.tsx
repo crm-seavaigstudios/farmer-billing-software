@@ -24,7 +24,8 @@ import {
   apiCreateWorker,
   apiRecordAttendance,
   apiRecordWorkerPayment,
-  apiGetWorkerHistory
+  apiGetWorkerHistory,
+  apiUpdateWorker
 } from '@/lib/api';
 
 export default function WorkersPage() {
@@ -42,6 +43,7 @@ export default function WorkersPage() {
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isWorkerDetailOpen, setIsWorkerDetailOpen] = useState(false);
   const [selectedWorker, setSelectedWorker] = useState<any | null>(null);
 
   // Forms State
@@ -51,9 +53,10 @@ export default function WorkersPage() {
   const [newWorkerRate, setNewWorkerRate] = useState('500');
 
   // Attendance Form
-  const [checkInTime, setCheckInTime] = useState('08:00 AM');
-  const [checkOutTime, setCheckOutTime] = useState('05:00 PM');
-  const [hoursWorked, setHoursWorked] = useState('9');
+  const [shiftType, setShiftType] = useState('FULL_DAY');
+  const [adjustedWage, setAdjustedWage] = useState('');
+  const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [hoursWorked, setHoursWorked] = useState('8');
   const [overtimeAmount, setOvertimeAmount] = useState('0');
   const [attendanceNotes, setAttendanceNotes] = useState('');
 
@@ -142,28 +145,54 @@ export default function WorkersPage() {
     e.preventDefault();
     if (!selectedWorker) return;
     setLoading(true);
-    const hrs = Number(hoursWorked) || 8;
-    const rate = Number(newWorkerRate) || selectedWorker.dailyRate || 500;
-    const earnedThisShift = (hrs / 8) * rate + (Number(overtimeAmount) || 0);
 
-    await apiRecordAttendance({
-      workerId: selectedWorker.id,
-      checkInTime,
-      checkOutTime,
-      hoursWorked: hrs,
-      overtimeAmount: Number(overtimeAmount) || 0,
-      notes: attendanceNotes,
-    });
+    const baseRate = adjustedWage ? Number(adjustedWage) : (selectedWorker.dailyRate || 500);
+    let earnedThisShift = 0;
+    let hoursToSave = '8';
+    
+    if (shiftType === 'FULL_DAY') {
+      earnedThisShift = baseRate;
+      hoursToSave = '8';
+    } else if (shiftType === 'HALF_DAY') {
+      earnedThisShift = baseRate / 2;
+      hoursToSave = '4';
+    } else if (shiftType === 'OVERTIME') {
+      earnedThisShift = Number(overtimeAmount) || 0;
+      hoursToSave = hoursWorked;
+    } else if (shiftType === 'HOURS') {
+      earnedThisShift = (Number(hoursWorked) / 8) * baseRate;
+      hoursToSave = hoursWorked;
+    }
+
+    const historyItem = {
+      id: `att-${Date.now()}`,
+      date: attendanceDate,
+      shift: shiftType,
+      hours: hoursToSave,
+      wage: earnedThisShift,
+      type: 'ATTENDANCE',
+      notes: attendanceNotes
+    };
+
+    const currentHistory = Array.isArray(selectedWorker.attendanceHistory) ? selectedWorker.attendanceHistory : [];
+    const newHistory = [historyItem, ...currentHistory];
+
+    const newEarned = (selectedWorker.totalEarned || 0) + earnedThisShift;
+    const newPaid = selectedWorker.totalPaid || 0;
+    const newOutstanding = Math.max(0, newEarned - newPaid);
+
+    const workerUpdates = {
+      totalEarned: newEarned,
+      outstandingBalance: newOutstanding,
+      attendanceHistory: newHistory
+    };
+
+    await apiRecordAttendance(historyItem);
+    await apiUpdateWorker(selectedWorker.id, workerUpdates);
 
     const updated = workers.map((w) => {
       if (w.id === selectedWorker.id) {
-        const newEarned = (w.totalEarned || 0) + earnedThisShift;
-        const newPaid = w.totalPaid || 0;
-        return {
-          ...w,
-          totalEarned: newEarned,
-          outstandingBalance: Math.max(0, newEarned - newPaid),
-        };
+        return { ...w, ...workerUpdates };
       }
       return w;
     });
@@ -174,6 +203,11 @@ export default function WorkersPage() {
     }
     setLoading(false);
     setIsAttendanceModalOpen(false);
+    setAdjustedWage('');
+    setShiftType('FULL_DAY');
+    setHoursWorked('8');
+    setOvertimeAmount('0');
+    setAttendanceNotes('');
   };
 
   const handleRecordPayment = async (e: React.FormEvent) => {
@@ -370,6 +404,16 @@ export default function WorkersPage() {
                               <DollarSign className="w-3 h-3" />
                               <span>Pay Wages</span>
                             </button>
+                            <button
+                              onClick={() => {
+                                setSelectedWorker(w);
+                                setIsWorkerDetailOpen(true);
+                              }}
+                              className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <FileText className="w-3 h-3" />
+                              <span>Details</span>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -483,47 +527,63 @@ export default function WorkersPage() {
             <form onSubmit={handleRecordAttendance} className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="font-extrabold text-slate-700 block mb-1">Check-In Time (X)</label>
+                  <label className="font-extrabold text-slate-700 block mb-1">Attendance Date</label>
                   <input
-                    type="text"
-                    value={checkInTime}
-                    onChange={(e) => setCheckInTime(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-center"
-                    placeholder="08:00 AM"
+                    type="date"
+                    value={attendanceDate}
+                    onChange={(e) => setAttendanceDate(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
                   />
                 </div>
                 <div>
-                  <label className="font-extrabold text-slate-700 block mb-1">Check-Out Time (Y)</label>
-                  <input
-                    type="text"
-                    value={checkOutTime}
-                    onChange={(e) => setCheckOutTime(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-center"
-                    placeholder="05:00 PM"
-                  />
+                  <label className="font-extrabold text-slate-700 block mb-1">Shift Type</label>
+                  <select
+                    value={shiftType}
+                    onChange={(e) => setShiftType(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                  >
+                    <option value="FULL_DAY">Full Day (8 hrs)</option>
+                    <option value="HALF_DAY">Half Day (4 hrs)</option>
+                    <option value="HOURS">Custom Hours</option>
+                    <option value="OVERTIME">Overtime Only</option>
+                  </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="font-extrabold text-slate-700 block mb-1">Hours Worked</label>
-                  <input
-                    type="number"
-                    value={hoursWorked}
-                    onChange={(e) => setHoursWorked(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-black text-blue-600"
-                    required
-                  />
+              {(shiftType === 'HOURS' || shiftType === 'OVERTIME') && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="font-extrabold text-slate-700 block mb-1">Hours Worked</label>
+                    <input
+                      type="number"
+                      value={hoursWorked}
+                      onChange={(e) => setHoursWorked(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-black text-blue-600"
+                    />
+                  </div>
+                  {shiftType === 'OVERTIME' && (
+                    <div>
+                      <label className="font-extrabold text-slate-700 block mb-1">Overtime Bonus (₹)</label>
+                      <input
+                        type="number"
+                        value={overtimeAmount}
+                        onChange={(e) => setOvertimeAmount(e.target.value)}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-emerald-600"
+                      />
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="font-extrabold text-slate-700 block mb-1">Overtime Bonus (₹)</label>
-                  <input
-                    type="number"
-                    value={overtimeAmount}
-                    onChange={(e) => setOvertimeAmount(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-emerald-600"
-                  />
-                </div>
+              )}
+
+              <div>
+                <label className="font-extrabold text-slate-700 block mb-1">Daily Wage / Adjust Base Rate (₹)</label>
+                <input
+                  type="number"
+                  value={adjustedWage}
+                  onChange={(e) => setAdjustedWage(e.target.value)}
+                  placeholder={`Default: ₹${selectedWorker.dailyRate}`}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                />
               </div>
 
               <div>
@@ -540,7 +600,14 @@ export default function WorkersPage() {
               <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl font-bold text-slate-800 flex justify-between">
                 <span>Calculated Wage for Day:</span>
                 <span className="text-blue-600 font-black">
-                  ₹{((selectedWorker.dailyRate / 8) * Number(hoursWorked) + Number(overtimeAmount)).toLocaleString('en-IN')}
+                  ₹{(() => {
+                    const baseRate = adjustedWage ? Number(adjustedWage) : (selectedWorker.dailyRate || 500);
+                    if (shiftType === 'FULL_DAY') return baseRate;
+                    if (shiftType === 'HALF_DAY') return baseRate / 2;
+                    if (shiftType === 'HOURS') return (Number(hoursWorked) / 8) * baseRate;
+                    if (shiftType === 'OVERTIME') return Number(overtimeAmount) || 0;
+                    return 0;
+                  })().toLocaleString('en-IN')}
                 </span>
               </div>
 
@@ -648,6 +715,70 @@ export default function WorkersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Worker Detail / Attendance History Drawer */}
+      {isWorkerDetailOpen && selectedWorker && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div 
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-2xs transition-opacity"
+            onClick={() => setIsWorkerDetailOpen(false)}
+          ></div>
+          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+                  {selectedWorker.workerCode}
+                </span>
+                <h2 className="text-lg font-black text-slate-900 mt-1">{selectedWorker.name}</h2>
+                <div className="text-xs text-slate-500 font-semibold">{selectedWorker.role} • ₹{selectedWorker.dailyRate}/day</div>
+              </div>
+              <button onClick={() => setIsWorkerDetailOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg bg-slate-50">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="flex border-b border-slate-200">
+              <button className="flex-1 py-3 text-xs font-black text-blue-600 border-b-2 border-blue-600">
+                Attendance History
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50">
+              {(!selectedWorker.attendanceHistory || selectedWorker.attendanceHistory.length === 0) ? (
+                <div className="text-center py-10">
+                  <Clock className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm font-bold text-slate-400">No attendance records found.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedWorker.attendanceHistory.map((record: any, idx: number) => (
+                    <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase">{record.date}</div>
+                        <div className="text-sm font-extrabold text-slate-800 mt-0.5">
+                          {record.shift === 'FULL_DAY' && 'Full Day (8 hrs)'}
+                          {record.shift === 'HALF_DAY' && 'Half Day (4 hrs)'}
+                          {record.shift === 'HOURS' && `${record.hours} Hours`}
+                          {record.shift === 'OVERTIME' && `Overtime (${record.hours} hrs)`}
+                        </div>
+                        {record.notes && (
+                          <div className="text-[10px] text-slate-500 mt-1 font-medium bg-slate-50 px-2 py-0.5 rounded inline-block">
+                            {record.notes}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] font-bold text-emerald-600 uppercase">Wage Earned</div>
+                        <div className="text-base font-black text-slate-900">₹{(record.wage || 0).toLocaleString('en-IN')}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
