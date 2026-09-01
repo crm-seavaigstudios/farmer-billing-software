@@ -359,7 +359,7 @@ export default function FarmerPortalPage() {
                                 <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm text-xs cursor-default">
                                   {tx.type === 'PURCHASE' && (
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                      <div><span className="text-slate-400 block mb-1">Crop / Grade</span><span className="font-bold">{tx.raw.crop} {tx.raw.grade ? \(\)\ : ''}</span></div>
+                                      <div><span className="text-slate-400 block mb-1">Crop / Grade</span><span className="font-bold">{tx.raw.crop} {tx.raw.grade ? `(${tx.raw.grade})` : ''}</span></div>
                                       <div><span className="text-slate-400 block mb-1">Weight</span><span className="font-bold">{tx.raw.weight || tx.raw.netWeight} kg</span></div>
                                       <div><span className="text-slate-400 block mb-1">Rate / kg</span><span className="font-bold">₹{tx.raw.rate}</span></div>
                                       <div><span className="text-slate-400 block mb-1">Deductions</span><span className="font-bold text-rose-500">{tx.raw.deductions || 'None'}</span></div>
