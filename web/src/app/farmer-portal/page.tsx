@@ -129,7 +129,7 @@ export default function FarmerPortalPage() {
          timestamp: d.getTime(),
          refNo: x.paymentId || x.id,
          type: 'PAYMENT',
-         description: \Payment (\)\,
+         description: `Payment (${x.method || x.paymentMethod || "Cash"})`,
          weightOrQty: '-',
          debitVal: amt,
          creditVal: 0,
@@ -148,8 +148,8 @@ export default function FarmerPortalPage() {
          timestamp: d.getTime(),
          refNo: x.id,
          type: 'MATERIAL',
-         description: \Material Issue: \\,
-         weightOrQty: \\ \\,
+         description: `Material Issue: `,
+         weightOrQty: `-`,
          debitVal: amt,
          creditVal: 0,
          notes: x.notes,
@@ -174,9 +174,9 @@ export default function FarmerPortalPage() {
           type: item.type,
           description: item.description,
           weightOrQty: item.weightOrQty,
-          debit: item.debitVal > 0 ? \-₹\\ : '—',
-          credit: item.creditVal > 0 ? \₹\\ : '—',
-          balance: \₹\\,
+          debit: item.debitVal > 0 ? `-₹${item.debitVal}` : '-',
+          credit: item.creditVal > 0 ? `₹${item.creditVal}` : '-',
+          balance: `₹${bal}`,
           raw: item.raw
        };
     });
@@ -280,25 +280,25 @@ export default function FarmerPortalPage() {
         <div className="flex bg-white rounded-xl shadow-sm border border-slate-200 p-1 overflow-x-auto gap-1">
           <button 
             onClick={() => setActiveTab('LEDGER')} 
-            className={\lex-1 min-w-[120px] py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap \\}
+            className={`flex-1 min-w-[120px] py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap`}
           >
             मुख्य सारांश (Ledger)
           </button>
           <button 
             onClick={() => setActiveTab('PURCHASES')} 
-            className={\lex-1 min-w-[120px] py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap \\}
+            className={`flex-1 min-w-[120px] py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap`}
           >
             खरेदी (Purchases)
           </button>
           <button 
             onClick={() => setActiveTab('PAYMENTS')} 
-            className={\lex-1 min-w-[120px] py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap \\}
+            className={`flex-1 min-w-[120px] py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap`}
           >
             जमा (Payments)
           </button>
           <button 
             onClick={() => setActiveTab('MATERIALS')} 
-            className={\lex-1 min-w-[120px] py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap \\}
+            className={`flex-1 min-w-[120px] py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap`}
           >
             साहित्य (Materials)
           </button>
@@ -337,7 +337,7 @@ export default function FarmerPortalPage() {
                         <React.Fragment key={idx}>
                           <tr 
                             onClick={() => setExpandedRowId(expandedRowId === tx.refNo ? null : tx.refNo)}
-                            className={\hover:bg-slate-50 font-medium cursor-pointer transition-colors \\}
+                            className={`hover:bg-slate-50 font-medium cursor-pointer transition-colors`}
                           >
                             <td className="py-2.5 px-3 text-slate-500 text-[11px] whitespace-nowrap">
                                <div className="flex items-center gap-1">
@@ -349,7 +349,7 @@ export default function FarmerPortalPage() {
                               <span className="font-bold">{tx.description}</span>
                               <span className="text-[10px] text-slate-400 block">{tx.refNo}</span>
                             </td>
-                            <td className={\py-2.5 px-3 text-right font-bold \\}>{tx.debit}</td>
+                            <td className={`py-2.5 px-3 text-right font-bold`}>{tx.debit}</td>
                             <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{tx.credit}</td>
                             <td className="py-2.5 px-3 text-right font-black text-slate-900">{tx.balance}</td>
                           </tr>
