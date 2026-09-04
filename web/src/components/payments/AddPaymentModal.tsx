@@ -96,10 +96,14 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
     loadFarmers();
   }, [isOpen, initialFarmerId, initialPurchaseId, initialAmount]);
 
+  const [loading, setLoading] = useState(false);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+    setLoading(true);
     const numericAmount = Number(formData.amount) || 15000;
 
     const payload = {
@@ -111,45 +115,51 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
       notes: formData.notes,
     };
 
-    await apiCreatePayment(payload);
+    try {
+      await apiCreatePayment(payload);
 
-    if (formData.farmerId) {
-      await apiUpdateFarmerBalance(formData.farmerId, numericAmount, -numericAmount, 'PAYMENT');
-      if (formData.paymentType === 'ADVANCE_PAYOUT') {
-        const { apiUpdateFarmerAdvance } = await import('@/lib/api');
-        await apiUpdateFarmerAdvance(formData.farmerId, numericAmount);
+      if (formData.farmerId) {
+        await apiUpdateFarmerBalance(formData.farmerId, numericAmount, -numericAmount, 'PAYMENT');
+        if (formData.paymentType === 'ADVANCE_PAYOUT') {
+          const { apiUpdateFarmerAdvance } = await import('@/lib/api');
+          await apiUpdateFarmerAdvance(formData.farmerId, numericAmount);
+        }
       }
-    }
-    if (formData.purchaseId) {
-      const { apiGetPurchaseDetails } = await import('@/lib/api');
-      const purchase = await apiGetPurchaseDetails(formData.purchaseId);
-      if (purchase) {
-        const newPaid = (purchase.paidAmount || 0) + numericAmount;
-        const newDue = Math.max(0, (purchase.dueAmount || 0) - numericAmount);
-        await apiUpdatePurchase(formData.purchaseId, {
-          paidAmount: newPaid,
-          dueAmount: newDue,
-          paymentStatus: newDue === 0 ? 'PAID' : 'PARTIAL'
-        });
+      if (formData.purchaseId) {
+        const { apiGetPurchaseDetails } = await import('@/lib/api');
+        const purchase = await apiGetPurchaseDetails(formData.purchaseId);
+        if (purchase) {
+          const newPaid = (purchase.paidAmount || 0) + numericAmount;
+          const newDue = Math.max(0, (purchase.dueAmount || 0) - numericAmount);
+          await apiUpdatePurchase(formData.purchaseId, {
+            paidAmount: newPaid,
+            dueAmount: newDue,
+            paymentStatus: newDue === 0 ? 'PAID' : 'PARTIAL'
+          });
+        }
       }
+
+      const newPayment = {
+        id: `PAY-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        farmerName: formData.farmerName,
+        phone: formData.phone,
+        village: formData.village,
+        amount: `₹${numericAmount.toLocaleString('en-IN')}`,
+        method: `${formData.paymentMode} (${formData.paymentType})`,
+        status: 'COMPLETED',
+        date: new Date().toISOString().slice(0, 10),
+        refNo: `TXN/${Math.floor(10000000 + Math.random() * 90000000)}`,
+        paymentType: formData.paymentType,
+        purchaseId: formData.purchaseId || 'General Account',
+      };
+
+      onAddPayment(newPayment);
+      onClose();
+    } catch (err) {
+      console.error('Error creating payment:', err);
+    } finally {
+      setLoading(false);
     }
-
-    const newPayment = {
-      id: `PAY-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-      farmerName: formData.farmerName,
-      phone: formData.phone,
-      village: formData.village,
-      amount: `₹${numericAmount.toLocaleString('en-IN')}`,
-      method: `${formData.paymentMode} (${formData.paymentType})`,
-      status: 'COMPLETED',
-      date: new Date().toISOString().slice(0, 10),
-      refNo: `TXN/${Math.floor(10000000 + Math.random() * 90000000)}`,
-      paymentType: formData.paymentType,
-      purchaseId: formData.purchaseId || 'General Account',
-    };
-
-    onAddPayment(newPayment);
-    onClose();
   };
 
   return (
@@ -291,9 +301,10 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20"
+              disabled={loading}
+              className={`px-5 py-2 text-white rounded-xl text-xs font-bold shadow-md ${loading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'}`}
             >
-              Save & Settle Bill
+              {loading ? 'Processing...' : 'Save & Settle Bill'}
             </button>
           </div>
         </form>

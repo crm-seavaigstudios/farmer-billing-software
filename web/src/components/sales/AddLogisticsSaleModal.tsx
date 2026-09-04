@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Truck, Calendar, Clock, Download, Plus, Search, CheckCircle2, Factory, Trash2, ShieldCheck, Camera, PenTool } from 'lucide-react';
-import { apiCreateSale, apiGetCustomers, apiGetPurchases, apiGetSales, apiUploadImage } from '@/lib/api';
+import { apiCreateSale, apiGetCustomers, apiGetPurchases, apiGetSales, apiUploadImage, getTenantId } from '@/lib/api';
 
 interface AddLogisticsSaleModalProps {
   isOpen: boolean;
@@ -167,88 +167,98 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const targetCust = customers.find((c) => c.id === selectedCustomerId) || customers[0];
-    
-    const paidAmount = Number(amountPaidNow) || 0;
-    const dueAmount = totalBillAmount - paidAmount;
-    const paymentStatus = dueAmount <= 0 ? 'PAID' : (paidAmount > 0 ? 'PARTIAL' : 'UNPAID');
-    const paymentHistory = paidAmount > 0 ? [{
-      date: new Date().toISOString(),
-      amount: paidAmount,
-      mode: 'CASH'
-    }] : [];
+    try {
+      const targetCust = customers.find((c) => c.id === selectedCustomerId) || customers[0];
+      
+      const paidAmount = Number(amountPaidNow) || 0;
+      const dueAmount = totalBillAmount - paidAmount;
+      const paymentStatus = dueAmount <= 0 ? 'PAID' : (paidAmount > 0 ? 'PARTIAL' : 'UNPAID');
+      const paymentHistory = paidAmount > 0 ? [{
+        date: new Date().toISOString(),
+        amount: paidAmount,
+        mode: 'CASH'
+      }] : [];
 
-    const newSale = {
-      id: (() => {
-      const d = new Date();
-      const prefix = `${String(d.getDate()).padStart(2,'0')}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getFullYear()).slice(-2)}`;
-      const todayStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-      let count = 1;
-      const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
-      if (cached) {
-          try {
+      const newSale = {
+        id: (() => {
+          const d = new Date();
+          const prefix = `${String(d.getDate()).padStart(2,'0')}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getFullYear()).slice(-2)}`;
+          const todayStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+          let count = 1;
+          const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
+          if (cached) {
+            try {
               const list = JSON.parse(cached);
               const todays = list.filter((p:any) => p.date === todayStr || p.saleDate === todayStr);
               count = todays.length + 1;
-          } catch {}
-      }
-      return `${prefix}-${count}`;
-  })(),
-      customerName: targetCust?.name || targetCust?.company || 'Reliance Fresh Ltd',
-      phone: targetCust?.phone || '9876543210',
-      address: targetCust?.address || 'Mumbai Central Hub',
-      amount: totalBillAmount,
-      totalWeight: totalBillWeight,
-      paidAmount,
-      dueAmount,
-      paymentStatus,
-      paymentHistory,
-      items: items.map((i) => `${i.cropName} (${i.weightKg} KG)`).join(', '),
-      status: 'DISPATCHED',
-      vehicleNo,
-      driverName,
-      driverPhone,
-      farmerBatches: selectedPurchaseIds,
-      date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-      photoUrl: vehiclePhotoUrl,
-    };
-
-    await apiCreateSale(newSale);
-
-    // Automated Stock Deduction in Inventory Cache
-    const cachedInventory = typeof window !== 'undefined' ? localStorage.getItem('seavaig_inventory_cache') : null;
-    if (cachedInventory) {
-      try {
-        const list = JSON.parse(cachedInventory);
-        const updated = list.map((item: any) => {
-          if (item.item && item.item.toLowerCase().includes('strawberry')) {
-            return {
-              ...item,
-              available: Math.max(0, (item.available || 0) - totalBillWeight)
-            };
+            } catch {}
           }
-          return item;
-        });
-        localStorage.setItem('seavaig_inventory_cache', JSON.stringify(updated));
-      } catch {}
-    }
+          return `${prefix}-${count}`;
+        })(),
+        customerName: targetCust?.name || targetCust?.company || 'Reliance Fresh Ltd',
+        phone: targetCust?.phone || '9876543210',
+        address: targetCust?.address || 'Mumbai Central Hub',
+        amount: totalBillAmount,
+        totalWeight: totalBillWeight,
+        paidAmount,
+        dueAmount,
+        paymentStatus,
+        paymentHistory,
+        items: items.map((i) => `${i.cropName} (${i.weightKg} KG)`).join(', '),
+        status: 'DISPATCHED',
+        vehicleNo,
+        driverName,
+        driverPhone,
+        farmerBatches: selectedPurchaseIds,
+        date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        photoUrl: vehiclePhotoUrl,
+      };
 
-    // Save B2B Sale
-    const cachedSales = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
-    if (cachedSales) {
-      try {
-        const parsed = JSON.parse(cachedSales);
-        if (Array.isArray(parsed)) {
-          localStorage.setItem('seavaig_sales_cache', JSON.stringify([newSale, ...parsed]));
-        }
-      } catch {}
-    } else if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_sales_cache', JSON.stringify([newSale]));
-    }
+      await apiCreateSale(newSale);
 
-    setLoading(false);
-    onSuccess();
-    onClose();
+      const tenantId = getTenantId();
+
+      // Automated Stock Deduction in Inventory Cache
+      const cachedInventory = typeof window !== 'undefined' && tenantId ? localStorage.getItem(`seavaig_inventory_cache_${tenantId}`) : null;
+      if (cachedInventory) {
+        try {
+          const list = JSON.parse(cachedInventory);
+          const updated = list.map((item: any) => {
+            if (item.item && item.item.toLowerCase().includes('strawberry')) {
+              return {
+                ...item,
+                available: Math.max(0, (item.available || 0) - totalBillWeight)
+              };
+            }
+            return item;
+          });
+          if (tenantId) {
+            localStorage.setItem(`seavaig_inventory_cache_${tenantId}`, JSON.stringify(updated));
+          }
+        } catch {}
+      }
+
+      // Save B2B Sale
+      const cachedSales = typeof window !== 'undefined' && tenantId ? localStorage.getItem(`seavaig_sales_cache_${tenantId}`) : null;
+      if (cachedSales) {
+        try {
+          const parsed = JSON.parse(cachedSales);
+          if (Array.isArray(parsed) && tenantId) {
+            localStorage.setItem(`seavaig_sales_cache_${tenantId}`, JSON.stringify([newSale, ...parsed]));
+          }
+        } catch {}
+      } else if (typeof window !== 'undefined' && tenantId) {
+        localStorage.setItem(`seavaig_sales_cache_${tenantId}`, JSON.stringify([newSale]));
+      }
+
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      console.error('Error generating manifest bill:', err);
+      alert('Failed to create sale bill: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

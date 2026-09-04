@@ -274,15 +274,17 @@ export default function SellerPortalPage() {
       <div className="flex p-4 gap-3 bg-white border-b border-stone-100">
         <button 
           onClick={() => setActiveTab('DISPATCHES')}
-          className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm transition-all ${activeTab === 'DISPATCHES' ? 'bg-green-600 text-white shadow-md shadow-green-200' : 'bg-stone-50 text-stone-600 border border-stone-200 hover:bg-stone-100'}`}
+          className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm transition-all cursor-pointer ${activeTab === 'DISPATCHES' ? 'bg-green-700 text-white shadow-md shadow-green-200' : 'bg-stone-50 text-stone-600 border border-stone-200 hover:bg-stone-100'}`}
         >
-          <Truck className="w-4 h-4" /> Dispatches & Bills
+          <Truck className="w-4 h-4" /> 
+          <span>वाहतूक व बिले (Logistics & Bills)</span>
         </button>
         <button 
           onClick={() => setActiveTab('RATES')}
-          className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm transition-all ${activeTab === 'RATES' ? 'bg-green-600 text-white shadow-md shadow-green-200' : 'bg-stone-50 text-stone-600 border border-stone-200 hover:bg-stone-100'}`}
+          className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm transition-all cursor-pointer ${activeTab === 'RATES' ? 'bg-green-700 text-white shadow-md shadow-green-200' : 'bg-stone-50 text-stone-600 border border-stone-200 hover:bg-stone-100'}`}
         >
-          <TrendingUp className="w-4 h-4" /> Market Rates
+          <TrendingUp className="w-4 h-4" /> 
+          <span>बाजार भाव (Market Rates)</span>
         </button>
       </div>
 

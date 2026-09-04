@@ -15,6 +15,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   onClose,
   onAddUser,
 }) => {
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -28,7 +29,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const generatedStaffCode = `STAFF-2026-${Math.floor(10 + Math.random() * 90)}`;
+    if (loading) return;
+    setLoading(true);
+    const generatedStaffCode = `STAFF-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const payload = {
       staffIdCode: generatedStaffCode,
@@ -40,22 +43,28 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       password: formData.password || 'Staff@123',
     };
 
-    await apiRegisterStaff(payload);
+    try {
+      const regUser = await apiRegisterStaff(payload);
 
-    const newUser = {
-      id: `usr-${Date.now()}`,
-      staffIdCode: generatedStaffCode,
-      name: formData.name || 'New Staff Member',
-      email: formData.email || 'staff@company.com',
-      phone: formData.phone || '+91 98234 56789',
-      passportGovId: formData.passportGovId || 'GOV-MH-99812',
-      role: formData.role,
-      status: 'ACTIVE',
-      lastActive: 'Just now',
-    };
+      const newUser = {
+        id: regUser?.id || `usr-${Date.now()}`,
+        staffIdCode: generatedStaffCode,
+        name: formData.name || 'New Staff Member',
+        email: formData.email || (regUser?.email || 'staff@company.com'),
+        phone: formData.phone || '+91 98234 56789',
+        passportGovId: formData.passportGovId || 'GOV-MH-99812',
+        role: formData.role,
+        status: 'ACTIVE',
+        lastActive: 'Just now',
+      };
 
-    onAddUser(newUser);
-    onClose();
+      onAddUser(newUser);
+      onClose();
+    } catch (err) {
+      console.error('Failed to register user:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -181,9 +190,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20"
+              disabled={loading}
+              className={`px-5 py-2 font-bold rounded-xl text-xs shadow-md ${loading ? 'bg-slate-400 cursor-not-allowed text-white' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'}`}
             >
-              Save Staff & Issue Digital ID
+              {loading ? 'Saving...' : 'Save Staff & Issue Digital ID'}
             </button>
           </div>
         </form>

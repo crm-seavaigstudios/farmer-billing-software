@@ -26,7 +26,8 @@ import {
   apiUpdateTraderBalance,
   apiGetMaterialItems,
   apiAddMaterialItem,
-  apiGetTraderPurchases
+  apiGetTraderPurchases,
+  getTenantId
 } from '@/lib/api';
 
 export default function TradersPage() {
@@ -132,8 +133,9 @@ export default function TradersPage() {
   }, []);
 
   async function loadData() {
-    const cachedTraders = typeof window !== 'undefined' ? localStorage.getItem('seavaig_traders_cache') : null;
-    const cachedPurchases = typeof window !== 'undefined' ? localStorage.getItem('seavaig_trader_purchases_cache') : null;
+    const tenantId = getTenantId();
+    const cachedTraders = typeof window !== 'undefined' && tenantId ? localStorage.getItem(`seavaig_traders_cache_${tenantId}`) : null;
+    const cachedPurchases = typeof window !== 'undefined' && tenantId ? localStorage.getItem(`seavaig_trader_purchases_cache_${tenantId}`) : null;
 
     if (cachedTraders) {
       try {
@@ -155,8 +157,8 @@ export default function TradersPage() {
     if (tRes && Array.isArray(tRes) && tRes.length > 0) {
       setTraders(tRes);
       if (tRes.length > 0) setSelectedTraderId(tRes[0].id);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('seavaig_traders_cache', JSON.stringify(tRes));
+      if (typeof window !== 'undefined' && tenantId) {
+        localStorage.setItem(`seavaig_traders_cache_${tenantId}`, JSON.stringify(tRes));
       }
     }
     if (pRes) {
@@ -164,8 +166,8 @@ export default function TradersPage() {
       if (list && list.length > 0) {
         setPurchases(list);
         if ((pRes as any)?.summary) setSummary((pRes as any).summary);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('seavaig_trader_purchases_cache', JSON.stringify(list));
+        if (typeof window !== 'undefined' && tenantId) {
+          localStorage.setItem(`seavaig_trader_purchases_cache_${tenantId}`, JSON.stringify(list));
         }
       }
     }
@@ -173,40 +175,47 @@ export default function TradersPage() {
 
   const handleCreateTrader = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
-    const traderCode = `TRD-${10001 + traders.length}`;
+    const tenantId = getTenantId();
+    const traderCode = `TRD-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const newTrader = {
-      id: `trd-${Date.now()}`,
+      id: `trd-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
       traderCode,
       name,
       businessName: businessName || name,
       phone,
       gstNumber
     };
-    await apiCreateTrader(newTrader);
-    setLoading(false);
-    const updated = [newTrader, ...traders];
-    setTraders(updated);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_traders_cache', JSON.stringify(updated));
+    try {
+      await apiCreateTrader(newTrader);
+      const updated = [newTrader, ...traders.filter(t => t.id !== newTrader.id)];
+      setTraders(updated);
+      if (typeof window !== 'undefined' && tenantId) {
+        localStorage.setItem(`seavaig_traders_cache_${tenantId}`, JSON.stringify(updated));
+      }
+      setIsAddTraderOpen(false);
+      setName('');
+      setBusinessName('');
+      setPhone('');
+      setGstNumber('');
+    } finally {
+      setLoading(false);
     }
-    setIsAddTraderOpen(false);
-    setName('');
-    setBusinessName('');
-    setPhone('');
-    setGstNumber('');
   };
 
   const handleCreatePurchase = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
+    const tenantId = getTenantId();
     const selectedTrader = traders.find((t) => t.id === selectedTraderId) || traders[0];
     const totalAmt = (Number(quantity) || 1) * (Number(rate) || 0);
 
     const newPur = {
-      id: `TRD-PUR-${Math.floor(1000 + Math.random() * 9000)}`,
-      traderName: selectedTrader?.name || 'VRL Packaging Pvt Ltd',
-      businessName: selectedTrader?.businessName || selectedTrader?.name || 'VRL Packaging',
+      id: `TBILL-${Date.now().toString().slice(-4)}-${Math.floor(100 + Math.random() * 900)}`,
+      traderName: selectedTrader?.name || 'Trader',
+      businessName: selectedTrader?.businessName || selectedTrader?.name || 'Business',
       itemName,
       category,
       quantity: Number(quantity) || 1,
@@ -220,25 +229,28 @@ export default function TradersPage() {
       date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     };
 
-    await apiCreateTraderPurchase({
-      traderId: selectedTraderId,
-      itemName,
-      category,
-      quantity: Number(quantity) || 1,
-      unit,
-      rate: Number(rate) || 0,
-      paidAmount: Number(paidAmount) || 0,
-      vehicleNo,
-      notes,
-    });
+    try {
+      const created = await apiCreateTraderPurchase({
+        traderId: selectedTraderId,
+        itemName,
+        category,
+        quantity: Number(quantity) || 1,
+        unit,
+        rate: Number(rate) || 0,
+        paidAmount: Number(paidAmount) || 0,
+        vehicleNo,
+        notes,
+      });
 
-    setLoading(false);
-    const updatedPurchases = [newPur, ...purchases];
-    setPurchases(updatedPurchases);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_trader_purchases_cache', JSON.stringify(updatedPurchases));
+      const updatedPurchases = [created || newPur, ...purchases];
+      setPurchases(updatedPurchases);
+      if (typeof window !== 'undefined' && tenantId) {
+        localStorage.setItem(`seavaig_trader_purchases_cache_${tenantId}`, JSON.stringify(updatedPurchases));
+      }
+      setIsAddPurchaseOpen(false);
+    } finally {
+      setLoading(false);
     }
-    setIsAddPurchaseOpen(false);
   };
 
   const handleRecordTraderPayment = async (e: React.FormEvent) => {

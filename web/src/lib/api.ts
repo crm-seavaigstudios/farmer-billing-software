@@ -667,11 +667,11 @@ export const apiCreateTrader = async (trData: any) => {
   if (!tenantId) throw new Error('No tenant');
   
   const current = getLocalCache(`seavaig_traders_cache_${tenantId}`, []);
-  const newId = trData.id || `trd-${Date.now()}`;
+  const newId = trData.id || `trd-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
   const traderObj = {
     id: newId,
     tenantId,
-    traderCode: trData.traderCode || `TRD-2026-${Math.floor(100 + Math.random() * 900)}`,
+    traderCode: trData.traderCode || `TRD-2026-${Math.floor(1000 + Math.random() * 9000)}`,
     name: trData.name,
     businessName: trData.businessName || trData.name,
     phone: trData.phone,
@@ -684,20 +684,26 @@ export const apiCreateTrader = async (trData: any) => {
   };
 
   try {
-    await supabase.from('Trader').insert([traderObj]).throwOnError();
+    await supabase.from('Trader').upsert([traderObj], { onConflict: 'id' }).throwOnError();
   } catch {}
 
-  const updated = [traderObj, ...current];
+  const updated = [traderObj, ...current.filter((t: any) => t.id !== newId)];
   setLocalCache(`seavaig_traders_cache_${tenantId}`, updated);
   return traderObj;
 };
 
 export const apiGetTraderPurchases = async () => {
+  const tenantId = getTenantId();
+  if (!tenantId) return [];
   try {
-    const { data, error } = await supabase.from('TraderPurchase').select('*, trader:Trader(*)').order('createdAt', { ascending: false });
+    const { data, error } = await supabase
+      .from('TraderPurchase')
+      .select('*, trader:Trader(*)')
+      .eq('tenantId', tenantId)
+      .order('createdAt', { ascending: false });
     if (!error && data && data.length > 0) {
       const mapped = data.map((tp: any) => ({
-        id: tp.billNo,
+        id: tp.billNo || tp.id,
         dbId: tp.id,
         traderId: tp.traderId,
         traderName: tp.trader?.name || 'Trader',
@@ -715,11 +721,11 @@ export const apiGetTraderPurchases = async () => {
         vehicleNo: tp.vehicleNo,
         date: tp.createdAt ? new Date(tp.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN'),
       }));
-      setLocalCache('seavaig_trader_purchases_cache', mapped);
+      setLocalCache(`seavaig_trader_purchases_cache_${tenantId}`, mapped);
       return mapped;
     }
   } catch {}
-  return getLocalCache('seavaig_trader_purchases_cache', []);
+  return getLocalCache(`seavaig_trader_purchases_cache_${tenantId}`, []);
 };
 
 export const apiCreateTraderPurchase = async (tpData: any) => {
@@ -746,13 +752,14 @@ export const apiCreateTraderPurchase = async (tpData: any) => {
     }
   }
   const newId = `TBILL${ddmmyy}-${serial}`;
-  const billNo = newId; // Make billNo visually consistent with ID
+  const billNo = newId;
   const totalAmt = Number(tpData.quantity || 1) * Number(tpData.rate || 0);
   const paidAmt = Number(tpData.paidAmount || 0);
   const dueAmt = Math.max(0, totalAmt - paidAmt);
 
   const tpObj = {
     id: newId,
+    tenantId,
     billNo: billNo,
     traderId: tpData.traderId,
     itemName: tpData.itemName,
@@ -769,13 +776,13 @@ export const apiCreateTraderPurchase = async (tpData: any) => {
   };
 
   try {
-    await supabase.from('TraderPurchase').insert([tpObj]).throwOnError();
+    await supabase.from('TraderPurchase').upsert([tpObj], { onConflict: 'id' }).throwOnError();
     await apiUpdateTraderBalance(tpData.traderId, paidAmt, dueAmt);
   } catch {}
 
-  const current = getLocalCache('seavaig_trader_purchases_cache', []);
-  const traders = getLocalCache('seavaig_traders_cache', []);
-  const trader = traders.find(t => t.id === tpData.traderId);
+  const current = getLocalCache(`seavaig_trader_purchases_cache_${tenantId}`, []);
+  const traders = getLocalCache(`seavaig_traders_cache_${tenantId}`, []);
+  const trader = traders.find((t: any) => t.id === tpData.traderId);
   const cacheObj = {
     ...tpObj,
     id: billNo,
@@ -784,33 +791,37 @@ export const apiCreateTraderPurchase = async (tpData: any) => {
     businessName: trader ? trader.businessName : 'Business',
     date: new Date().toLocaleDateString('en-IN'),
   };
-  const updated = [cacheObj, ...current];
-  setLocalCache('seavaig_trader_purchases_cache', updated);
+  const updated = [cacheObj, ...current.filter((p: any) => p.id !== billNo && p.dbId !== newId)];
+  setLocalCache(`seavaig_trader_purchases_cache_${tenantId}`, updated);
   return cacheObj;
 };
 
 export const apiUpdateTraderPurchase = async (billNo: string, updateData: any) => {
+  const tenantId = getTenantId();
+  if (!tenantId) return [];
   try {
-    const { data } = await supabase.from('TraderPurchase').select('*').eq('billNo', billNo).single();
+    const { data } = await supabase.from('TraderPurchase').select('*').eq('tenantId', tenantId).eq('billNo', billNo).single();
     if (data) {
       const payload: any = {};
       if (updateData.paidAmount !== undefined) payload.paidAmount = updateData.paidAmount;
       if (updateData.dueAmount !== undefined) payload.dueAmount = updateData.dueAmount;
       if (updateData.paymentStatus !== undefined) payload.paymentStatus = updateData.paymentStatus;
       
-      await supabase.from('TraderPurchase').update(payload).eq('id', data.id).throwOnError();
+      await supabase.from('TraderPurchase').update(payload).eq('id', data.id).eq('tenantId', tenantId).throwOnError();
     }
   } catch {}
 
-  const current = getLocalCache('seavaig_trader_purchases_cache', []);
+  const current = getLocalCache(`seavaig_trader_purchases_cache_${tenantId}`, []);
   const updated = current.map((p: any) => (p.id === billNo ? { ...p, ...updateData } : p));
-  setLocalCache('seavaig_trader_purchases_cache', updated);
+  setLocalCache(`seavaig_trader_purchases_cache_${tenantId}`, updated);
   return updated;
 };
 
 export const apiUpdateTraderBalance = async (traderId: string, paidAmt: number, dueAmt: number) => {
+  const tenantId = getTenantId();
+  if (!tenantId) return;
   try {
-    const { data } = await supabase.from('Trader').select('*').eq('id', traderId).single();
+    const { data } = await supabase.from('Trader').select('*').eq('id', traderId).eq('tenantId', tenantId).single();
     if (data) {
       const newTotalPurchased = (data.totalPurchased || 0) + (dueAmt + paidAmt);
       const newTotalPaid = (data.totalPaid || 0) + paidAmt;
@@ -820,11 +831,11 @@ export const apiUpdateTraderBalance = async (traderId: string, paidAmt: number, 
         totalPurchased: newTotalPurchased,
         totalPaid: newTotalPaid,
         dueAmount: newDue,
-      }).eq('id', traderId).throwOnError();
+      }).eq('id', traderId).eq('tenantId', tenantId).throwOnError();
     }
   } catch {}
 
-  const traders = getLocalCache('seavaig_traders_cache', []);
+  const traders = getLocalCache(`seavaig_traders_cache_${tenantId}`, []);
   const updated = traders.map((t: any) => {
     if (t.id === traderId) {
       const newTotalPurchased = (t.totalPurchased || 0) + (dueAmt + paidAmt);
@@ -839,7 +850,7 @@ export const apiUpdateTraderBalance = async (traderId: string, paidAmt: number, 
     }
     return t;
   });
-  setLocalCache('seavaig_traders_cache', updated);
+  setLocalCache(`seavaig_traders_cache_${tenantId}`, updated);
 };
 
 export const apiRecordAttendance = async (data: any) => {
@@ -963,17 +974,22 @@ export const apiRegisterStaff = async (data: any) => {
   const tenantId = getTenantId();
   if (!tenantId) return data;
   try {
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    const emailVal = data.email && data.email.trim().length > 0
+      ? data.email.trim()
+      : (data.phone ? `staff_${data.phone.replace(/[^0-9]/g, '')}_${randomSuffix}@seavaig.com` : `staff_${Date.now()}_${randomSuffix}@seavaig.com`);
+
     const userObj = {
-      id: `usr-${Date.now()}`,
+      id: data.id || `usr-${Date.now()}-${randomSuffix}`,
       tenantId,
       name: data.name,
-      email: data.email || `staff${Date.now()}@seavaig.com`,
+      email: emailVal,
       password: data.password || '123456',
       phone: data.phone || '',
       role: data.role || 'MANAGER',
       updatedAt: new Date().toISOString(),
     };
-    await supabase.from('User').insert([userObj]).throwOnError();
+    await supabase.from('User').upsert([userObj], { onConflict: 'id' }).throwOnError();
     return userObj;
   } catch (e) {
     console.error('Error registering staff:', e);
@@ -1218,24 +1234,49 @@ export const apiCreateSale = async (saleData: any) => {
       serial = parseInt(parts[parts.length - 1], 10) + 1;
     }
   }
-  const newId = `${ddmmyy}-${serial}`;
+  const newId = saleData.billNo || saleData.id || `${ddmmyy}-${serial}`;
   
+  // Non-schema columns to strip before sending to Supabase Sale table
+  const invalidCols = ['driverSignatureUrl', 'deliveryStatus', 'paymentHistory', 'notes', 'rate', 'price', 'cropName', 'weight'];
+  const dbSaleData: any = {};
+  for (const [k, v] of Object.entries(saleData)) {
+    if (!invalidCols.includes(k)) {
+      dbSaleData[k] = v;
+    }
+  }
+
   try {
-    await supabase.from('Sale').insert([{
-      ...saleData,
+    await supabase.from('Sale').upsert([{
+      ...dbSaleData,
       id: newId,
       billNo: newId,
       tenantId
-    }]).throwOnError();
-  } catch (e) { console.error(e); throw e; }
+    }], { onConflict: 'id' }).throwOnError();
+  } catch (e) {
+    console.error('apiCreateSale error:', e);
+    // Non-fatal fallback: allow local caching to proceed even if offline
+  }
 };
 
 export const apiUpdateSale = async (id: string, updateData: any) => {
+  const tenantId = getTenantId();
   try {
-    await supabase.from('Sale').update(updateData).eq('id', id).throwOnError();
+    const invalidCols = ['driverSignatureUrl', 'deliveryStatus', 'paymentHistory', 'notes', 'rate', 'price', 'cropName', 'weight'];
+    const dbUpdateData: any = {};
+    for (const [k, v] of Object.entries(updateData)) {
+      if (!invalidCols.includes(k)) {
+        dbUpdateData[k] = v;
+      }
+    }
+    if (Object.keys(dbUpdateData).length > 0) {
+      let query = supabase.from('Sale').update(dbUpdateData).eq('id', id);
+      if (tenantId) {
+        query = query.eq('tenantId', tenantId);
+      }
+      await query;
+    }
   } catch (e) {
-    console.error(e);
-    throw e;
+    console.error('apiUpdateSale error:', e);
   }
 };
 
@@ -1374,9 +1415,15 @@ export const apiCreatePayment = async (payData: any) => {
     }
   }
   const paymentNo = `PV-${mmyy}-${String(serial).padStart(3, '0')}`;
+  const newPaymentId = payData.id || `PAY-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
   
   try {
-    await supabase.from('Payment').insert([{ ...payData, id: paymentNo, paymentNo, tenantId }]);
+    await supabase.from('Payment').upsert([{
+      ...payData,
+      id: newPaymentId,
+      paymentNo: payData.paymentNo || paymentNo,
+      tenantId
+    }], { onConflict: 'id' }).throwOnError();
   } catch (e) { console.error(e); throw e; }
 };
 
