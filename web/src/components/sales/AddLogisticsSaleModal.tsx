@@ -195,6 +195,7 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
           }
           return `${prefix}-${count}`;
         })(),
+        customerId: targetCust?.id || selectedCustomerId,
         customerName: targetCust?.name || targetCust?.company || 'Reliance Fresh Ltd',
         phone: targetCust?.phone || '9876543210',
         address: targetCust?.address || 'Mumbai Central Hub',

@@ -33,45 +33,73 @@ export default function SellerPortalPage() {
     if (auth.userRole !== 'SELLER') return router.push('/login');
     setSeller(auth);
 
-    // Find all Tenants this seller's phone is registered under in the Customer table
+    const userPhone = auth.phone || '';
+
+    // Find all Tenants this seller's phone is registered under in Customer table or Sale table
     const { data: customerLinks } = await supabase
       .from('Customer')
       .select('tenantId, name')
-      .eq('phone', auth.phone);
+      .eq('phone', userPhone);
     
-    if (customerLinks && customerLinks.length > 0) {
-      // Get the Tenant details
-      const tenantIds = customerLinks.map((c: any) => c.tenantId);
+    let tenantIds = (customerLinks || []).map((c: any) => c.tenantId).filter(Boolean);
+
+    const { data: saleLinks } = await supabase
+      .from('Sale')
+      .select('tenantId')
+      .eq('phone', userPhone);
+    
+    if (saleLinks) {
+      saleLinks.forEach((s: any) => {
+        if (s.tenantId && !tenantIds.includes(s.tenantId)) {
+          tenantIds.push(s.tenantId);
+        }
+      });
+    }
+    
+    if (tenantIds.length > 0) {
       const { data: tenants } = await supabase.from('Tenant').select('*').in('id', tenantIds);
-      setLinkedTenants(tenants || []);
+      const list = tenants || [];
+      setLinkedTenants(list);
+      if (list.length > 0) {
+        setSelectedTenant(list[0]);
+        await loadTenantData(list[0].id, userPhone);
+      }
     }
   };
 
   const selectTenant = async (tenant: any) => {
     setSelectedTenant(tenant);
-    loadTenantData(tenant.id);
+    await loadTenantData(tenant.id, seller?.phone);
   };
 
-  const loadTenantData = async (tenantId: string) => {
-    // 1. Get Dispatches (Sales) for this Seller under this Tenant
-    const { data: custData } = await supabase.from('Customer').select('id').eq('phone', seller.phone).eq('tenantId', tenantId);
-    if (custData && custData.length > 0) {
-      const custIds = custData.map((c: any) => c.id);
-      
-      const { data: salesRes } = await supabase
-        .from('Sale')
-        .select('*')
-        .in('customerId', custIds)
-        .eq('tenantId', tenantId)
-        .order('createdAt', { ascending: false });
-        
-      setDispatches(salesRes || []);
-    } else {
-      setDispatches([]);
+  const loadTenantData = async (tenantId: string, phoneOverride?: string) => {
+    const userPhone = phoneOverride || seller?.phone || '';
+    
+    // 1. Get Dispatches (Sales) for this Seller strictly under this Tenant
+    const { data: custData } = await supabase
+      .from('Customer')
+      .select('id')
+      .eq('phone', userPhone)
+      .eq('tenantId', tenantId);
+    
+    const custIds = (custData || []).map((c: any) => c.id).filter(Boolean);
+    
+    let query = supabase.from('Sale').select('*').eq('tenantId', tenantId);
+    if (custIds.length > 0 && userPhone) {
+      query = query.or(`customerId.in.(${custIds.join(',')}),phone.eq.${userPhone}`);
+    } else if (userPhone) {
+      query = query.eq('phone', userPhone);
     }
+    
+    const { data: salesRes } = await query.order('createdAt', { ascending: false });
+    setDispatches(salesRes || []);
 
-    // 2. Get today's crop rates
-    const { data: rates } = await supabase.from('SellerCropRates').select('*').eq('sellerId', seller.id).eq('tenantId', tenantId).order('createdAt', { ascending: false });
+    // 2. Get today's crop rates for this tenant
+    const { data: rates } = await supabase
+      .from('SellerCropRates')
+      .select('*')
+      .eq('tenantId', tenantId)
+      .order('createdAt', { ascending: false });
     setCropRates(rates || []);
   };
 

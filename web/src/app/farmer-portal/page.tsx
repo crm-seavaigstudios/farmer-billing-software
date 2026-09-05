@@ -70,14 +70,73 @@ export default function FarmerPortalPage() {
   };
 
   const fetchData = async (farmerId: string, tenantId: string, farmerName: string) => {
-    const { data: pData } = await supabase.from('Purchase').select('*').or(`farmerId.eq.${farmerId},farmerName.eq.${farmerName}`).eq('tenantId', tenantId);
-    const { data: payData } = await supabase.from('Payment').select('*').or(`farmerId.eq.${farmerId},farmerName.eq.${farmerName},entityId.eq.${farmerId}`).eq('tenantId', tenantId);
-    const { data: mData } = await supabase.from('FarmerMaterialPurchase').select('*').eq('farmerId', farmerId).order('createdAt', { ascending: false });
-    
-    setRawPurchases(pData || []);
-    setRawPayments(payData || []);
-    setRawMaterials(mData || []);
-    setLoading(false);
+    try {
+      // 1. Fetch Purchases strictly for this farmer under this tenant
+      const { data: pData } = await supabase
+        .from('Purchase')
+        .select('*')
+        .eq('farmerId', farmerId)
+        .eq('tenantId', tenantId)
+        .order('createdAt', { ascending: false });
+
+      // 2. Fetch associated PurchaseItems for detailed crop/grade breakdowns
+      const purchaseIds = (pData || []).map((p: any) => p.id).filter(Boolean);
+      let itemsMap: Record<string, any[]> = {};
+      if (purchaseIds.length > 0) {
+        const { data: itemsData } = await supabase
+          .from('PurchaseItem')
+          .select('*')
+          .in('purchaseId', purchaseIds);
+        if (itemsData) {
+          itemsData.forEach((it: any) => {
+            if (!itemsMap[it.purchaseId]) itemsMap[it.purchaseId] = [];
+            itemsMap[it.purchaseId].push(it);
+          });
+        }
+      }
+
+      const enhancedPurchases = (pData || []).map((p: any) => {
+        const pItems = itemsMap[p.id] || [];
+        const firstItem = pItems[0];
+        const crop = firstItem?.cropName || p.crop || 'Crop Purchase';
+        const weight = firstItem ? `${firstItem.weightKg} ${firstItem.unit || 'KG'}` : (p.totalWeight ? `${p.totalWeight} KG` : (p.weight || '-'));
+        const rate = firstItem ? `${firstItem.ratePerKg}/${firstItem.unit || 'KG'}` : (p.rate || '-');
+        const amount = Number(p.totalAmount ?? p.amount ?? 0);
+        return {
+          ...p,
+          crop,
+          weight,
+          rate,
+          amount,
+          netAmount: amount,
+          grade: firstItem?.grade || p.grade,
+          items: pItems
+        };
+      });
+
+      // 3. Fetch Payments strictly for this farmer under this tenant
+      const { data: payData } = await supabase
+        .from('Payment')
+        .select('*')
+        .eq('farmerId', farmerId)
+        .eq('tenantId', tenantId)
+        .order('createdAt', { ascending: false });
+
+      // 4. Fetch Material purchases
+      const { data: mData } = await supabase
+        .from('FarmerMaterialPurchase')
+        .select('*')
+        .eq('farmerId', farmerId)
+        .order('createdAt', { ascending: false });
+
+      setRawPurchases(enhancedPurchases);
+      setRawPayments(payData || []);
+      setRawMaterials(mData || []);
+    } catch (err) {
+      console.error('Error fetching farmer data:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const parseCustomDate = (dateStr: any) => {

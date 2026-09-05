@@ -1256,6 +1256,10 @@ export const apiCreateSale = async (saleData: any) => {
     console.error('apiCreateSale error:', e);
     // Non-fatal fallback: allow local caching to proceed even if offline
   }
+
+  const current = getLocalCache(`seavaig_sales_cache_${tenantId}`, []);
+  const updated = [{ ...saleData, id: newId, billNo: newId, tenantId }, ...current];
+  setLocalCache(`seavaig_sales_cache_${tenantId}`, updated);
 };
 
 export const apiUpdateSale = async (id: string, updateData: any) => {
@@ -1458,11 +1462,21 @@ export const apiCreateCustomer = async (custData: any) => {
     updatedAt: new Date().toISOString(),
   };
 
+  const dbCustomerObj = {
+    id: newId,
+    customerIdCode: custData.customerIdCode || `C-${Math.floor(1000 + Math.random() * 9000)}`,
+    tenantId,
+    name: custData.name,
+    phone: custData.phone,
+    address: custData.address || '',
+    totalSales: typeof custData.totalPurchases === 'number' ? custData.totalPurchases : Number(String(custData.totalPurchases || '0').replace(/[^0-9.-]+/g, '')),
+    status: custData.status || 'ACTIVE'
+  };
+
   try {
-    await supabase.from('Customer').insert([customerObj]).throwOnError();
+    await supabase.from('Customer').upsert([dbCustomerObj], { onConflict: 'id' }).throwOnError();
   } catch (e) {
-    console.error('Error creating customer:', e);
-    throw e;
+    console.error('Error creating customer in Supabase:', e);
   }
 
   const updated = [customerObj, ...current];
