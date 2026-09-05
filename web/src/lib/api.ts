@@ -1015,7 +1015,7 @@ export const apiGetUsers = async () => {
 export const apiGetTenants = async () => {
   try {
     const { data, error } = await supabase.from('Tenant').select('*').order('createdAt', { ascending: false });
-    if (!error && data && data.length > 0) {
+    if (!error && data) {
       const mapped = data.map((t: any) => ({
         id: t.id,
         companyCode: t.companyCode,
@@ -1041,7 +1041,9 @@ export const apiGetTenants = async () => {
       setLocalCache('seavaig_tenants_cache', mapped);
       return mapped;
     }
-  } catch {}
+  } catch (e) {
+    console.error('apiGetTenants error:', e);
+  }
   return getLocalCache('seavaig_tenants_cache', []);
 };
 

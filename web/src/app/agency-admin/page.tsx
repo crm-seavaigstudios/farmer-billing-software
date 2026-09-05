@@ -41,12 +41,20 @@ export default function AgencyAdminPage() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   
-  useEffect(() => {
-    async function loadTenants() {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
       const data = await apiGetTenants();
       setTenants(data);
+    } finally {
+      setIsRefreshing(false);
     }
-    loadTenants();
+  };
+
+  useEffect(() => {
+    handleRefresh();
   }, []);
   const [isAddTenantModalOpen, setIsAddTenantModalOpen] = useState(false);
 
@@ -318,13 +326,25 @@ export default function AgencyAdminPage() {
                 </p>
               </div>
 
-              <button
-                onClick={() => setIsAddTenantModalOpen(true)}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold rounded-xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Onboard New Client Company</span>
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  title="Sync and refresh tenant directory from Supabase"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-blue-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <span>{isRefreshing ? 'Syncing...' : 'Sync Database'}</span>
+                </button>
+
+                <button
+                  onClick={() => setIsAddTenantModalOpen(true)}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold rounded-xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Onboard New Client Company</span>
+                </button>
+              </div>
             </div>
 
             {/* Metrics */}
