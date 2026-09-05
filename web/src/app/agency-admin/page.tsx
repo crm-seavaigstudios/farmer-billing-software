@@ -687,6 +687,8 @@ export default function AgencyAdminPage() {
             )}
           </div>
         </div>
+      )}
+
       {/* EDIT CLIENT MODAL */}
       {isEditTenantModalOpen && editingTenant && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 font-sans text-xs">
