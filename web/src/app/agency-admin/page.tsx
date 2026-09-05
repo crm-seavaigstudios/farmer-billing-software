@@ -18,10 +18,24 @@ import {
   AlertCircle,
   Copy,
   Download,
-  Inbox
+  Inbox,
+  Edit,
+  Trash2,
+  Power,
+  PowerOff,
+  ShieldAlert,
+  KeyRound,
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
 
-import { apiGetTenants, apiCreateTenant, apiToggleTenantStatus } from '@/lib/api';
+import { 
+  apiGetTenants, 
+  apiCreateTenant, 
+  apiToggleTenantStatus, 
+  apiUpdateTenant, 
+  apiDeleteTenant 
+} from '@/lib/api';
 
 export default function AgencyAdminPage() {
   const [tenants, setTenants] = useState<any[]>([]);
@@ -36,6 +50,24 @@ export default function AgencyAdminPage() {
   }, []);
   const [isAddTenantModalOpen, setIsAddTenantModalOpen] = useState(false);
 
+  // Edit Tenant State
+  const [editingTenant, setEditingTenant] = useState<any | null>(null);
+  const [isEditTenantModalOpen, setIsEditTenantModalOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    companyName: '',
+    ownerName: '',
+    ownerEmail: '',
+    ownerPhone: '',
+    passportOrGovId: '',
+    password: '',
+    package: 'Enterprise Pro (₹24,999/yr)',
+    status: 'ACTIVE'
+  });
+
+  // Delete Tenant State
+  const [deletingTenant, setDeletingTenant] = useState<any | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
   // Email and Password Login Guard State
   const [is2FaAuthenticated, setIs2FaAuthenticated] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
@@ -44,7 +76,7 @@ export default function AgencyAdminPage() {
   const [isSetup2FaModalOpen, setIsSetup2FaModalOpen] = useState(false);
   const [totpSecret, setTotpSecret] = useState('');
 
-    useEffect(() => {
+  useEffect(() => {
     setTotpSecret(GLOBAL_SUPERADMIN_SECRET);
   }, []);
 
@@ -65,7 +97,7 @@ export default function AgencyAdminPage() {
     package: 'Enterprise Pro (₹24,999/yr)',
   });
 
-    const [isEnteringSuperAdmin2Fa, setIsEnteringSuperAdmin2Fa] = useState(false);
+  const [isEnteringSuperAdmin2Fa, setIsEnteringSuperAdmin2Fa] = useState(false);
   const [superAdminOtpInput, setSuperAdminOtpInput] = useState('');
   const [superAdminOtpError, setSuperAdminOtpError] = useState(false);
 
@@ -162,6 +194,49 @@ export default function AgencyAdminPage() {
       password: '',
       package: 'Enterprise Pro (₹24,999/yr)',
     });
+  };
+
+  const handleOpenEdit = (tenant: any) => {
+    setEditingTenant(tenant);
+    setEditFormData({
+      companyName: tenant.companyName || '',
+      ownerName: tenant.ownerName || '',
+      ownerEmail: tenant.ownerEmail || '',
+      ownerPhone: tenant.ownerPhone || '',
+      passportOrGovId: tenant.passportOrGovId || '',
+      password: tenant.password || '',
+      package: tenant.package || 'Enterprise Pro (₹24,999/yr)',
+      status: tenant.status || 'ACTIVE'
+    });
+    setIsEditTenantModalOpen(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTenant) return;
+    const updatedList = await apiUpdateTenant(editingTenant.id, editFormData);
+    setTenants(updatedList);
+    setIsEditTenantModalOpen(false);
+    setEditingTenant(null);
+  };
+
+  const handleOpenDelete = (tenant: any) => {
+    setDeletingTenant(tenant);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingTenant) return;
+    const updatedList = await apiDeleteTenant(deletingTenant.id);
+    setTenants(updatedList);
+    setIsDeleteModalOpen(false);
+    setDeletingTenant(null);
+  };
+
+  const handleToggleAccess = async (tenantId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'ACTIVE' ? 'EXPIRED' : 'ACTIVE';
+    const updated = await apiToggleTenantStatus(tenantId, newStatus);
+    setTenants(updated);
   };
 
   return (
@@ -310,20 +385,25 @@ export default function AgencyAdminPage() {
                       <th className="py-3.5 px-4">Client Owner</th>
                       <th className="py-3.5 px-4">Gov / Passport ID</th>
                       <th className="py-3.5 px-4">SaaS Package</th>
-                      <th className="py-3.5 px-4">Status</th>
+                      <th className="py-3.5 px-4 text-center">Access Control</th>
+                      <th className="py-3.5 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-700/40 font-medium text-slate-300">
                     {tenants.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center">
+                        <td colSpan={7} className="py-12 text-center">
                           <Inbox className="w-10 h-10 text-slate-600 mx-auto mb-2" />
                           <p className="text-sm font-bold text-slate-300">No Client Companies Onboarded Yet</p>
                           <p className="text-xs text-slate-500 mt-1">Click "Onboard New Client Company" above to register your first tenant.</p>
                         </td>
                       </tr>
                     ) : (
-                      tenants.map((t) => (
+                      tenants.filter(t => 
+                        (t.companyName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (t.companyCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (t.ownerName || '').toLowerCase().includes(searchQuery.toLowerCase())
+                      ).map((t) => (
                         <tr key={t.id} className="hover:bg-slate-700/30 transition-colors">
                           <td className="py-3.5 px-4 font-black text-blue-400">{t.companyCode}</td>
                           <td className="py-3.5 px-4 font-bold text-white">{t.companyName}</td>
@@ -331,23 +411,50 @@ export default function AgencyAdminPage() {
                             <div className="font-bold text-slate-200">{t.ownerName}</div>
                             <div className="text-[10px] text-slate-400">{t.ownerEmail} • {t.ownerPhone}</div>
                           </td>
-                          <td className="py-3.5 px-4 text-slate-300">{t.passportOrGovId}</td>
+                          <td className="py-3.5 px-4 text-slate-300">{t.passportOrGovId || '-'}</td>
                           <td className="py-3.5 px-4 font-bold text-emerald-400">{t.package}</td>
-                          <td className="py-3.5 px-4">
+                          <td className="py-3.5 px-4 text-center">
                             <button
-                              onClick={async () => {
-                                const newStatus = t.status === 'ACTIVE' ? 'EXPIRED' : 'ACTIVE';
-                                const updated = await apiToggleTenantStatus(t.id, newStatus);
-                                setTenants(updated);
-                              }}
-                              className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border cursor-pointer ${
+                              onClick={() => handleToggleAccess(t.id, t.status)}
+                              className={`text-[10px] font-black px-3 py-1 rounded-full border cursor-pointer inline-flex items-center gap-1.5 transition-all ${
                                 t.status === 'ACTIVE'
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
-                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20'
+                                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/30'
+                                  : 'bg-rose-500/15 text-rose-400 border-rose-500/30 hover:bg-emerald-500/20 hover:text-emerald-400 hover:border-emerald-500/30'
                               }`}
+                              title={t.status === 'ACTIVE' ? 'Click to Turn OFF / Suspend Access' : 'Click to Turn ON / Enable Access'}
                             >
-                              {t.status === 'ACTIVE' ? 'ACTIVE (Click to Disable)' : 'EXPIRED (Click to Enable)'}
+                              {t.status === 'ACTIVE' ? (
+                                <>
+                                  <Power className="w-3 h-3 text-emerald-400" />
+                                  <span>ACCESS ON (Active)</span>
+                                </>
+                              ) : (
+                                <>
+                                  <PowerOff className="w-3 h-3 text-rose-400" />
+                                  <span>ACCESS OFF (Suspended)</span>
+                                </>
+                              )}
                             </button>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleOpenEdit(t)}
+                                className="px-2.5 py-1 bg-slate-700/80 hover:bg-slate-700 text-blue-400 border border-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Edit Agency Details"
+                              >
+                                <Edit className="w-3 h-3" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                onClick={() => handleOpenDelete(t)}
+                                className="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Delete Agency"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -578,6 +685,175 @@ export default function AgencyAdminPage() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      {/* EDIT CLIENT MODAL */}
+      {isEditTenantModalOpen && editingTenant && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 font-sans text-xs">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Edit className="w-4 h-4 text-blue-400" />
+                <h2 className="text-sm font-extrabold text-white">Edit Agency / Client Details</h2>
+              </div>
+              <button onClick={() => { setIsEditTenantModalOpen(false); setEditingTenant(null); }} className="text-slate-400 hover:text-white">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Company Legal Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.companyName}
+                    onChange={(e) => setEditFormData({ ...editFormData, companyName: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Client Owner Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.ownerName}
+                    onChange={(e) => setEditFormData({ ...editFormData, ownerName: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Owner Email *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editFormData.ownerEmail}
+                    onChange={(e) => setEditFormData({ ...editFormData, ownerEmail: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Owner Mobile *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={editFormData.ownerPhone}
+                    onChange={(e) => setEditFormData({ ...editFormData, ownerPhone: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Passport / Gov Tax ID</label>
+                  <input
+                    type="text"
+                    value={editFormData.passportOrGovId}
+                    onChange={(e) => setEditFormData({ ...editFormData, passportOrGovId: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Subscription Package</label>
+                  <select
+                    value={editFormData.package}
+                    onChange={(e) => setEditFormData({ ...editFormData, package: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-emerald-400 font-bold focus:outline-none"
+                  >
+                    <option value="Enterprise Pro (₹24,999/yr)">Enterprise Pro (₹24,999/yr)</option>
+                    <option value="Growth Plan (₹14,999/yr)">Growth Plan (₹14,999/yr)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Owner Login Password</label>
+                  <input
+                    type="password"
+                    placeholder="Enter new password (or leave as is)"
+                    value={editFormData.password}
+                    onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-300 font-bold block mb-1">Access Control Status</label>
+                  <select
+                    value={editFormData.status}
+                    onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl font-bold text-white focus:outline-none"
+                  >
+                    <option value="ACTIVE">ACTIVE (Access ON)</option>
+                    <option value="EXPIRED">SUSPENDED / EXPIRED (Access OFF)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => { setIsEditTenantModalOpen(false); setEditingTenant(null); }}
+                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl cursor-pointer hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 cursor-pointer"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {isDeleteModalOpen && deletingTenant && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 font-sans text-xs">
+          <div className="bg-slate-900 border border-rose-500/30 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-white">Delete Agency / Client</h3>
+                <p className="text-[11px] text-slate-400">This action will delete the agency account.</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-800/80 border border-slate-700 rounded-xl">
+              <div className="font-bold text-white text-sm">{deletingTenant.companyName}</div>
+              <div className="text-slate-400 text-xs mt-0.5">Code: <span className="font-mono text-blue-400 font-bold">{deletingTenant.companyCode}</span> • Owner: {deletingTenant.ownerName}</div>
+            </div>
+
+            <p className="text-slate-400 leading-relaxed">
+              Are you sure you want to permanently delete this agency record? The owner will no longer be able to log in.
+            </p>
+
+            <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => { setIsDeleteModalOpen(false); setDeletingTenant(null); }}
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl cursor-pointer hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl shadow-lg shadow-rose-600/20 cursor-pointer"
+              >
+                Yes, Delete Agency
+              </button>
+            </div>
           </div>
         </div>
       )}

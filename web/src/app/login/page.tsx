@@ -40,10 +40,13 @@ export default function LoginPage() {
         // DB OWNER CHECK
         const tenantsList = await apiGetTenants();
         const matchedTenant = tenantsList.find(
-          (t: any) => t.ownerEmail.toLowerCase() === identifier.toLowerCase() && t.password === password
+          (t: any) => t.ownerEmail?.toLowerCase() === identifier.toLowerCase() && t.password === password
         );
 
         if (matchedTenant) {
+          if (matchedTenant.status && matchedTenant.status !== 'ACTIVE') {
+            throw new Error("Agency access has been turned OFF / suspended by Super Admin. Please contact Seavaig Studios support.");
+          }
           if (typeof window !== 'undefined') {
             localStorage.setItem('active_tenant', JSON.stringify({ ...matchedTenant, userRole: 'OWNER' }));
           }
@@ -57,31 +60,40 @@ export default function LoginPage() {
       if (roleTab === 'STAFF') {
         if (needsPasswordSetup) {
           if (password.length < 4) throw new Error("Password must be at least 4 characters.");
-          await supabase.from('Worker').update({ password }).eq('id', foundUserId);
-          const { data: workerData } = await supabase.from('Worker').select('*').eq('id', foundUserId).single();
+          await supabase.from('User').update({ password }).eq('id', foundUserId);
+          const { data: userList } = await supabase.from('User').select('*').eq('id', foundUserId).limit(1);
+          const userData = userList?.[0] || {};
           if (typeof window !== 'undefined') {
-            localStorage.setItem('active_tenant', JSON.stringify({ id: foundUserId, userRole: 'STAFF', phone: identifier, tenantId: workerData.tenantId, name: workerData.name }));
+            localStorage.setItem('active_tenant', JSON.stringify({ id: foundUserId, userRole: 'STAFF', phone: identifier, tenantId: userData.tenantId, name: userData.name }));
           }
           router.push('/dashboard');
           return;
         }
 
-        const { data: workerData } = await supabase.from('Worker').select('*').eq('phone', identifier).maybeSingle();
+        const { data: userList } = await supabase.from('User').select('*').eq('phone', identifier).limit(1);
+        let userData = userList?.[0];
         
-        if (!workerData) throw new Error("Mobile number not registered.");
+        if (!userData) {
+          const { data: workerList } = await supabase.from('DailyWorker').select('*').eq('phone', identifier).limit(1);
+          if (workerList && workerList.length > 0) {
+            userData = workerList[0];
+          }
+        }
         
-        if (!workerData.password) {
+        if (!userData) throw new Error("Mobile number not registered as staff.");
+        
+        if (!userData.password) {
           setNeedsPasswordSetup(true);
-          setFoundUserId(workerData.id);
+          setFoundUserId(userData.id);
           setPassword('');
           setLoading(false);
           return;
         }
 
-        if (workerData.password !== password) throw new Error("Incorrect password.");
+        if (userData.password !== password) throw new Error("Incorrect password.");
 
         if (typeof window !== 'undefined') {
-          localStorage.setItem('active_tenant', JSON.stringify({ id: workerData.id, userRole: 'STAFF', phone: identifier, tenantId: workerData.tenantId, name: workerData.name }));
+          localStorage.setItem('active_tenant', JSON.stringify({ id: userData.id, userRole: 'STAFF', phone: identifier, tenantId: userData.tenantId, name: userData.name }));
         }
         router.push('/dashboard');
         return;
@@ -100,7 +112,8 @@ export default function LoginPage() {
         }
 
         // Standard Login
-        const { data: farmerData } = await supabase.from('Farmer').select('*').eq('phone', identifier).maybeSingle();
+        const { data: farmerList } = await supabase.from('Farmer').select('*').eq('phone', identifier).limit(1);
+        const farmerData = farmerList?.[0];
         
         if (!farmerData) throw new Error("Mobile number not registered.");
         
@@ -135,7 +148,8 @@ export default function LoginPage() {
           return;
         }
 
-        let { data: globalSeller } = await supabase.from('GlobalSeller').select('*').eq('phone', identifier).maybeSingle();
+        let { data: globalSellerList } = await supabase.from('GlobalSeller').select('*').eq('phone', identifier).limit(1);
+        let globalSeller = globalSellerList?.[0];
         
         if (!globalSeller) {
           // See if they exist in Customer table but not GlobalSeller yet (legacy sync)

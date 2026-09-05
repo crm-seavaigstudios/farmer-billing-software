@@ -399,33 +399,45 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
             {/* Vehicle Loading Photo Preview & Signatures */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-blue-100">
               <div>
-                <label className="font-extrabold text-slate-700 block mb-1 flex items-center gap-1">
-                  <Camera className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Loaded Vehicle Photo (Camera)</span>
+                <label className="font-extrabold text-slate-700 block mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Camera className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Loaded Vehicle Photo (Camera)</span>
+                  </span>
+                  {uploading && <span className="text-[10px] text-blue-600 font-bold animate-pulse">Uploading & Compressing...</span>}
                 </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  disabled={uploading}
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      try {
-                        setUploading(true);
-                        const compressedBlob = await compressImage(file);
-                        const url = await apiUploadImage(compressedBlob, `vehicle_photos/${Date.now()}.jpg`, 'images');
-                        setVehiclePhotoUrl(url);
-                      } catch (error) {
-                        console.error('Image upload failed', error);
-                        alert('Image upload failed');
-                      } finally {
-                        setUploading(false);
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    disabled={uploading}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        try {
+                          setUploading(true);
+                          const compressedBlob = await compressImage(file);
+                          const url = await apiUploadImage(compressedBlob, `vehicle_photos/${Date.now()}.jpg`, 'images');
+                          setVehiclePhotoUrl(url);
+                        } catch (error) {
+                          console.error('Image upload failed', error);
+                          alert('Image upload failed');
+                        } finally {
+                          setUploading(false);
+                        }
                       }
-                    }
-                  }}
-                  className="w-full p-1.5 bg-white border border-slate-200 rounded-xl font-medium text-[11px] file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
-                />
+                    }}
+                    className="flex-1 p-1.5 bg-white border border-slate-200 rounded-xl font-medium text-[11px] file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+                  />
+                  {vehiclePhotoUrl && (
+                    <img
+                      src={vehiclePhotoUrl}
+                      alt="Vehicle Preview"
+                      className="w-9 h-9 rounded-lg object-cover border border-slate-200 shadow-xs"
+                    />
+                  )}
+                </div>
               </div>
               <div>
                 <label className="font-extrabold text-slate-700 block mb-1 flex items-center gap-1">

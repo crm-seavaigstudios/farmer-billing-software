@@ -34,18 +34,9 @@ export default function ExpensesPage() {
     async function loadData() {
       const res = await apiGetExpenses();
       if (res && Array.isArray(res)) {
-        const formatted = res.map((e: any) => ({
-          id: e.expenseNo,
-          title: e.notes || 'Expense',
-          category: e.category,
-          paymentMode: e.paymentMode,
-          amount: `₹${e.amount.toLocaleString('en-IN')}`,
-          date: new Date(e.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-          loggedBy: 'Admin'
-        }));
-        setExpenses(formatted);
+        setExpenses(res);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('seavaig_expenses_cache', JSON.stringify(formatted));
+          localStorage.setItem('seavaig_expenses_cache', JSON.stringify(res));
         }
       }
     }

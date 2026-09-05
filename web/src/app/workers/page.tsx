@@ -25,7 +25,8 @@ import {
   apiRecordAttendance,
   apiRecordWorkerPayment,
   apiGetWorkerHistory,
-  apiUpdateWorker
+  apiUpdateWorker,
+  getTenantId
 } from '@/lib/api';
 
 export default function WorkersPage() {
@@ -73,7 +74,8 @@ export default function WorkersPage() {
   }, []);
 
   async function loadData() {
-    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_workers_cache') : null;
+    const tenantId = getTenantId();
+    const cached = typeof window !== 'undefined' && tenantId ? localStorage.getItem(`seavaig_workers_cache_${tenantId}`) : null;
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
@@ -87,8 +89,8 @@ export default function WorkersPage() {
       if (list && list.length > 0) {
         setWorkers(list);
         if ((res as any)?.summary) setSummary((res as any).summary);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('seavaig_workers_cache', JSON.stringify(list));
+        if (typeof window !== 'undefined' && tenantId) {
+          localStorage.setItem(`seavaig_workers_cache_${tenantId}`, JSON.stringify(list));
         }
       }
     }
@@ -97,6 +99,7 @@ export default function WorkersPage() {
   const handleCreateWorker = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const tenantId = getTenantId();
     const nextNum = 10001 + workers.length;
     const newWrk = {
       id: `wrk-${Date.now()}`,
@@ -113,8 +116,8 @@ export default function WorkersPage() {
     setLoading(false);
     const updated = [newWrk, ...workers];
     setWorkers(updated);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_workers_cache', JSON.stringify(updated));
+    if (typeof window !== 'undefined' && tenantId) {
+      localStorage.setItem(`seavaig_workers_cache_${tenantId}`, JSON.stringify(updated));
     }
     setIsAddWorkerOpen(false);
     setNewWorkerName('');
@@ -123,28 +126,11 @@ export default function WorkersPage() {
 
   const defaultWorkers: any[] = [];
 
-  useEffect(() => {
-    const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_workers_cache') : null;
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setWorkers(parsed);
-        } else {
-          setWorkers(defaultWorkers);
-        }
-      } catch {
-        setWorkers(defaultWorkers);
-      }
-    } else {
-      setWorkers(defaultWorkers);
-    }
-  }, []);
-
   const handleRecordAttendance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedWorker) return;
     setLoading(true);
+    const tenantId = getTenantId();
 
     const baseRate = adjustedWage ? Number(adjustedWage) : (selectedWorker.dailyRate || 500);
     let earnedThisShift = 0;
@@ -166,6 +152,8 @@ export default function WorkersPage() {
 
     const historyItem = {
       id: `att-${Date.now()}`,
+      workerId: selectedWorker.id,
+      workerCode: selectedWorker.workerCode,
       date: attendanceDate,
       shift: shiftType,
       hours: hoursToSave,
@@ -198,8 +186,9 @@ export default function WorkersPage() {
     });
 
     setWorkers(updated);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_workers_cache', JSON.stringify(updated));
+    setSelectedWorker({ ...selectedWorker, ...workerUpdates });
+    if (typeof window !== 'undefined' && tenantId) {
+      localStorage.setItem(`seavaig_workers_cache_${tenantId}`, JSON.stringify(updated));
     }
     setLoading(false);
     setIsAttendanceModalOpen(false);
@@ -214,6 +203,7 @@ export default function WorkersPage() {
     e.preventDefault();
     if (!selectedWorker) return;
     setLoading(true);
+    const tenantId = getTenantId();
     const payAmt = Number(paymentAmount) || 0;
 
     await apiRecordWorkerPayment({
@@ -238,8 +228,8 @@ export default function WorkersPage() {
     });
 
     setWorkers(updated);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('seavaig_workers_cache', JSON.stringify(updated));
+    if (typeof window !== 'undefined' && tenantId) {
+      localStorage.setItem(`seavaig_workers_cache_${tenantId}`, JSON.stringify(updated));
     }
     setLoading(false);
     setIsPaymentModalOpen(false);

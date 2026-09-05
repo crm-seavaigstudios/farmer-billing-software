@@ -27,19 +27,28 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newExp = {
-      id: `EXP-2026-${Math.floor(100 + Math.random() * 900)}`,
-      title: formData.title || 'Strawberry Transport Freight',
+      title: formData.title || 'Operational Expense',
       category: formData.category,
-      amount: formData.amount ? `₹${formData.amount}` : '₹4,500',
+      amount: formData.amount || 0,
       date: formData.date,
       paymentMode: formData.paymentMode,
-      notes: formData.notes || 'Fuel & driver payout',
-      loggedBy: 'Ajay Jadhav',
+      notes: formData.notes || '',
+      loggedBy: 'Agency Admin',
     };
-    onAddExpense(newExp);
+    try {
+      const { apiCreateExpense } = await import('@/lib/api');
+      const saved = await apiCreateExpense(newExp);
+      onAddExpense(saved);
+    } catch {
+      onAddExpense({
+        ...newExp,
+        id: `EXP-${Date.now()}`,
+        amount: `₹${Number(formData.amount || 0).toLocaleString('en-IN')}`,
+      });
+    }
     onClose();
   };
 

@@ -50,15 +50,15 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
     const importedData = {
       name: networkMatch.name,
       phone: networkMatch.phone,
-      village: networkMatch.village || 'Nandgaon',
-      taluka: networkMatch.taluka || 'Sinnar',
-      district: networkMatch.district || 'Nashik',
+      village: networkMatch.village || '',
+      taluka: networkMatch.taluka || '',
+      district: networkMatch.district || '',
       grade: networkMatch.grade || 'A_GRADE',
       status: 'ACTIVE',
-      aadhaarNumber: networkMatch.aadhaarNumber || 'XXXX XXXX 5678',
-      bankName: networkMatch.bankName || 'Bank of Maharashtra',
-      accountNumber: networkMatch.accountNumber || '60294567890',
-      ifscCode: networkMatch.ifscCode || 'MAHB0001234',
+      aadhaarNumber: networkMatch.aadhaarNumber || '',
+      bankName: networkMatch.bankName || '',
+      accountNumber: networkMatch.accountNumber || '',
+      ifscCode: networkMatch.ifscCode || '',
     };
 
     const saved = await apiImportFarmerFromNetwork(importedData);
@@ -339,8 +339,8 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
             <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2 text-xs font-semibold text-slate-700">
               <p className="text-slate-900 font-extrabold text-sm">{networkMatch.name}</p>
               <p className="text-slate-500">Mobile: <span className="font-bold text-slate-800">{networkMatch.phone}</span></p>
-              <p className="text-slate-500">Village: <span className="font-bold text-slate-800">{networkMatch.village || 'Nandgaon'}, {networkMatch.district || 'Nashik'}</span></p>
-              <p className="text-slate-500">Bank: <span className="font-bold text-slate-800">{networkMatch.bankName || 'Bank of Maharashtra'} (A/C: {networkMatch.accountNumber || '60294567890'})</span></p>
+              <p className="text-slate-500">Location: <span className="font-bold text-slate-800">{[networkMatch.village, networkMatch.taluka, networkMatch.district].filter(Boolean).join(', ') || '—'}</span></p>
+              <p className="text-slate-500">Bank: <span className="font-bold text-slate-800">{networkMatch.bankName ? `${networkMatch.bankName} (A/C: ${networkMatch.accountNumber || '—'})` : '—'}</span></p>
             </div>
 
             <p className="text-xs font-bold text-slate-600 text-center">

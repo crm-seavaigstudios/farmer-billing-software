@@ -2,7 +2,28 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { LogOut, Truck, TrendingUp, Search, Image as ImageIcon, ArrowRight, Calendar, ChevronDown, CheckCircle, Clock, Receipt, IndianRupee } from "lucide-react";
+import { 
+  LogOut, 
+  Truck, 
+  TrendingUp, 
+  Search, 
+  Image as ImageIcon, 
+  ArrowRight, 
+  Calendar, 
+  ChevronDown, 
+  CheckCircle, 
+  Clock, 
+  Receipt, 
+  IndianRupee,
+  X,
+  Eye,
+  User,
+  Phone,
+  ShieldCheck,
+  MapPin,
+  CheckCircle2,
+  FileText
+} from "lucide-react";
 
 export default function SellerPortalPage() {
   const router = useRouter();
@@ -15,6 +36,10 @@ export default function SellerPortalPage() {
   const [cropRates, setCropRates] = useState<any[]>([]);
   const [newCropName, setNewCropName] = useState('');
   const [newCropRate, setNewCropRate] = useState('');
+
+  // Status Filter State
+  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<'ALL' | 'IN_TRANSIT' | 'RECEIVED'>('ALL');
+  const [selectedBillForModal, setSelectedBillForModal] = useState<any | null>(null);
 
   // Timeline Filter State
   const [timelineFilter, setTimelineFilter] = useState<'ALL' | 'THIS_MONTH' | 'LAST_MONTH' | 'CUSTOM'>('THIS_MONTH');
@@ -139,9 +164,25 @@ export default function SellerPortalPage() {
   };
 
   const markAsReceived = async (billId: string) => {
-    await supabase.from('Sale').update({ deliveryStatus: 'RECEIVED' }).eq('id', billId);
-    if (selectedTenant) {
-      loadTenantData(selectedTenant.id); // reload
+    try {
+      await supabase.from('Sale').update({ deliveryStatus: 'RECEIVED', status: 'RECEIVED' }).eq('id', billId);
+      setDispatches(prev => prev.map(b => b.id === billId ? { ...b, deliveryStatus: 'RECEIVED', status: 'RECEIVED' } : b));
+      if (selectedBillForModal && selectedBillForModal.id === billId) {
+        setSelectedBillForModal((prev: any) => ({ ...prev, deliveryStatus: 'RECEIVED', status: 'RECEIVED' }));
+      }
+      if (selectedTenant) {
+        const cacheKey = `seavaig_sales_cache_${selectedTenant.id}`;
+        const raw = localStorage.getItem(cacheKey);
+        if (raw) {
+          try {
+            const list = JSON.parse(raw);
+            const updated = list.map((b: any) => b.id === billId ? { ...b, deliveryStatus: 'RECEIVED', status: 'RECEIVED' } : b);
+            localStorage.setItem(cacheKey, JSON.stringify(updated));
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.error('Error marking as received:', err);
     }
   };
 
@@ -156,6 +197,15 @@ export default function SellerPortalPage() {
     const now = new Date();
     
     result = result.filter(bill => {
+      // 1. Delivery Status Filter
+      if (deliveryStatusFilter === 'IN_TRANSIT' && bill.deliveryStatus === 'RECEIVED') {
+        return false;
+      }
+      if (deliveryStatusFilter === 'RECEIVED' && bill.deliveryStatus !== 'RECEIVED') {
+        return false;
+      }
+
+      // 2. Timeline Filter
       if (!bill.date && !bill.createdAt) return true;
       let billDate: Date;
       const dateStr = bill.date || bill.createdAt;
@@ -184,11 +234,30 @@ export default function SellerPortalPage() {
         end.setHours(23, 59, 59, 999);
         return billDate >= start && billDate <= end;
       }
-      return true; // ALL or invalid custom
+      return true;
     });
     
     return result;
-  }, [dispatches, timelineFilter, customStartDate, customEndDate]);
+  }, [dispatches, deliveryStatusFilter, timelineFilter, customStartDate, customEndDate]);
+
+  // Counts for status pills
+  const { inTransitCount, receivedCount, totalCount } = useMemo(() => {
+    const total = dispatches.length;
+    const received = dispatches.filter(d => d.deliveryStatus === 'RECEIVED').length;
+    const inTransit = total - received;
+    return { inTransitCount: inTransit, receivedCount: received, totalCount: total };
+  }, [dispatches]);
+
+  // Helper function to calculate paid amount for a single bill
+  const getBillPaidAmount = (bill: any) => {
+    if (bill.paidAmount !== undefined && bill.paidAmount !== null && !isNaN(Number(bill.paidAmount))) {
+      return Number(bill.paidAmount);
+    }
+    if (bill.paymentHistory && Array.isArray(bill.paymentHistory)) {
+      return bill.paymentHistory.reduce((sum: number, p: any) => sum + parseFloat(p.amount || 0), 0);
+    }
+    return 0;
+  };
 
   // KPI Calculations
   const { totalPurchases, totalPaid, totalOutstanding } = useMemo(() => {
@@ -198,26 +267,15 @@ export default function SellerPortalPage() {
     filteredDispatches.forEach(bill => {
       const netAmount = parseFloat(bill.netAmount || bill.totalAmount || bill.amount || 0);
       purchases += netAmount;
-
-      let billPaid = 0;
-      if (bill.paymentHistory && Array.isArray(bill.paymentHistory)) {
-        billPaid = bill.paymentHistory.reduce((sum: number, p: any) => sum + parseFloat(p.amount || 0), 0);
-      }
-      paid += billPaid;
+      paid += getBillPaidAmount(bill);
     });
 
     return {
       totalPurchases: purchases,
       totalPaid: paid,
-      totalOutstanding: purchases - paid
+      totalOutstanding: Math.max(0, purchases - paid)
     };
   }, [filteredDispatches]);
-
-  // Helper function to calculate paid amount for a single bill
-  const getBillPaidAmount = (bill: any) => {
-    if (!bill.paymentHistory || !Array.isArray(bill.paymentHistory)) return 0;
-    return bill.paymentHistory.reduce((sum: number, p: any) => sum + parseFloat(p.amount || 0), 0);
-  };
 
   const getFilterLabel = () => {
     switch (timelineFilter) {
@@ -396,16 +454,52 @@ export default function SellerPortalPage() {
 
             {/* Bills List */}
             <div className="space-y-4">
-              <h3 className="font-black text-lg text-stone-800 flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-green-600" /> Dispatch History
-              </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h3 className="font-black text-lg text-stone-800 flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-green-600" /> Dispatch History & Allocation Bills
+                </h3>
+                
+                {/* Delivery Status Filter Pills */}
+                <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-xl">
+                  <button
+                    onClick={() => setDeliveryStatusFilter('ALL')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      deliveryStatusFilter === 'ALL'
+                        ? 'bg-white text-stone-900 shadow-xs'
+                        : 'text-stone-500 hover:text-stone-800'
+                    }`}
+                  >
+                    All ({totalCount})
+                  </button>
+                  <button
+                    onClick={() => setDeliveryStatusFilter('IN_TRANSIT')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      deliveryStatusFilter === 'IN_TRANSIT'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-blue-700 hover:bg-blue-50'
+                    }`}
+                  >
+                    In Transit ({inTransitCount})
+                  </button>
+                  <button
+                    onClick={() => setDeliveryStatusFilter('RECEIVED')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      deliveryStatusFilter === 'RECEIVED'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-emerald-700 hover:bg-emerald-50'
+                    }`}
+                  >
+                    Received ({receivedCount})
+                  </button>
+                </div>
+              </div>
               
               {filteredDispatches.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-stone-200 border-dashed p-8 text-center">
                   <div className="w-16 h-16 bg-stone-50 rounded-full flex items-center justify-center mx-auto mb-3">
                     <Truck className="w-8 h-8 text-stone-400" />
                   </div>
-                  <p className="text-stone-500 font-semibold">No dispatch bills found for this period.</p>
+                  <p className="text-stone-500 font-semibold">No dispatch bills found for the selected filter.</p>
                 </div>
               ) : (
                 filteredDispatches.map(bill => {
@@ -416,18 +510,29 @@ export default function SellerPortalPage() {
                   const paymentHistory = Array.isArray(bill.paymentHistory) ? bill.paymentHistory : [];
 
                   return (
-                    <div key={bill.id} className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+                    <div 
+                      key={bill.id} 
+                      onClick={() => setSelectedBillForModal(bill)}
+                      className="bg-white rounded-2xl border border-stone-200 shadow-xs hover:shadow-md hover:border-green-300 transition-all cursor-pointer overflow-hidden group"
+                    >
                       {/* Bill Header */}
-                      <div className="bg-stone-50 p-4 border-b border-stone-100 flex justify-between items-start">
+                      <div className="bg-stone-50 group-hover:bg-green-50/40 transition-colors p-4 border-b border-stone-100 flex justify-between items-start">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-black text-stone-900 text-lg">{bill.billNo || 'BILL'}</span>
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${bill.deliveryStatus === 'RECEIVED' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
-                              {bill.deliveryStatus || 'IN TRANSIT'}
+                            <span className="font-black text-stone-900 text-lg group-hover:text-green-800 transition-colors">
+                              {bill.billNo || bill.id}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                              bill.deliveryStatus === 'RECEIVED' 
+                                ? 'bg-emerald-100 text-emerald-800' 
+                                : 'bg-blue-100 text-blue-800 animate-pulse'
+                            }`}>
+                              {bill.deliveryStatus === 'RECEIVED' ? '✓ RECEIVED' : '🚚 IN TRANSIT'}
                             </span>
                           </div>
                           <p className="text-xs text-stone-500 font-bold flex items-center gap-1">
                             <Calendar className="w-3 h-3" /> {new Date(bill.date || bill.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            {bill.customerName && <span className="text-stone-400">• {bill.customerName}</span>}
                           </p>
                         </div>
                         <div className="text-right">
@@ -454,88 +559,54 @@ export default function SellerPortalPage() {
                           </div>
                         </div>
 
-                        {/* Payment History Log */}
-                        {paymentHistory.length > 0 && (
-                          <div className="bg-stone-50 rounded-xl p-3 border border-stone-200">
-                            <p className="text-xs font-bold text-stone-600 mb-2 flex items-center gap-1.5">
-                              <IndianRupee className="w-3.5 h-3.5" /> Payment Log
-                            </p>
-                            <div className="space-y-2">
-                              {paymentHistory.map((pmt: any, idx: number) => (
-                                <div key={idx} className="flex justify-between items-center text-sm py-1.5 border-b border-stone-200/50 last:border-0 last:pb-0">
-                                  <div>
-                                    <p className="font-bold text-stone-800 text-xs">{pmt.type || 'Payment'}</p>
-                                    <p className="text-[10px] text-stone-500">{new Date(pmt.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="font-black text-emerald-600 text-xs">+ ₹{parseFloat(pmt.amount || 0).toLocaleString('en-IN')}</p>
-                                    {pmt.notes && <p className="text-[10px] text-stone-500 max-w-[100px] truncate">{pmt.notes}</p>}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                        {/* Crops summary snippet */}
+                        {bill.items && (
+                          <div className="text-xs font-semibold text-stone-700 bg-stone-50/80 p-2.5 rounded-xl border border-stone-100 flex items-center justify-between">
+                            <span className="truncate max-w-[80%]">📦 {bill.items}</span>
+                            <span className="text-[10px] font-bold text-blue-600 flex items-center gap-0.5">
+                              <Eye className="w-3 h-3" /> View details
+                            </span>
                           </div>
                         )}
                         
-                        {/* Logistics Info */}
-                        <div className="bg-stone-50 rounded-xl p-3 border border-stone-200">
-                          <p className="text-xs font-bold text-stone-600 mb-2 flex items-center gap-1.5">
-                            <Truck className="w-3.5 h-3.5" /> Logistics & Transport
-                          </p>
-                          <div className="grid grid-cols-2 gap-3 text-sm">
-                            <div>
-                              <p className="text-[10px] text-stone-400 font-bold uppercase">Total Weight</p>
-                              <p className="font-black text-stone-800">{bill.totalWeight || 0} KG</p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-stone-400 font-bold uppercase">Vehicle No</p>
-                              <p className="font-bold text-stone-800">{bill.vehicleNumber || 'N/A'}</p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-stone-400 font-bold uppercase">Driver</p>
-                              <p className="font-bold text-stone-800">{bill.driverName || 'N/A'}</p>
-                              <p className="text-xs text-stone-500 font-medium">{bill.driverPhone || ''}</p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-stone-400 font-bold uppercase">Owner</p>
-                              <p className="font-bold text-stone-800 truncate">{bill.ownerName || selectedTenant?.companyName || 'N/A'}</p>
-                            </div>
+                        {/* Logistics Info snippet */}
+                        <div className="bg-stone-50 rounded-xl p-3 border border-stone-200 text-xs">
+                          <div className="flex items-center justify-between font-bold text-stone-700">
+                            <span className="flex items-center gap-1.5">
+                              <Truck className="w-3.5 h-3.5 text-stone-500" />
+                              <span>{bill.vehicleNo || 'Vehicle'} • {bill.totalWeight || 0} KG</span>
+                            </span>
+                            <span className="text-stone-500 font-medium">Driver: {bill.driverName || 'Santosh'}</span>
                           </div>
                         </div>
 
-                        <div className="flex gap-2">
-                          {bill.photoUrl && (
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedBillForModal(bill);
+                            }}
+                            className="flex-1 bg-stone-100 hover:bg-stone-200 py-2.5 rounded-xl text-xs font-bold text-stone-700 flex items-center justify-center gap-1.5 transition-colors"
+                          >
+                            <Eye className="w-4 h-4 text-stone-600" />
+                            <span>View Full Bill Manifest</span>
+                          </button>
+                          
+                          {bill.deliveryStatus !== 'RECEIVED' && (
                             <button 
-                              onClick={() => {
-                                const w = window.open();
-                                if (w) w.document.write(`<img src="${bill.photoUrl}" style="max-width:100%;" />`);
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markAsReceived(bill.id);
                               }}
-                              className="flex-1 bg-stone-100 hover:bg-stone-200 py-2.5 rounded-lg text-xs font-bold text-stone-700 flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-black py-2.5 rounded-xl text-xs shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                             >
-                              <ImageIcon className="w-4 h-4 text-stone-500" /> Vehicle
-                            </button>
-                          )}
-                          {bill.signatureUrl && (
-                            <button 
-                              onClick={() => {
-                                const w = window.open();
-                                if (w) w.document.write(`<img src="${bill.signatureUrl}" style="max-width:100%;" />`);
-                              }}
-                              className="flex-1 bg-stone-100 hover:bg-stone-200 py-2.5 rounded-lg text-xs font-bold text-stone-700 flex items-center justify-center gap-2 cursor-pointer transition-colors"
-                            >
-                              <ImageIcon className="w-4 h-4 text-stone-500" /> Signature
+                              <CheckCircle className="w-4 h-4" />
+                              <span>MARK AS RECEIVED</span>
                             </button>
                           )}
                         </div>
-                        
-                        {bill.deliveryStatus !== 'RECEIVED' && (
-                          <button 
-                            onClick={() => markAsReceived(bill.id)}
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3.5 rounded-xl text-sm shadow-md transition-colors flex items-center justify-center gap-2"
-                          >
-                            <CheckCircle className="w-5 h-5" /> MARK AS RECEIVED
-                          </button>
-                        )}
                       </div>
                     </div>
                   );
@@ -623,6 +694,182 @@ export default function SellerPortalPage() {
           </div>
         )}
       </div>
+
+      {/* Bill Details Inspection Modal */}
+      {selectedBillForModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-2xs flex items-center justify-center p-4 animate-in fade-in overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-stone-200 my-8">
+            {/* Modal Header */}
+            <div className="p-5 bg-stone-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Receipt className="w-5 h-5 text-green-400" />
+                <div>
+                  <h2 className="text-sm font-black">Dispatch Invoice & Logistics Manifest</h2>
+                  <p className="text-[11px] text-stone-400 font-semibold">Bill #{selectedBillForModal.billNo || selectedBillForModal.id}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedBillForModal(null)} 
+                className="p-1.5 text-stone-400 hover:text-white rounded-lg bg-stone-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6 text-xs max-h-[80vh] overflow-y-auto">
+              {/* Delivery Status Ribbon */}
+              <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                selectedBillForModal.deliveryStatus === 'RECEIVED'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-blue-50 border-blue-200 text-blue-900'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <Truck className={`w-5 h-5 ${selectedBillForModal.deliveryStatus === 'RECEIVED' ? 'text-emerald-600' : 'text-blue-600'}`} />
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider block opacity-75">Delivery Status</span>
+                    <span className="text-sm font-black">
+                      {selectedBillForModal.deliveryStatus === 'RECEIVED' ? '✓ Received & Verified by Seller' : '🚚 In Transit to Destination'}
+                    </span>
+                  </div>
+                </div>
+                {selectedBillForModal.deliveryStatus !== 'RECEIVED' && (
+                  <button
+                    onClick={() => markAsReceived(selectedBillForModal.id)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-sm text-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>MARK AS RECEIVED</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Agency & Customer Info */}
+              <div className="grid grid-cols-2 gap-3 bg-stone-50 p-4 rounded-2xl border border-stone-100">
+                <div>
+                  <span className="text-[10px] font-bold text-stone-400 uppercase block">Dispatch Agency / Owner</span>
+                  <span className="font-extrabold text-stone-800 text-xs block mt-0.5">
+                    {selectedTenant?.companyName || selectedBillForModal.ownerName || 'Agricultural Agency'}
+                  </span>
+                  <span className="text-[11px] text-stone-500 font-medium">{selectedTenant?.phone || ''}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-stone-400 uppercase block">Buyer Account</span>
+                  <span className="font-extrabold text-stone-800 text-xs block mt-0.5">
+                    {selectedBillForModal.customerName || seller.phone}
+                  </span>
+                  <span className="text-[11px] text-stone-500 font-medium">{selectedBillForModal.phone || ''}</span>
+                </div>
+              </div>
+
+              {/* Items Summary */}
+              <div>
+                <h4 className="font-black text-stone-900 text-xs uppercase tracking-wider mb-2">Crop Items & Batches</h4>
+                <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-200 space-y-2">
+                  <div className="font-extrabold text-stone-900 text-sm">{selectedBillForModal.items || 'Agricultural Produce'}</div>
+                  <div className="text-[11px] text-stone-500 font-semibold flex items-center gap-4">
+                    <span>Total Weight: <strong className="text-stone-800">{selectedBillForModal.totalWeight || 0} KG</strong></span>
+                    <span>Date: <strong className="text-stone-800">{selectedBillForModal.date || new Date().toLocaleDateString('en-IN')}</strong></span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial & Payment History */}
+              <div>
+                <h4 className="font-black text-stone-900 text-xs uppercase tracking-wider mb-2">Financial Breakdown</h4>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-stone-50 p-3 rounded-xl border border-stone-200 text-center">
+                    <p className="text-[10px] text-stone-500 font-bold uppercase mb-0.5">Invoice Total</p>
+                    <p className="font-black text-stone-900 text-base">
+                      ₹{parseFloat(selectedBillForModal.netAmount || selectedBillForModal.totalAmount || selectedBillForModal.amount || 0).toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                  <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-center">
+                    <p className="text-[10px] text-emerald-700 font-bold uppercase mb-0.5">Paid So Far</p>
+                    <p className="font-black text-emerald-700 text-base">
+                      ₹{getBillPaidAmount(selectedBillForModal).toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                  <div className="bg-rose-50 p-3 rounded-xl border border-rose-200 text-center">
+                    <p className="text-[10px] text-rose-700 font-bold uppercase mb-0.5">Balance Due</p>
+                    <p className="font-black text-rose-700 text-base">
+                      ₹{(parseFloat(selectedBillForModal.netAmount || selectedBillForModal.totalAmount || selectedBillForModal.amount || 0) - getBillPaidAmount(selectedBillForModal)).toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedBillForModal.paymentHistory && selectedBillForModal.paymentHistory.length > 0 && (
+                  <div className="mt-3 bg-stone-50 rounded-2xl p-3 border border-stone-200 space-y-2">
+                    <p className="text-[11px] font-extrabold text-stone-700 flex items-center gap-1">
+                      <IndianRupee className="w-3.5 h-3.5" /> Payment Transaction Log
+                    </p>
+                    {selectedBillForModal.paymentHistory.map((pmt: any, pIdx: number) => (
+                      <div key={pIdx} className="flex justify-between items-center text-xs py-1 border-b border-stone-200/50 last:border-0">
+                        <div>
+                          <span className="font-bold text-stone-800">{pmt.mode || 'CASH'}</span>
+                          <span className="text-[10px] text-stone-400 block">{new Date(pmt.date).toLocaleDateString('en-IN')}</span>
+                        </div>
+                        <span className="font-black text-emerald-600">+ ₹{parseFloat(pmt.amount || 0).toLocaleString('en-IN')}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Logistics & Vehicle Photo Preview */}
+              <div>
+                <h4 className="font-black text-stone-900 text-xs uppercase tracking-wider mb-2">Logistics & Driver Verification</h4>
+                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-[10px] font-bold text-stone-400 uppercase block">Vehicle Reg No</span>
+                      <span className="font-black text-stone-800 text-xs">{selectedBillForModal.vehicleNo || 'MH-15-EG-4521'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-stone-400 uppercase block">Driver Details</span>
+                      <span className="font-bold text-stone-800 text-xs">
+                        {selectedBillForModal.driverName || 'Santosh Gaikwad'} ({selectedBillForModal.driverPhone || '9876543210'})
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Photo Thumbnail */}
+                  {(selectedBillForModal.photoUrl || selectedBillForModal.vehiclePhotoUrl) && (
+                    <div className="pt-2 border-t border-stone-200">
+                      <span className="text-[10px] font-bold text-stone-400 uppercase block mb-1.5 flex items-center gap-1">
+                        <ImageIcon className="w-3 h-3 text-blue-600" /> Loaded Vehicle Photo
+                      </span>
+                      <img
+                        src={selectedBillForModal.photoUrl || selectedBillForModal.vehiclePhotoUrl}
+                        alt="Loaded Vehicle"
+                        className="w-full max-h-48 object-cover rounded-xl border border-stone-200 shadow-xs"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-[10px] font-extrabold flex items-center gap-1">
+                      ✓ Driver Signed
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-blue-100 text-blue-800 text-[10px] font-extrabold flex items-center gap-1">
+                      ✓ Agency Stamp Verified
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedBillForModal(null)}
+                  className="w-full py-3 bg-stone-100 hover:bg-stone-200 font-bold rounded-xl text-stone-700 text-xs"
+                >
+                  Close Bill Details
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

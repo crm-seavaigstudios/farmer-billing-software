@@ -486,19 +486,21 @@ export default function FarmerPortalPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div>
                     <span className="text-slate-400 font-semibold block">Full Name:</span>
-                    <span className="font-extrabold text-slate-900">{farmer.name}</span>
+                    <span className="font-extrabold text-slate-900">{farmer.name || '—'}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 font-semibold block">Mobile Phone:</span>
-                    <span className="font-bold text-slate-800">{farmer.phone}</span>
+                    <span className="font-bold text-slate-800">{farmer.phone || '—'}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 font-semibold block">Village & District:</span>
-                    <span className="font-bold text-slate-800">{farmer.village || 'Nandgaon'}, Nashik</span>
+                    <span className="font-bold text-slate-800">
+                      {[farmer.village, farmer.taluka, farmer.district].filter(Boolean).join(', ') || '—'}
+                    </span>
                   </div>
                   <div>
                     <span className="text-slate-400 font-semibold block">Aadhaar Identification:</span>
-                    <span className="font-bold text-slate-800">{farmer.aadhaar || 'XXXX-XXXX-8910'}</span>
+                    <span className="font-bold text-slate-800">{farmer.aadhaarNumber || farmer.aadhaar || '—'}</span>
                   </div>
                 </div>
               </div>
@@ -507,30 +509,34 @@ export default function FarmerPortalPage() {
                 <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                   <CreditCard className="w-4 h-4 text-blue-600" /> Bank Disbursal Account Details
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                   <div>
-                    <span className="text-slate-400 font-semibold block">Bank Account Number:</span>
-                    <span className="font-extrabold text-slate-900">{farmer.bankAccount || '990011223344'}</span>
+                    <span className="text-slate-400 font-semibold block">Bank Name:</span>
+                    <span className="font-bold text-slate-800">{farmer.bankName || '—'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 font-semibold block">Bank IFSC Code:</span>
-                    <span className="font-bold text-slate-800">{farmer.ifsc || 'MAHB0001234'}</span>
+                    <span className="text-slate-400 font-semibold block">Account Number:</span>
+                    <span className="font-extrabold text-slate-900">{farmer.accountNumber || farmer.bankAccount || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-semibold block">IFSC Code:</span>
+                    <span className="font-bold text-slate-800">{farmer.ifscCode || farmer.ifsc || '—'}</span>
                   </div>
                 </div>
               </div>
 
               <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
                 <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sprout className="w-4 h-4 text-purple-600" /> Cultivated Crops & Farm Acreage
+                  <Sprout className="w-4 h-4 text-purple-600" /> Crop Category & Quality Grade
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div>
-                    <span className="text-slate-400 font-semibold block">Primary Crop Variety:</span>
-                    <span className="font-bold text-slate-900">{farmer.cropVariety || 'Sweet Charlie Strawberry (A Grade)'}</span>
+                    <span className="text-slate-400 font-semibold block">Assigned Quality Grade:</span>
+                    <span className="font-bold text-slate-900">{farmer.grade || 'A_GRADE'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 font-semibold block">Farm Land Acreage:</span>
-                    <span className="font-bold text-slate-800">{farmer.acreage || '4.5 Acres (Nandgaon Cluster)'}</span>
+                    <span className="text-slate-400 font-semibold block">Primary Crops / Land Area:</span>
+                    <span className="font-bold text-slate-800">{farmer.cropVariety || farmer.crop || farmer.acreage || '—'}</span>
                   </div>
                 </div>
               </div>
