@@ -1093,7 +1093,7 @@ export const apiToggleTenantStatus = async (id: string, newStatus: string) => {
 };
 
 export const apiUpdateTenant = async (id: string, updateData: any) => {
-  const allowed = ['companyName', 'ownerName', 'ownerEmail', 'ownerPhone', 'passportOrGovId', 'package', 'password', 'status', 'businessNameMr', 'addressMr', 'gstin', 'tagline', 'primaryColor', 'secretPin'];
+  const allowed = ['companyName', 'ownerName', 'ownerEmail', 'ownerPhone', 'passportOrGovId', 'package', 'password', 'status', 'businessNameMr', 'addressMr', 'gstin', 'tagline', 'primaryColor', 'secretPin', 'subdomain', 'logoUrl', 'signatureUrl'];
   const sanitized: Record<string, any> = {};
   for (const key of Object.keys(updateData)) {
     if (allowed.includes(key)) {
@@ -1189,27 +1189,7 @@ export const apiUpdateDailyRate = async (data: any) => {
   return newItem;
 };
 
-export const apiUpdateTenant = async (tenantId: string, data: any) => {
-  try {
-    const { error } = await supabase.from('Tenant').update({
-      businessNameMr: data.businessNameMr,
-      subdomain: data.subdomain,
-      logoUrl: data.logoUrl,
-      signatureUrl: data.signatureUrl,
-      addressMr: data.addressMr,
-      gstin: data.gstin,
-      tagline: data.tagline,
-      primaryColor: data.primaryColor,
-      secretPin: data.secretPin
-    }).eq('id', tenantId).throwOnError();
-    
-    if (error) throw error;
-    return true;
-  } catch (error) {
-    console.error('Error updating tenant:', error);
-    return false;
-  }
-};
+
 
 
 export const apiGetSales = async () => {
