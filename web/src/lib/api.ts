@@ -651,6 +651,84 @@ export const apiCreatePurchase = async (purchaseData: any) => {
   }
   return purchaseObj;
 };
+
+export const apiUpdatePurchase = async (purchaseId: string, updateData: any) => {
+  const tenantId = getTenantId();
+  if (!tenantId) throw new Error('No tenant');
+
+  const currentList = getLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
+  const oldPurchase = currentList.find((p: any) => p.id === purchaseId || p.dbId === purchaseId);
+  const targetId = oldPurchase?.dbId || purchaseId;
+
+  const parsedWeight = parseFloat(String(updateData.weight || updateData.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+  const parsedRate = parseFloat(String(updateData.rate || updateData.ratePerKg || '0').replace(/[^0-9.-]+/g, '')) || 0;
+  const parsedAmount = updateData.amount !== undefined ? Number(updateData.amount) : (parsedWeight * parsedRate);
+  const parsedDue = updateData.dueAmount !== undefined ? Number(updateData.dueAmount) : parsedAmount;
+  const parsedPaid = updateData.paidAmount !== undefined ? Number(updateData.paidAmount) : (parsedAmount - parsedDue);
+
+  try {
+    // 1. Update Purchase in Supabase
+    await supabase.from('Purchase').update({
+      totalWeight: parsedWeight,
+      totalAmount: parsedAmount,
+      dueAmount: parsedDue,
+      paidAmount: parsedPaid,
+      paymentStatus: updateData.paymentStatus || (parsedDue <= 0 ? 'PAID' : parsedPaid > 0 ? 'PARTIAL' : 'UNPAID'),
+      storageLocation: updateData.storageLocation || oldPurchase?.storageLocation || ''
+    }).or(`id.eq.${targetId},purchaseNo.eq.${purchaseId}`).throwOnError();
+
+    // 2. Update or Upsert PurchaseItem in Supabase
+    if (updateData.crop || updateData.cropName || parsedWeight > 0) {
+      const { data: existingItems } = await supabase
+        .from('PurchaseItem')
+        .select('*')
+        .or(`purchaseId.eq.${targetId},purchaseId.eq.${purchaseId}`)
+        .limit(1);
+
+      if (existingItems && existingItems.length > 0) {
+        await supabase.from('PurchaseItem').update({
+          cropName: updateData.crop || updateData.cropName || existingItems[0].cropName,
+          weightKg: parsedWeight || existingItems[0].weightKg,
+          ratePerKg: parsedRate || existingItems[0].ratePerKg,
+          totalAmount: parsedAmount,
+          grade: updateData.grade || existingItems[0].grade || 'A_GRADE'
+        }).eq('id', existingItems[0].id).throwOnError();
+      }
+    }
+
+    // 3. Update Farmer balance in Supabase if amount changed
+    const farmerId = updateData.farmerId || oldPurchase?.farmerId;
+    if (farmerId && oldPurchase) {
+      const oldAmount = Number(oldPurchase.amount || oldPurchase.totalAmount || 0);
+      const diff = parsedAmount - oldAmount;
+      if (diff !== 0) {
+        await apiUpdateFarmerBalance(farmerId, 0, diff, 'PURCHASE', 0);
+      }
+    }
+  } catch (e) {
+    console.error('Error in apiUpdatePurchase:', e);
+  }
+
+  // 4. Update local cache
+  const updatedList = currentList.map((p: any) => {
+    if (p.id === purchaseId || p.dbId === purchaseId) {
+      return {
+        ...p,
+        ...updateData,
+        weight: `${parsedWeight} KG`,
+        rate: `₹${parsedRate}/KG`,
+        amount: parsedAmount,
+        totalAmount: parsedAmount,
+        dueAmount: parsedDue,
+        paidAmount: parsedPaid,
+        paymentStatus: updateData.paymentStatus || (parsedDue <= 0 ? 'PAID' : parsedPaid > 0 ? 'PARTIAL' : 'UNPAID')
+      };
+    }
+    return p;
+  });
+  setLocalCache(`seavaig_purchases_cache_${tenantId}`, updatedList);
+  return updatedList;
+};
 // ----------------------------------------------------
 // TRADERS API (SUPABASE INTEGRATED)
 // ----------------------------------------------------

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, Mail, Phone, ArrowRight, ShieldCheck, User } from 'lucide-react';
+import { Lock, Mail, Phone, ArrowRight, ShieldCheck, User, Building2, ChevronRight, X } from 'lucide-react';
 import { apiGetTenants } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 
@@ -20,6 +20,44 @@ export default function LoginPage() {
   // Handle first time password setup state
   const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false);
   const [foundUserId, setFoundUserId] = useState('');
+
+  // Handle agency selection modal state for Farmers and Sellers
+  const [isAgencyModalOpen, setIsAgencyModalOpen] = useState(false);
+  const [agencySelectionList, setAgencySelectionList] = useState<any[]>([]);
+  const [pendingUserAuth, setPendingUserAuth] = useState<any | null>(null);
+
+  const handleSelectAgency = (selectedTenant: any) => {
+    if (!pendingUserAuth) return;
+
+    if (pendingUserAuth.role === 'FARMER') {
+      const matchedFarmer = pendingUserAuth.records?.find((f: any) => f.tenantId === selectedTenant.id) || pendingUserAuth.records?.[0];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('active_tenant', JSON.stringify({
+          id: matchedFarmer?.id || `farmer-${selectedTenant.id}`,
+          userRole: 'FARMER',
+          phone: pendingUserAuth.phone,
+          name: matchedFarmer?.name || pendingUserAuth.name || 'Farmer',
+          tenantId: selectedTenant.id,
+          tenantName: selectedTenant.companyName || selectedTenant.name
+        }));
+      }
+      setIsAgencyModalOpen(false);
+      router.push('/farmer-portal');
+    } else if (pendingUserAuth.role === 'SELLER') {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('active_tenant', JSON.stringify({
+          id: pendingUserAuth.globalSellerId,
+          userRole: 'SELLER',
+          phone: pendingUserAuth.phone,
+          name: pendingUserAuth.name || 'Seller',
+          tenantId: selectedTenant.id,
+          tenantName: selectedTenant.companyName || selectedTenant.name
+        }));
+      }
+      setIsAgencyModalOpen(false);
+      router.push('/seller-portal');
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,34 +139,70 @@ export default function LoginPage() {
 
       if (roleTab === 'FARMER') {
         if (needsPasswordSetup) {
-          // Setting new password
           if (password.length < 4) throw new Error("Password must be at least 4 characters.");
-          await supabase.from('Farmer').update({ password }).eq('id', foundUserId);
+          await supabase.from('Farmer').update({ password }).eq('phone', identifier);
+          const { data: farmerRecords } = await supabase.from('Farmer').select('*').eq('phone', identifier);
+          const farmerData = farmerRecords?.[0];
           if (typeof window !== 'undefined') {
-            localStorage.setItem('active_tenant', JSON.stringify({ id: foundUserId, userRole: 'FARMER', phone: identifier }));
+            localStorage.setItem('active_tenant', JSON.stringify({ id: farmerData?.id || foundUserId, userRole: 'FARMER', phone: identifier }));
           }
           router.push('/farmer-portal');
           return;
         }
 
-        // Standard Login
-        const { data: farmerList } = await supabase.from('Farmer').select('*').eq('phone', identifier).limit(1);
-        const farmerData = farmerList?.[0];
+        // Standard Login: Query all Farmer records across tenants for this phone
+        const { data: farmerRecords } = await supabase.from('Farmer').select('*').eq('phone', identifier);
         
-        if (!farmerData) throw new Error("Mobile number not registered.");
-        
-        if (!farmerData.password) {
-          setNeedsPasswordSetup(true);
-          setFoundUserId(farmerData.id);
-          setPassword('');
-          setLoading(false);
-          return; // Wait for user to enter new password
+        if (!farmerRecords || farmerRecords.length === 0) {
+          throw new Error("Mobile number not registered as farmer.");
         }
 
-        if (farmerData.password !== password) throw new Error("Incorrect password.");
+        const firstWithPassword = farmerRecords.find((f: any) => Boolean(f.password));
+        if (!firstWithPassword) {
+          setNeedsPasswordSetup(true);
+          setFoundUserId(farmerRecords[0].id);
+          setPassword('');
+          setLoading(false);
+          return;
+        }
 
+        // Verify password
+        const passwordMatches = farmerRecords.some((f: any) => f.password === password);
+        if (!passwordMatches) throw new Error("Incorrect password.");
+
+        // Find all unique Tenants this farmer is linked with
+        const tenantIds = Array.from(new Set(farmerRecords.map((f: any) => f.tenantId).filter(Boolean)));
+        let tenantList: any[] = [];
+        if (tenantIds.length > 0) {
+          const { data: tData } = await supabase.from('Tenant').select('*').in('id', tenantIds);
+          tenantList = tData || [];
+        }
+
+        // If multiple agencies found, open Agency Selection Modal
+        if (tenantList.length > 1) {
+          setAgencySelectionList(tenantList);
+          setPendingUserAuth({
+            role: 'FARMER',
+            phone: identifier,
+            name: farmerRecords[0].name,
+            records: farmerRecords
+          });
+          setIsAgencyModalOpen(true);
+          setLoading(false);
+          return;
+        }
+
+        // Single Agency or direct login
+        const singleTenant = tenantList[0] || { id: farmerRecords[0].tenantId };
         if (typeof window !== 'undefined') {
-          localStorage.setItem('active_tenant', JSON.stringify({ id: farmerData.id, userRole: 'FARMER', phone: identifier }));
+          localStorage.setItem('active_tenant', JSON.stringify({
+            id: farmerRecords[0].id,
+            userRole: 'FARMER',
+            phone: identifier,
+            name: farmerRecords[0].name,
+            tenantId: singleTenant.id,
+            tenantName: singleTenant.companyName || ''
+          }));
         }
         router.push('/farmer-portal');
         return;
@@ -137,7 +211,6 @@ export default function LoginPage() {
       if (roleTab === 'SELLER') {
         if (needsPasswordSetup) {
           if (password.length < 4) throw new Error("Password must be at least 4 characters.");
-          // Update both GlobalSeller and Customer tables for consistency
           await supabase.from('GlobalSeller').update({ password }).eq('id', foundUserId);
           await supabase.from('Customer').update({ password }).eq('phone', identifier);
           
@@ -152,14 +225,13 @@ export default function LoginPage() {
         let globalSeller = globalSellerList?.[0];
         
         if (!globalSeller) {
-          // See if they exist in Customer table but not GlobalSeller yet (legacy sync)
           const { data: custData } = await supabase.from('Customer').select('*').eq('phone', identifier).limit(1);
           if (custData && custData.length > 0) {
-            const newGs = { id: `gs-\${Date.now()}`, phone: identifier, name: custData[0].name };
+            const newGs = { id: `gs-${Date.now()}`, phone: identifier, name: custData[0].name };
             await supabase.from('GlobalSeller').insert([newGs]);
             globalSeller = newGs;
           } else {
-            throw new Error("Mobile number not registered.");
+            throw new Error("Mobile number not registered as seller / trader.");
           }
         }
 
@@ -173,8 +245,44 @@ export default function LoginPage() {
 
         if (globalSeller.password !== password) throw new Error("Incorrect password.");
 
+        // Find all Tenants this seller is registered with in Customer and Sale tables
+        const { data: custRecords } = await supabase.from('Customer').select('tenantId').eq('phone', identifier);
+        const { data: saleRecords } = await supabase.from('Sale').select('tenantId').eq('phone', identifier);
+        
+        const tenantIds = Array.from(new Set([
+          ...(custRecords || []).map((c: any) => c.tenantId),
+          ...(saleRecords || []).map((s: any) => s.tenantId)
+        ].filter(Boolean)));
+
+        let tenantList: any[] = [];
+        if (tenantIds.length > 0) {
+          const { data: tData } = await supabase.from('Tenant').select('*').in('id', tenantIds);
+          tenantList = tData || [];
+        }
+
+        if (tenantList.length > 1) {
+          setAgencySelectionList(tenantList);
+          setPendingUserAuth({
+            role: 'SELLER',
+            phone: identifier,
+            name: globalSeller.name,
+            globalSellerId: globalSeller.id
+          });
+          setIsAgencyModalOpen(true);
+          setLoading(false);
+          return;
+        }
+
+        const singleTenant = tenantList[0] || { id: tenantIds[0] || '' };
         if (typeof window !== 'undefined') {
-          localStorage.setItem('active_tenant', JSON.stringify({ id: globalSeller.id, userRole: 'SELLER', phone: identifier }));
+          localStorage.setItem('active_tenant', JSON.stringify({
+            id: globalSeller.id,
+            userRole: 'SELLER',
+            phone: identifier,
+            name: globalSeller.name,
+            tenantId: singleTenant.id,
+            tenantName: singleTenant.companyName || ''
+          }));
         }
         router.push('/seller-portal');
         return;
@@ -279,6 +387,65 @@ export default function LoginPage() {
           <span>Enterprise Supabase 256-bit Encrypted Auth</span>
         </div>
       </div>
+
+      {/* MULTI-AGENCY SELECTION MODAL */}
+      {isAgencyModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 font-sans text-xs">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-black">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black text-slate-900">Select Agency / व्यापारी निवडा</h2>
+                  <p className="text-[10px] text-slate-500">Your mobile is registered with multiple agencies</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsAgencyModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              {agencySelectionList.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => handleSelectAgency(t)}
+                  className="w-full p-3.5 bg-slate-50 hover:bg-blue-50/80 border border-slate-200/80 hover:border-blue-300 rounded-2xl text-left flex items-center justify-between transition-all group cursor-pointer"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-900 group-hover:text-blue-700">
+                        {t.companyName || t.businessNameMr || 'Agro Agency'}
+                      </span>
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-100/80 text-blue-700">
+                        {t.companyCode || 'AGRO'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-medium">
+                      Owner: <span className="font-semibold text-slate-700">{t.ownerName || 'Agency Owner'}</span>
+                    </div>
+                    {t.addressMr && (
+                      <div className="text-[10px] text-slate-400">{t.addressMr}</div>
+                    )}
+                  </div>
+                  <div className="w-7 h-7 rounded-xl bg-white group-hover:bg-blue-600 text-slate-400 group-hover:text-white flex items-center justify-center border border-slate-200 group-hover:border-blue-600 transition-colors shadow-xs">
+                    <ChevronRight className="w-4 h-4" />
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <p className="text-[10px] text-center text-slate-400 pt-1 border-t border-slate-100">
+              💡 You can also switch between your agencies anytime inside the portal.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

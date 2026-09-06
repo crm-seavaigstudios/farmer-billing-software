@@ -17,7 +17,12 @@ import {
   Phone,
   CreditCard,
   Printer,
-  X
+  X,
+  Building2,
+  Receipt,
+  CheckCircle,
+  Clock,
+  Eye
 } from 'lucide-react';
 import { PrintStatementModal, StatementData } from '@/components/common/PrintStatementModal';
 
@@ -25,6 +30,7 @@ export default function FarmerPortalPage() {
   const router = useRouter();
   const [farmer, setFarmer] = useState<any>(null);
   const [tenant, setTenant] = useState<any>(null);
+  const [linkedTenants, setLinkedTenants] = useState<any[]>([]);
   
   const [rawPurchases, setRawPurchases] = useState<any[]>([]);
   const [rawPayments, setRawPayments] = useState<any[]>([]);
@@ -38,6 +44,7 @@ export default function FarmerPortalPage() {
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'LEDGER'>('LEDGER');
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [selectedPurchaseForReceipt, setSelectedPurchaseForReceipt] = useState<any | null>(null);
 
   const [dateFilter, setDateFilter] = useState<'ALL_TIME' | 'THIS_MONTH' | 'LAST_MONTH' | 'CUSTOM'>('ALL_TIME');
   const [customRange, setCustomRange] = useState({ start: '', end: '' });
@@ -56,37 +63,89 @@ export default function FarmerPortalPage() {
     const auth = JSON.parse(raw);
     if (auth.userRole !== 'FARMER') return router.push('/login');
     
-    // Get full farmer details live
-    const { data: fData } = await supabase.from('Farmer').select('*').eq('id', auth.id).single();
-    if (fData) {
-      setFarmer(fData);
-      // Get Agency/Tenant info
-      const { data: tData } = await supabase.from('Tenant').select('*').eq('id', fData.tenantId).single();
-      setTenant(tData);
-      await fetchData(fData.id, fData.tenantId, fData.name);
-    } else {
-      router.push('/login');
+    const userPhone = auth.phone || '';
+
+    // 1. Fetch all Farmer records matching this phone number across all agencies
+    const { data: allFarmerRecords } = await supabase.from('Farmer').select('*').eq('phone', userPhone);
+    
+    if (!allFarmerRecords || allFarmerRecords.length === 0) {
+      // Fallback to auth.id if phone is empty
+      const { data: fById } = await supabase.from('Farmer').select('*').eq('id', auth.id).single();
+      if (fById) {
+        setFarmer(fById);
+        const { data: tData } = await supabase.from('Tenant').select('*').eq('id', fById.tenantId).single();
+        setTenant(tData);
+        setLinkedTenants(tData ? [tData] : []);
+        await fetchData(fById.id, fById.tenantId, fById.name, userPhone);
+        return;
+      }
+      return router.push('/login');
     }
+
+    // 2. Collect unique tenant IDs
+    const tenantIds = Array.from(new Set(allFarmerRecords.map((f: any) => f.tenantId).filter(Boolean)));
+    let tenantsList: any[] = [];
+    if (tenantIds.length > 0) {
+      const { data: tData } = await supabase.from('Tenant').select('*').in('id', tenantIds);
+      tenantsList = tData || [];
+    }
+
+    setLinkedTenants(tenantsList);
+
+    // 3. Determine active tenant: stored in auth.tenantId, or matching current farmer
+    let activeTenant = tenantsList.find((t: any) => t.id === auth.tenantId) || tenantsList[0] || { id: allFarmerRecords[0].tenantId };
+    setTenant(activeTenant);
+
+    // 4. Find matching farmer record under active tenant
+    let currentFarmer = allFarmerRecords.find((f: any) => f.tenantId === activeTenant.id) || allFarmerRecords[0];
+    setFarmer(currentFarmer);
+
+    await fetchData(currentFarmer.id, activeTenant.id, currentFarmer.name, userPhone);
   };
 
-  const fetchData = async (farmerId: string, tenantId: string, farmerName: string) => {
+  const handleSwitchTenant = async (newTenant: any) => {
+    if (!newTenant) return;
+    setTenant(newTenant);
+    
+    const raw = localStorage.getItem('active_tenant');
+    if (raw) {
+      const auth = JSON.parse(raw);
+      auth.tenantId = newTenant.id;
+      auth.tenantName = newTenant.companyName || newTenant.name;
+      localStorage.setItem('active_tenant', JSON.stringify(auth));
+    }
+
+    // Find farmer under new tenant
+    const { data: allFarmerRecords } = await supabase.from('Farmer').select('*').eq('phone', farmer?.phone);
+    const matched = allFarmerRecords?.find((f: any) => f.tenantId === newTenant.id) || allFarmerRecords?.[0] || farmer;
+    setFarmer(matched);
+
+    await fetchData(matched.id, newTenant.id, matched.name, farmer?.phone);
+  };
+
+  const fetchData = async (farmerId: string, tenantId: string, farmerName: string, phone?: string) => {
+    setLoading(true);
     try {
       // 1. Fetch Purchases strictly for this farmer under this tenant
-      const { data: pData } = await supabase
-        .from('Purchase')
-        .select('*')
-        .eq('farmerId', farmerId)
-        .eq('tenantId', tenantId)
-        .order('createdAt', { ascending: false });
+      let pQuery = supabase.from('Purchase').select('*').eq('tenantId', tenantId);
+      if (farmerId && phone) {
+        pQuery = pQuery.or(`farmerId.eq.${farmerId},farmerId.eq.${phone}`);
+      } else if (farmerId) {
+        pQuery = pQuery.eq('farmerId', farmerId);
+      }
+      const { data: pData } = await pQuery.order('createdAt', { ascending: false });
 
       // 2. Fetch associated PurchaseItems for detailed crop/grade breakdowns
       const purchaseIds = (pData || []).map((p: any) => p.id).filter(Boolean);
+      const purchaseNos = (pData || []).map((p: any) => p.purchaseNo).filter(Boolean);
+      const allSearchIds = Array.from(new Set([...purchaseIds, ...purchaseNos]));
+
       let itemsMap: Record<string, any[]> = {};
-      if (purchaseIds.length > 0) {
+      if (allSearchIds.length > 0) {
         const { data: itemsData } = await supabase
           .from('PurchaseItem')
           .select('*')
-          .in('purchaseId', purchaseIds);
+          .in('purchaseId', allSearchIds);
         if (itemsData) {
           itemsData.forEach((it: any) => {
             if (!itemsMap[it.purchaseId]) itemsMap[it.purchaseId] = [];
@@ -96,12 +155,14 @@ export default function FarmerPortalPage() {
       }
 
       const enhancedPurchases = (pData || []).map((p: any) => {
-        const pItems = itemsMap[p.id] || [];
+        const pItems = itemsMap[p.id] || itemsMap[p.purchaseNo] || [];
         const firstItem = pItems[0];
-        const crop = firstItem?.cropName || p.crop || 'Crop Purchase';
+        const crop = firstItem?.cropName || p.crop || 'Strawberry (A Grade)';
         const weight = firstItem ? `${firstItem.weightKg} ${firstItem.unit || 'KG'}` : (p.totalWeight ? `${p.totalWeight} KG` : (p.weight || '-'));
-        const rate = firstItem ? `${firstItem.ratePerKg}/${firstItem.unit || 'KG'}` : (p.rate || '-');
+        const rate = firstItem ? `₹${firstItem.ratePerKg}/${firstItem.unit || 'KG'}` : (p.rate || '-');
         const amount = Number(p.totalAmount ?? p.amount ?? 0);
+        const paid = Number(p.paidAmount ?? 0);
+        const due = Number(p.dueAmount ?? (amount - paid));
         return {
           ...p,
           crop,
@@ -109,18 +170,22 @@ export default function FarmerPortalPage() {
           rate,
           amount,
           netAmount: amount,
+          paidAmount: paid,
+          dueAmount: due,
+          paymentStatus: p.paymentStatus || (due <= 0 ? 'PAID' : paid > 0 ? 'PARTIAL' : 'UNPAID'),
           grade: firstItem?.grade || p.grade,
           items: pItems
         };
       });
 
       // 3. Fetch Payments strictly for this farmer under this tenant
-      const { data: payData } = await supabase
-        .from('Payment')
-        .select('*')
-        .eq('farmerId', farmerId)
-        .eq('tenantId', tenantId)
-        .order('createdAt', { ascending: false });
+      let payQuery = supabase.from('Payment').select('*').eq('tenantId', tenantId);
+      if (farmerId && phone) {
+        payQuery = payQuery.or(`farmerId.eq.${farmerId},farmerId.eq.${phone}`);
+      } else if (farmerId) {
+        payQuery = payQuery.eq('farmerId', farmerId);
+      }
+      const { data: payData } = await payQuery.order('createdAt', { ascending: false });
 
       // 4. Fetch Material purchases
       const { data: mData } = await supabase
@@ -318,16 +383,38 @@ export default function FarmerPortalPage() {
                 <div className="flex items-center gap-2">
                   <h1 className="text-xl font-black">{farmer.name}</h1>
                   <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-800 text-emerald-200 border border-emerald-700">
-                    {farmer.id}
+                    {farmer.farmerIdCode || farmer.id}
                   </span>
                 </div>
-                <p className="text-xs text-emerald-300 font-semibold mt-0.5 flex flex-wrap items-center gap-2">
+                <div className="text-xs text-emerald-300 font-semibold mt-1 flex flex-wrap items-center gap-2">
                   <span>📍 {farmer.village || 'Nandgaon'}</span>
                   <span>•</span>
                   <span>📞 {farmer.phone}</span>
                   <span>•</span>
-                  <span className="text-emerald-400">Agency: {tenant?.businessName || tenant?.companyName || 'Agro Agency'}</span>
-                </p>
+                  <div className="flex items-center gap-1.5 bg-emerald-900/90 px-2 py-0.5 rounded-lg border border-emerald-700">
+                    <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-200 font-bold">
+                      {tenant?.companyName || tenant?.businessNameMr || 'Agro Agency'}
+                    </span>
+                    {linkedTenants.length > 1 && (
+                      <select
+                        value={tenant?.id}
+                        onChange={(e) => {
+                          const t = linkedTenants.find(x => x.id === e.target.value);
+                          if (t) handleSwitchTenant(t);
+                        }}
+                        className="bg-emerald-800 text-emerald-100 text-[10px] font-bold rounded px-1.5 py-0.5 border border-emerald-600 outline-none cursor-pointer hover:bg-emerald-700"
+                        title="Switch between registered agencies"
+                      >
+                        {linkedTenants.map(t => (
+                          <option key={t.id} value={t.id}>
+                            🔄 Switch: {t.companyName || t.name} ({t.companyCode || 'AGRO'})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -545,26 +632,114 @@ export default function FarmerPortalPage() {
 
           {/* TAB 2: PURCHASES HISTORY */}
           {activeTab === 'PURCHASES' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3 text-xs">
-              <h3 className="font-black text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2">
-                <ArrowUpCircle className="w-5 h-5 text-emerald-600" />
-                खरेदी आवक इतिहास (Recent Procurement Deliveries)
-              </h3>
-              <div className="space-y-2">
-                {purchasesList.length === 0 && <p className="text-slate-400 py-6 text-center">No purchases recorded.</p>}
-                {purchasesList.map((p: any) => (
-                  <div key={p.id} className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 flex justify-between items-center">
-                    <div>
-                      <span className="font-bold text-emerald-700">{p.billNo || p.id}</span>
-                      <p className="font-extrabold text-slate-900">{p.crop || 'Strawberry'}</p>
-                      <p className="text-[10px] text-slate-400">{p.date || p.purchaseDate} • {p.weight || p.netWeight} kg @ ₹{p.rate}</p>
-                    </div>
-                    <span className="text-sm font-black text-slate-900">
-                      ₹{Number(String(p.netAmount || p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}
-                    </span>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700">
+                    <ArrowUpCircle className="w-5 h-5" />
                   </div>
-                ))}
+                  <div>
+                    <h3 className="font-black text-slate-800 text-sm">
+                      खरेदी आवक इतिहास (Crop Procurement Bills)
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">सर्व मालाची खरेदी व पावत्यांची यादी</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">एकूण खरेदी</span>
+                  <span className="text-base font-black text-emerald-700">₹{totals.purchase.toLocaleString('en-IN')}</span>
+                </div>
               </div>
+
+              {purchasesList.length === 0 ? (
+                <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-sm">
+                  <Sprout className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="font-extrabold text-slate-700">कोणत्याही खरेदीची नोंद आढळली नाही</p>
+                  <p className="text-xs text-slate-400 mt-1">No procurement bills found for this account.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {purchasesList.map((p: any) => {
+                    const billAmt = Number(String(p.netAmount || p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+                    const paidAmt = Number(String(p.paidAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+                    const dueAmt = Number(String(p.dueAmount || (billAmt - paidAmt)).replace(/[^0-9.-]+/g, '')) || 0;
+                    const isFullyPaid = dueAmt <= 0;
+                    const isPartial = paidAmt > 0 && dueAmt > 0;
+
+                    return (
+                      <div key={p.id || p.billNo} className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm hover:border-emerald-300 transition-all space-y-3">
+                        {/* Header of Bill Card */}
+                        <div className="flex flex-wrap justify-between items-start gap-2 border-b border-slate-100 pb-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 font-black text-xs border border-emerald-200/60">
+                                {p.billNo || p.purchaseNo || p.id}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                                isFullyPaid ? 'bg-emerald-100 text-emerald-800' : isPartial ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+                              }`}>
+                                {isFullyPaid ? 'Paid' : isPartial ? 'Partial' : 'Pending'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 font-semibold mt-1 flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                              {p.date || p.purchaseDate || new Date(p.createdAt || Date.now()).toLocaleDateString('en-IN')}
+                            </p>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">बिल रक्कम</span>
+                            <span className="text-lg font-black text-slate-900">₹{billAmt.toLocaleString('en-IN')}</span>
+                          </div>
+                        </div>
+
+                        {/* Itemized Crops Breakdown */}
+                        {p.items && p.items.length > 0 ? (
+                          <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100 divide-y divide-slate-200/60">
+                            {p.items.map((item: any, idx: number) => (
+                              <div key={idx} className="flex justify-between items-center py-1.5 first:pt-0 last:pb-0 text-xs">
+                                <div>
+                                  <span className="font-extrabold text-slate-800">{item.cropName || item.crop || p.crop || 'Strawberry'}</span>
+                                  {item.grade && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white text-[10px] font-bold text-slate-600 border border-slate-200">{item.grade}</span>}
+                                  <p className="text-[11px] text-slate-500 font-semibold">{item.weightKg || item.weight} {item.unit || 'KG'} × ₹{item.ratePerKg || item.rate}</p>
+                                </div>
+                                <span className="font-black text-slate-900">₹{Number(item.totalAmount || item.amount || ((item.weightKg || 0) * (item.ratePerKg || 0))).toLocaleString('en-IN')}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100 flex justify-between items-center text-xs">
+                            <div>
+                              <span className="font-extrabold text-slate-800">{p.crop || 'Strawberry'}</span>
+                              {p.grade && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white text-[10px] font-bold text-slate-600 border border-slate-200">{p.grade}</span>}
+                              <p className="text-[11px] text-slate-500 font-semibold">{p.weight || p.netWeight || '-'} • दर: {p.rate || '-'}</p>
+                            </div>
+                            <span className="font-black text-slate-900">₹{billAmt.toLocaleString('en-IN')}</span>
+                          </div>
+                        )}
+
+                        {/* Financial Sub-Details & Action Button */}
+                        <div className="flex flex-wrap justify-between items-center gap-2 pt-1">
+                          <div className="flex items-center gap-4 text-xs font-bold">
+                            <span className="text-emerald-700">जमा: ₹{paidAmt.toLocaleString('en-IN')}</span>
+                            <span className={dueAmt > 0 ? 'text-rose-600 font-black' : 'text-slate-400'}>
+                              बाकी: ₹{dueAmt.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+
+                          <button
+                            onClick={() => setSelectedPurchaseForReceipt(p)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                            <span>पावती पहा / View Bill</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -706,6 +881,139 @@ export default function FarmerPortalPage() {
           onClose={() => setIsPrintModalOpen(false)}
           data={statementData}
         />
+      )}
+
+      {/* Itemized Purchase Bill Receipt Modal */}
+      {selectedPurchaseForReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="bg-emerald-900 text-white p-5 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-700/80 flex items-center justify-center text-emerald-100">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base">खरेदी पावती (Purchase Bill)</h3>
+                  <p className="text-xs text-emerald-200">{tenant?.companyName || tenant?.name || 'Agro Agency'} • {tenant?.phone || ''}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedPurchaseForReceipt(null)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Content / Printable Area */}
+            <div className="p-6 overflow-y-auto space-y-4 text-xs font-sans">
+              {/* Meta info box */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 grid grid-cols-2 gap-3">
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">पावती क्र. / Bill No</span>
+                  <span className="font-black text-slate-800 text-sm">{selectedPurchaseForReceipt.billNo || selectedPurchaseForReceipt.purchaseNo || selectedPurchaseForReceipt.id}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">तारीख / Date</span>
+                  <span className="font-bold text-slate-800">
+                    {selectedPurchaseForReceipt.date || selectedPurchaseForReceipt.purchaseDate || new Date(selectedPurchaseForReceipt.createdAt || Date.now()).toLocaleDateString('en-IN')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">शेतकरी / Farmer</span>
+                  <span className="font-black text-slate-900">{farmer.name}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">मोबाईल / Phone</span>
+                  <span className="font-bold text-slate-800">{farmer.phone || '—'}</span>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3">पिक / Crop & Grade</th>
+                      <th className="py-2.5 px-3 text-right">वजन / Weight</th>
+                      <th className="py-2.5 px-3 text-right">दर / Rate</th>
+                      <th className="py-2.5 px-3 text-right">रक्कम / Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {selectedPurchaseForReceipt.items && selectedPurchaseForReceipt.items.length > 0 ? (
+                      selectedPurchaseForReceipt.items.map((it: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-3 font-extrabold text-slate-800">
+                            {it.cropName || it.crop || selectedPurchaseForReceipt.crop || 'Strawberry'}
+                            {it.grade && <span className="ml-1 text-[10px] text-slate-400 font-bold">({it.grade})</span>}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-bold text-slate-700">{it.weightKg || it.weight} {it.unit || 'KG'}</td>
+                          <td className="py-2.5 px-3 text-right font-bold text-slate-700">₹{it.ratePerKg || it.rate}</td>
+                          <td className="py-2.5 px-3 text-right font-black text-slate-900">
+                            ₹{Number(it.totalAmount || it.amount || ((it.weightKg || 0) * (it.ratePerKg || 0))).toLocaleString('en-IN')}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td className="py-2.5 px-3 font-extrabold text-slate-800">
+                          {selectedPurchaseForReceipt.crop || 'Strawberry'}
+                          {selectedPurchaseForReceipt.grade && <span className="ml-1 text-[10px] text-slate-400 font-bold">({selectedPurchaseForReceipt.grade})</span>}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-slate-700">{selectedPurchaseForReceipt.weight || selectedPurchaseForReceipt.netWeight || '-'}</td>
+                        <td className="py-2.5 px-3 text-right font-bold text-slate-700">₹{selectedPurchaseForReceipt.rate || '-'}</td>
+                        <td className="py-2.5 px-3 text-right font-black text-slate-900">
+                          ₹{Number(String(selectedPurchaseForReceipt.netAmount || selectedPurchaseForReceipt.totalAmount || selectedPurchaseForReceipt.amount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals Breakdown */}
+              <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4 space-y-2">
+                <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                  <span>एकूण रक्कम (Gross Total):</span>
+                  <span>₹{Number(String(selectedPurchaseForReceipt.netAmount || selectedPurchaseForReceipt.totalAmount || selectedPurchaseForReceipt.amount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}</span>
+                </div>
+                {selectedPurchaseForReceipt.deductions && (
+                  <div className="flex justify-between items-center text-xs font-bold text-rose-600">
+                    <span>कपात (Deductions):</span>
+                    <span>-₹{Number(String(selectedPurchaseForReceipt.deductions).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-xs font-bold text-emerald-700">
+                  <span>जमा रक्कम (Paid Amount):</span>
+                  <span>₹{Number(String(selectedPurchaseForReceipt.paidAmount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}</span>
+                </div>
+                <div className="border-t border-emerald-200 pt-2 flex justify-between items-center text-sm font-black text-emerald-950">
+                  <span>शिल्लक बाकी (Balance Due):</span>
+                  <span>₹{Number(String(selectedPurchaseForReceipt.dueAmount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 border-t border-slate-200 p-4 flex justify-end gap-2">
+              <button
+                onClick={() => setSelectedPurchaseForReceipt(null)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 transition-colors"
+              >
+                बंद करा / Close
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>प्रिंट पावती / Print Receipt</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Footer */}

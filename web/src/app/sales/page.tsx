@@ -275,11 +275,11 @@ export default function SalesPage() {
                             {row.status}
                           </span>
                           <span className={`px-2 py-0.5 rounded text-[9px] font-black ${
-                            row.deliveryStatus === 'RECEIVED'
+                            row.status === 'RECEIVED' || row.deliveryStatus === 'RECEIVED'
                               ? 'bg-emerald-100 text-emerald-800'
                               : 'bg-blue-50 text-blue-700 border border-blue-100'
                           }`}>
-                            {row.deliveryStatus === 'RECEIVED' ? '✓ RECEIVED' : '🚚 IN TRANSIT'}
+                            {(row.status === 'RECEIVED' || row.deliveryStatus === 'RECEIVED') ? '✓ RECEIVED' : '🚚 IN TRANSIT'}
                           </span>
                         </div>
                       </td>

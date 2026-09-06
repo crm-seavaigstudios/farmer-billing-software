@@ -165,7 +165,7 @@ export default function SellerPortalPage() {
 
   const markAsReceived = async (billId: string) => {
     try {
-      await supabase.from('Sale').update({ deliveryStatus: 'RECEIVED', status: 'RECEIVED' }).eq('id', billId);
+      await supabase.from('Sale').update({ status: 'RECEIVED' }).eq('id', billId).throwOnError();
       setDispatches(prev => prev.map(b => b.id === billId ? { ...b, deliveryStatus: 'RECEIVED', status: 'RECEIVED' } : b));
       if (selectedBillForModal && selectedBillForModal.id === billId) {
         setSelectedBillForModal((prev: any) => ({ ...prev, deliveryStatus: 'RECEIVED', status: 'RECEIVED' }));
