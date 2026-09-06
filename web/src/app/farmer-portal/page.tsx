@@ -44,6 +44,7 @@ export default function FarmerPortalPage() {
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'LEDGER'>('LEDGER');
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState(false);
   const [selectedPurchaseForReceipt, setSelectedPurchaseForReceipt] = useState<any | null>(null);
 
   const [dateFilter, setDateFilter] = useState<'ALL_TIME' | 'THIS_MONTH' | 'LAST_MONTH' | 'CUSTOM'>('ALL_TIME');
@@ -478,12 +479,22 @@ export default function FarmerPortalPage() {
               )}
             </div>
 
-            <button
-              onClick={() => setSplitKPI(!splitKPI)}
-              className="text-[11px] px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 font-bold transition-colors cursor-pointer"
-            >
-              {splitKPI ? 'Combine Deductions' : 'Split Deductions'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsBreakdownModalOpen(true)}
+                className="text-[11px] px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-600 rounded-lg font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                title="View itemized breakdown of total purchase, payments & advances"
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>तपशील पहा (View Totals Breakdown)</span>
+              </button>
+              <button
+                onClick={() => setSplitKPI(!splitKPI)}
+                className="text-[11px] px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 font-bold transition-colors cursor-pointer"
+              >
+                {splitKPI ? 'Combine Deductions' : 'Split Deductions'}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -1010,6 +1021,154 @@ export default function FarmerPortalPage() {
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>प्रिंट पावती / Print Receipt</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TOTALS & ADVANCES TIMELINE BREAKDOWN MODAL */}
+      {isBreakdownModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full max-h-[85vh] shadow-2xl overflow-hidden flex flex-col justify-between animate-in zoom-in-95">
+            {/* Header */}
+            <div className="bg-emerald-950 text-white p-5 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-black flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-emerald-400" />
+                  <span>एकूण खरेदी व उचल सारांश (Totals & Advances Breakdown)</span>
+                </h3>
+                <p className="text-xs text-emerald-300 mt-0.5">
+                  फिल्टर कालावधी: {dateFilter === 'ALL_TIME' ? 'सर्व नोंदी (All Time)' : dateFilter === 'THIS_MONTH' ? 'या महिन्यात (This Month)' : dateFilter === 'LAST_MONTH' ? 'मागील महिन्यात (Last Month)' : `${customRange.start || 'Start'} to ${customRange.end || 'End'}`}
+                </p>
+              </div>
+              <button
+                onClick={() => setIsBreakdownModalOpen(false)}
+                className="p-1.5 rounded-xl bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-6 overflow-y-auto space-y-5 text-xs">
+              {/* Financial KPI Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">एकूण पीक खरेदी (Purchases)</span>
+                  <span className="text-base font-black text-slate-900 mt-1 block">₹{totals.purchase.toLocaleString('en-IN')}</span>
+                  <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">{purchasesList.length} पावत्या (Bills)</span>
+                </div>
+
+                <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-3">
+                  <span className="text-[10px] font-bold text-indigo-500 uppercase block">एकूण उचल (Advances)</span>
+                  <span className="text-base font-black text-indigo-700 mt-1 block">
+                    ₹{paymentsList
+                      .filter((p: any) => p.paymentType === 'ADVANCE' || p.paymentType === 'ADVANCE_PAYOUT' || String(p.notes || '').toLowerCase().includes('advance') || p.isAdvance)
+                      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+                      .toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-[10px] text-indigo-500 font-semibold mt-0.5 block">अ‍ॅडव्हान्स जमा</span>
+                </div>
+
+                <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-3">
+                  <span className="text-[10px] font-bold text-emerald-600 uppercase block">एकूण भरणा (Direct Paid)</span>
+                  <span className="text-base font-black text-emerald-700 mt-1 block">₹{totals.paid.toLocaleString('en-IN')}</span>
+                  <span className="text-[10px] text-emerald-600 font-semibold mt-0.5 block">{paymentsList.length} व्यवहार</span>
+                </div>
+
+                <div className="bg-rose-50/60 border border-rose-100 rounded-2xl p-3">
+                  <span className="text-[10px] font-bold text-rose-500 uppercase block">शिल्लक येणे / बाकी (Net Due)</span>
+                  <span className="text-base font-black text-rose-700 mt-1 block">₹{totals.outstanding.toLocaleString('en-IN')}</span>
+                  <span className="text-[10px] text-rose-500 font-semibold mt-0.5 block">निव्वळ हिशोब</span>
+                </div>
+              </div>
+
+              {/* Advance Vouchers in this timeline */}
+              <div className="space-y-2">
+                <h4 className="font-extrabold text-slate-900 text-xs flex items-center justify-between">
+                  <span>कालावधीतील उचल नोंदी (Advance Payouts in Period)</span>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    {paymentsList.filter((p: any) => p.paymentType === 'ADVANCE' || p.paymentType === 'ADVANCE_PAYOUT' || String(p.notes || '').toLowerCase().includes('advance') || p.isAdvance).length} Entries
+                  </span>
+                </h4>
+                <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100">
+                  {paymentsList
+                    .filter((p: any) => p.paymentType === 'ADVANCE' || p.paymentType === 'ADVANCE_PAYOUT' || String(p.notes || '').toLowerCase().includes('advance') || p.isAdvance)
+                    .length === 0 ? (
+                    <div className="p-4 text-center text-slate-400 font-semibold">या कालावधीत कोणतीही उचल / अ‍ॅडव्हान्स नोंद नाही.</div>
+                  ) : (
+                    paymentsList
+                      .filter((p: any) => p.paymentType === 'ADVANCE' || p.paymentType === 'ADVANCE_PAYOUT' || String(p.notes || '').toLowerCase().includes('advance') || p.isAdvance)
+                      .map((p: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-white flex items-center justify-between hover:bg-slate-50 transition-colors">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-indigo-700">{p.paymentNo || p.id}</span>
+                              <span className="text-[10px] text-slate-400">{p.date || p.paymentDate}</span>
+                            </div>
+                            <p className="text-[11px] text-slate-600 font-semibold mt-0.5">
+                              {p.paymentMode || p.method || 'CASH'} {p.notes ? `• ${p.notes}` : ''}
+                            </p>
+                          </div>
+                          <span className="font-black text-indigo-700 text-sm">
+                            ₹{Number(p.amount || 0).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+
+              {/* Purchases in this timeline */}
+              <div className="space-y-2">
+                <h4 className="font-extrabold text-slate-900 text-xs flex items-center justify-between">
+                  <span>कालावधीतील आवक खरेदी पावत्या (Harvest Purchases in Period)</span>
+                  <span className="text-[10px] text-slate-400 font-normal">{purchasesList.length} Entries</span>
+                </h4>
+                <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                  {purchasesList.length === 0 ? (
+                    <div className="p-4 text-center text-slate-400 font-semibold">या कालावधीत कोणतीही खरेदी नोंद नाही.</div>
+                  ) : (
+                    purchasesList.map((p: any, idx: number) => (
+                      <div key={idx} className="p-3 bg-white flex items-center justify-between hover:bg-slate-50 transition-colors">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-emerald-800">{p.purchaseNo || p.billNo || p.id}</span>
+                            <span className="text-[10px] text-slate-400">{p.date || p.purchaseDate}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 font-semibold mt-0.5">
+                            {p.crop || 'Crop'} • {p.weight || `${p.totalWeight || 0} KG`} @ {p.rate || 'Rate'}
+                          </p>
+                        </div>
+                        <span className="font-black text-slate-900 text-sm">
+                          ₹{Number(p.totalAmount || p.amount || 0).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="bg-slate-50 border-t border-slate-200 p-4 flex justify-end gap-2">
+              <button
+                onClick={() => setIsBreakdownModalOpen(false)}
+                className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs transition-colors cursor-pointer"
+              >
+                बंद करा / Close
+              </button>
+              <button
+                onClick={() => {
+                  setIsBreakdownModalOpen(false);
+                  setIsPrintModalOpen(true);
+                }}
+                className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>स्टेटमेंट प्रिंट करा / Print</span>
               </button>
             </div>
           </div>

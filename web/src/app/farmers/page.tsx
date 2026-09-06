@@ -128,16 +128,18 @@ export default function FarmersPage() {
     const end = endObj.getTime();
 
     const filteredPurchases = purchases.filter(p => {
-      const t = new Date(p.createdAt).getTime();
+      const dateVal = p.date || p.purchaseDate || p.createdAt;
+      const t = dateVal ? new Date(dateVal).getTime() : 0;
       return t >= start && t <= end;
     });
 
     const filteredPayments = payments.filter(p => {
-      const t = new Date(p.createdAt).getTime();
+      const dateVal = p.paymentDate || p.date || p.createdAt;
+      const t = dateVal ? new Date(dateVal).getTime() : 0;
       return t >= start && t <= end && p.paymentType !== 'ADVANCE_PAYOUT';
     });
 
-    displayPurchased = filteredPurchases.reduce((acc, p) => acc + Number(p.netAmount || 0), 0);
+    displayPurchased = filteredPurchases.reduce((acc, p) => acc + Number(p.totalAmount ?? p.amount ?? p.netAmount ?? 0), 0);
     displayPaid = filteredPayments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
     
     const paidFarmerIds = new Set(filteredPayments.map(p => p.farmerId));

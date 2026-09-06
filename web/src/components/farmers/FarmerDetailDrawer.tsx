@@ -37,7 +37,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
   onClose,
 }) => {
   const { language } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'LEDGER'>('PROFILE');
+  const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'ADVANCES' | 'LEDGER'>('PROFILE');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
@@ -309,7 +309,18 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                 : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
           >
-            {language === 'mr' ? 'पेमेंट व अ‍ॅडव्हान्स' : 'Payments & Advances'}
+            {language === 'mr' ? 'पेमेंट भरणा' : 'Payments'}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ADVANCES')}
+            className={`py-3 text-xs font-extrabold border-b-2 transition-all cursor-pointer ${
+              activeTab === 'ADVANCES'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            {language === 'mr' ? 'अ‍ॅडव्हान्स जमा' : 'Advances'}
           </button>
 
           <button
@@ -432,6 +443,75 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {activeTab === 'ADVANCES' && (
+            <div className="space-y-4 text-xs">
+              {(() => {
+                const advancePayments = payments.filter((p: any) => 
+                  p.paymentType === 'ADVANCE' || 
+                  p.paymentType === 'ADVANCE_PAYOUT' || 
+                  String(p.notes || '').toLowerCase().includes('advance') || 
+                  String(p.method || '').toLowerCase().includes('advance') ||
+                  p.isAdvance
+                );
+                const totalAdvanceGiven = advancePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                const currentAdvanceBal = farmer.advanceBalance || Math.max(0, totals.paid - totals.purchase);
+
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3">
+                        <span className="text-[10px] font-semibold text-indigo-500 uppercase block">Total Advance Issued (एकूण उचल)</span>
+                        <span className="text-base font-black text-indigo-700 mt-0.5 block">₹{totalAdvanceGiven.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-3">
+                        <span className="text-[10px] font-semibold text-blue-500 uppercase block">Remaining Advance (शिल्लक अ‍ॅडव्हान्स)</span>
+                        <span className="text-base font-black text-blue-700 mt-0.5 block">₹{currentAdvanceBal.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
+                        {language === 'mr' ? 'अ‍ॅडव्हान्स पेमेंट नोंदी' : 'Advance Payment History'} ({advancePayments.length})
+                      </h3>
+                    </div>
+
+                    <div className="space-y-2">
+                      {advancePayments.length === 0 ? (
+                        <div className="py-8 text-center text-slate-400 font-bold bg-slate-50 rounded-2xl border border-slate-100">
+                          No advance payouts recorded for this farmer.
+                        </div>
+                      ) : (
+                        advancePayments.map((pay: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="bg-white border border-slate-200/80 rounded-xl p-3 flex items-center justify-between shadow-2xs hover:border-indigo-200 transition-colors"
+                          >
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-indigo-600">{pay.paymentNo || pay.id}</span>
+                                <span className="px-2 py-0.5 rounded text-[9px] font-black bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                  ADVANCE (उचल)
+                                </span>
+                              </div>
+                              <p className="font-bold text-slate-800 flex items-center gap-2">
+                                <span>{pay.paymentMode || pay.method || 'CASH'}</span>
+                                {pay.notes && <span className="text-slate-400 font-normal">• {pay.notes}</span>}
+                              </p>
+                              <p className="text-[10px] text-slate-400">{pay.date || pay.paymentDate}</p>
+                            </div>
+                            <span className="text-sm font-black text-indigo-600">
+                              ₹{Number(String(pay.amount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
 

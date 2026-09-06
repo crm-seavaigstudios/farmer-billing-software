@@ -91,17 +91,73 @@ export const apiGetFarmers = async () => {
   const tenantId = getTenantId();
   if (!tenantId) return [];
   try {
-    // In the new architecture, we query TenantFarmerLink joined with SeavaigFarmer
-    // But since the actual DB is still just "Farmer" for now until migrations are fully run, 
-    // we just use the 'tenantId' filter on the existing Farmer table as a bridge.
-    const { data, error } = await supabase.from('Farmer').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
-    if (!error && data && data.length > 0) {
+    const [farmersRes, purchasesRes, paymentsRes, materialsRes] = await Promise.all([
+      supabase.from('Farmer').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false }),
+      supabase.from('Purchase').select('*').eq('tenantId', tenantId),
+      supabase.from('Payment').select('*').eq('tenantId', tenantId),
+      supabase.from('FarmerMaterialPurchase').select('*'),
+    ]);
+
+    const data = farmersRes.data || [];
+    const allPurchases = purchasesRes.data || [];
+    const allPayments = paymentsRes.data || [];
+    const allMaterials = materialsRes.data || [];
+
+    if (data.length > 0) {
       const mapped = data.map((f: any) => {
-        const totalPurchase = f.totalPurchase || 0;
-        const totalPaid = f.totalPaid || 0;
-        const due = f.outstandingAmount !== undefined && f.outstandingAmount !== null 
-          ? f.outstandingAmount 
-          : totalPurchase - totalPaid;
+        const fId = String(f.id || '').trim();
+        const fPhone = String(f.phone || '').trim();
+        const fCode = String(f.farmerIdCode || f.code || '').trim();
+        const fName = String(f.name || '').trim().toLowerCase();
+
+        const isMatch = (x: any) => {
+          if (!x) return false;
+          const xFarmerId = String(x.farmerId || '').trim();
+          const xPhone = String(x.phone || '').trim();
+          const xName = String(x.farmerName || '').trim().toLowerCase();
+
+          return (
+            (fId && xFarmerId === fId) ||
+            (fPhone && (xFarmerId === fPhone || xPhone === fPhone)) ||
+            (fCode && xFarmerId === fCode) ||
+            (fName && xName && fName === xName)
+          );
+        };
+
+        const farmerPurchases = allPurchases.filter(isMatch);
+        const farmerPayments = allPayments.filter(isMatch);
+        const farmerMaterials = allMaterials.filter(isMatch);
+
+        const computedPurchases = farmerPurchases.reduce((sum: number, p: any) => {
+          const amt = typeof p.totalAmount === 'number' ? p.totalAmount : (typeof p.amount === 'number' ? p.amount : parseFloat(String(p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0);
+          return sum + amt;
+        }, 0);
+
+        const computedPaid = farmerPayments.reduce((sum: number, pay: any) => {
+          const amt = typeof pay.amount === 'number' ? pay.amount : parseFloat(String(pay.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          return sum + amt;
+        }, 0);
+
+        const computedMaterials = farmerMaterials.reduce((sum: number, m: any) => {
+          const amt = typeof m.totalAmount === 'number' ? m.totalAmount : parseFloat(String(m.totalAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          return sum + amt;
+        }, 0);
+
+        const totalPurchase = Math.max(Number(f.totalPurchase || 0), computedPurchases);
+        const totalPaid = Math.max(Number(f.totalPaid || 0), computedPaid);
+        const advanceBal = Math.max(Number(f.advanceBalance || 0), Math.max(0, totalPaid - totalPurchase));
+        const due = (totalPurchase + computedMaterials) - totalPaid;
+
+        // Auto-heal Supabase record asynchronously if out of sync
+        if (computedPurchases > Number(f.totalPurchase || 0) || computedPaid > Number(f.totalPaid || 0)) {
+          supabase.from('Farmer').update({
+            totalPurchase,
+            totalPaid,
+            outstandingAmount: due,
+            advanceBalance: advanceBal,
+          }).eq('id', f.id).then(() => {}).catch(() => {});
+        }
+
         return {
           id: f.id,
           farmerIdCode: f.farmerIdCode || `FAR-${f.id.toString().slice(0, 5)}`,
@@ -112,7 +168,7 @@ export const apiGetFarmers = async () => {
           grade: f.grade || 'A_GRADE',
           totalPurchase,
           totalPaid,
-          advanceBalance: f.advanceBalance || 0,
+          advanceBalance: advanceBal,
           outstandingAmount: due,
           bankName: f.bankName || '',
           accountNumber: f.accountNumber || '',
@@ -122,7 +178,9 @@ export const apiGetFarmers = async () => {
       setLocalCache(`seavaig_farmers_cache_${tenantId}`, mapped);
       return mapped;
     }
-  } catch {}
+  } catch (err) {
+    console.error('Error in apiGetFarmers dynamic aggregation:', err);
+  }
   return getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
 };
 
@@ -493,30 +551,40 @@ export const apiUpdateFarmerBalance = async (
   advanceApplied: number = 0
 ) => {
   try {
+    const fId = String(farmerId || '').trim();
     const { data: farmerRecords } = await supabase
       .from('Farmer')
       .select('*')
-      .or(`id.eq.${farmerId},phone.eq.${farmerId}`)
+      .or(`id.eq.${fId},phone.eq.${fId},farmerIdCode.eq.${fId}`)
       .limit(1);
 
-    const data = farmerRecords?.[0];
+    let data = farmerRecords?.[0];
+    if (!data) {
+      // Fallback search by name
+      const { data: byName } = await supabase
+        .from('Farmer')
+        .select('*')
+        .ilike('name', fId)
+        .limit(1);
+      data = byName?.[0];
+    }
+
     if (data) {
       let newTotalPaid = Number(data.totalPaid || 0);
-      let newOutstanding = Number(data.outstandingAmount || 0);
-      let newAdvance = Number(data.advanceBalance || 0);
       let newTotalPurchase = Number(data.totalPurchase || 0);
+      let newAdvance = Number(data.advanceBalance || 0);
       
       if (type === 'PURCHASE') {
-        newTotalPaid += paidAmt;
-        newOutstanding += dueAmt;
-        newAdvance = Math.max(0, newAdvance - advanceApplied);
         newTotalPurchase += dueAmt;
+        newTotalPaid += paidAmt;
+        newAdvance = Math.max(0, newAdvance - advanceApplied);
       } else if (type === 'PAYMENT') {
         newTotalPaid += paidAmt;
-        newOutstanding += dueAmt;
       } else if (type === 'MATERIAL') {
-        newOutstanding -= dueAmt;
+        newTotalPurchase += dueAmt;
       }
+
+      const newOutstanding = newTotalPurchase - newTotalPaid;
       
       await supabase.from('Farmer').update({
         totalPaid: newTotalPaid,
@@ -534,23 +602,23 @@ export const apiUpdateFarmerBalance = async (
 
   const farmers = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
   const updatedFarmers = farmers.map((f: any) => {
-    if (f.id === farmerId || f.phone === farmerId || f.farmerIdCode === farmerId) {
+    const match = f.id === farmerId || f.phone === farmerId || f.farmerIdCode === farmerId || (f.name && f.name.toLowerCase() === String(farmerId).toLowerCase());
+    if (match) {
       let newTotalPaid = Number(f.totalPaid || 0);
-      let newOutstanding = Number(f.outstandingAmount || 0);
-      let newAdvance = Number(f.advanceBalance || 0);
       let newTotalPurchase = Number(f.totalPurchase || 0);
+      let newAdvance = Number(f.advanceBalance || 0);
       
       if (type === 'PURCHASE') {
-        newTotalPaid += paidAmt;
-        newOutstanding += dueAmt;
-        newAdvance = Math.max(0, newAdvance - advanceApplied);
         newTotalPurchase += dueAmt;
+        newTotalPaid += paidAmt;
+        newAdvance = Math.max(0, newAdvance - advanceApplied);
       } else if (type === 'PAYMENT') {
         newTotalPaid += paidAmt;
-        newOutstanding += dueAmt;
       } else if (type === 'MATERIAL') {
-        newOutstanding -= dueAmt;
+        newTotalPurchase += dueAmt;
       }
+
+      const newOutstanding = newTotalPurchase - newTotalPaid;
       
       return {
         ...f,
@@ -574,7 +642,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
   const tenantShort = getTenantShort(tenantId);
 
   const item = purchaseData.items?.[0];
-  const purAmt = Number((item?.weightKg || 0) * (item?.ratePerKg || 0));
+  const purAmt = Number(purchaseData.totalAmount ?? purchaseData.amount ?? ((item?.weightKg || 0) * (item?.ratePerKg || 0)));
   const today = new Date();
   const mmyy = String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
   
