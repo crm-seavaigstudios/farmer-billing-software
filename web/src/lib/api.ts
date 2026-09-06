@@ -328,9 +328,24 @@ export const apiCreateFarmerMaterialPurchase = async (matData: any) => {
   const tenantId = getTenantId();
   const cacheKey = tenantId ? `seavaig_material_supplies_cache_${tenantId}` : 'seavaig_material_supplies_cache';
   const newId = `mat-${Date.now()}`;
+  
+  let validFarmerId = matData.farmerId;
+  if (matData.farmerId) {
+    try {
+      const { data: fRec } = await supabase
+        .from('Farmer')
+        .select('id')
+        .or(`id.eq.${matData.farmerId},farmerIdCode.eq.${matData.farmerId},phone.eq.${matData.farmerId}`)
+        .eq('tenantId', tenantId)
+        .limit(1)
+        .maybeSingle();
+      if (fRec?.id) validFarmerId = fRec.id;
+    } catch {}
+  }
+
   const matObj = {
     id: newId,
-    farmerId: matData.farmerId,
+    farmerId: validFarmerId,
     itemName: matData.itemName,
     quantity: Number(matData.quantity || 1),
     unit: matData.unit || 'QTY',
@@ -678,12 +693,26 @@ export const apiCreatePurchase = async (purchaseData: any) => {
   let billNo = `PB-${mmyy}-${tenantShort}-${String(serial).padStart(3, '0')}`;
   let globalId = purchaseData.id || `pur-${tenantShort}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
   
+  let validFarmerId = purchaseData.farmerId;
+  if (purchaseData.farmerId) {
+    try {
+      const { data: fRec } = await supabase
+        .from('Farmer')
+        .select('id')
+        .or(`id.eq.${purchaseData.farmerId},farmerIdCode.eq.${purchaseData.farmerId},phone.eq.${purchaseData.farmerId}`)
+        .eq('tenantId', tenantId)
+        .limit(1)
+        .maybeSingle();
+      if (fRec?.id) validFarmerId = fRec.id;
+    } catch {}
+  }
+
   const purchaseObj = {
     id: billNo,
     dbId: globalId,
     tenantId,
     purchaseNo: billNo,
-    farmerId: purchaseData.farmerId,
+    farmerId: validFarmerId,
     farmerName: purchaseData.farmerName || 'Farmer',
     crop: item?.cropName || '',
     grade: item?.grade || 'A_GRADE',
@@ -1786,14 +1815,50 @@ export const apiCreatePayment = async (payData: any) => {
     ? payData.amount
     : Number(String(payData.amount || '0').replace(/[^0-9.-]+/g, '')) || 0;
 
+  // 1. Resolve Farmer ID in Supabase
+  let dbFarmerId = payData.farmerId;
+  if (payData.farmerId) {
+    try {
+      const { data: fRec } = await supabase
+        .from('Farmer')
+        .select('id')
+        .or(`id.eq.${payData.farmerId},farmerIdCode.eq.${payData.farmerId},phone.eq.${payData.farmerId}`)
+        .eq('tenantId', tenantId)
+        .limit(1)
+        .maybeSingle();
+      if (fRec?.id) {
+        dbFarmerId = fRec.id;
+      }
+    } catch {}
+  }
+
+  // 2. Resolve Purchase ID in Supabase
+  let dbPurchaseId: string | null = null;
+  if (payData.purchaseId) {
+    try {
+      const { data: pRec } = await supabase
+        .from('Purchase')
+        .select('id')
+        .or(`id.eq.${payData.purchaseId},purchaseNo.eq.${payData.purchaseId}`)
+        .eq('tenantId', tenantId)
+        .limit(1)
+        .maybeSingle();
+      if (pRec?.id) {
+        dbPurchaseId = pRec.id;
+      }
+    } catch {}
+  }
+
   let attempts = 0;
   let success = false;
+  let currentPurchaseId: string | null = dbPurchaseId;
+
   while (attempts < 5 && !success) {
     attempts++;
     const validPaymentDb: any = {
       id: globalId,
       paymentNo,
-      farmerId: payData.farmerId,
+      farmerId: dbFarmerId,
       amount: cleanAmount,
       paymentMode: payData.paymentMode || payData.method || 'CASH',
       paymentDate: payData.paymentDate || payData.date || new Date().toISOString().slice(0, 10),
@@ -1801,18 +1866,26 @@ export const apiCreatePayment = async (payData: any) => {
       tenantId,
       paymentType: payData.paymentType || 'FARMER_PAYOUT',
     };
-    if (payData.purchaseId) {
-      validPaymentDb.purchaseId = payData.purchaseId;
+    if (currentPurchaseId) {
+      validPaymentDb.purchaseId = currentPurchaseId;
     }
     
     try {
       await supabase.from('Payment').insert([validPaymentDb]).throwOnError();
       success = true;
     } catch (e: any) {
+      const errStr = String(e?.message || e?.details || e || '');
+      // If purchaseId foreign key violates, strip it immediately and retry
+      if (errStr.includes('purchaseId') || errStr.includes('Payment_purchaseId_fkey')) {
+        currentPurchaseId = null;
+        delete validPaymentDb.purchaseId;
+      }
+
       if (attempts >= 5) {
         console.error('Final attempt failed in apiCreatePayment:', e);
-        // fallback to upsert on id
+        // fallback to upsert on id without failing foreign keys
         try {
+          delete validPaymentDb.purchaseId;
           await supabase.from('Payment').upsert([validPaymentDb], { onConflict: 'id' });
           success = true;
         } catch (upsertErr) {
