@@ -545,92 +545,113 @@ export const getTenantShort = (tenantId?: string | null): string => {
 
 export const apiUpdateFarmerBalance = async (
   farmerId: string, 
-  paidAmt: number, 
-  dueAmt: number, 
-  type: 'PURCHASE' | 'PAYMENT' | 'MATERIAL' = 'PURCHASE',
+  paidAmt?: number, 
+  dueAmt?: number, 
+  type?: 'PURCHASE' | 'PAYMENT' | 'MATERIAL',
   advanceApplied: number = 0
 ) => {
+  const tenantId = getTenantId();
+  if (!farmerId || !tenantId) return;
+
   try {
     const fId = String(farmerId || '').trim();
+    
+    // 1. Fetch Farmer record
     const { data: farmerRecords } = await supabase
       .from('Farmer')
       .select('*')
       .or(`id.eq.${fId},phone.eq.${fId},farmerIdCode.eq.${fId}`)
       .limit(1);
 
-    let data = farmerRecords?.[0];
-    if (!data) {
-      // Fallback search by name
+    let farmer = farmerRecords?.[0];
+    if (!farmer) {
       const { data: byName } = await supabase
         .from('Farmer')
         .select('*')
         .ilike('name', fId)
         .limit(1);
-      data = byName?.[0];
+      farmer = byName?.[0];
     }
 
-    if (data) {
-      let newTotalPaid = Number(data.totalPaid || 0);
-      let newTotalPurchase = Number(data.totalPurchase || 0);
-      let newAdvance = Number(data.advanceBalance || 0);
-      
-      if (type === 'PURCHASE') {
-        newTotalPurchase += dueAmt;
-        newTotalPaid += paidAmt;
-        newAdvance = Math.max(0, newAdvance - advanceApplied);
-      } else if (type === 'PAYMENT') {
-        newTotalPaid += paidAmt;
-      } else if (type === 'MATERIAL') {
-        newTotalPurchase += dueAmt;
-      }
+    if (farmer) {
+      const actualId = farmer.id;
+      const actualPhone = farmer.phone;
+      const actualCode = farmer.farmerIdCode;
+      const actualName = (farmer.name || '').trim().toLowerCase();
 
-      const newOutstanding = newTotalPurchase - newTotalPaid;
-      
+      // 2. Query all purchases, payments, materials for this farmer
+      const [purRes, payRes, matRes] = await Promise.all([
+        supabase.from('Purchase').select('*').eq('tenantId', tenantId),
+        supabase.from('Payment').select('*').eq('tenantId', tenantId),
+        supabase.from('FarmerMaterialPurchase').select('*'),
+      ]);
+
+      const isMatch = (x: any) => {
+        if (!x) return false;
+        const xFarmerId = String(x.farmerId || '').trim();
+        const xPhone = String(x.phone || '').trim();
+        const xName = String(x.farmerName || '').trim().toLowerCase();
+
+        return (
+          (actualId && xFarmerId === actualId) ||
+          (actualPhone && (xFarmerId === actualPhone || xPhone === actualPhone)) ||
+          (actualCode && xFarmerId === actualCode) ||
+          (actualName && xName && actualName === xName)
+        );
+      };
+
+      const farmerPurchases = (purRes.data || []).filter(isMatch);
+      const farmerPayments = (payRes.data || []).filter(isMatch);
+      const farmerMaterials = (matRes.data || []).filter(isMatch);
+
+      const computedPurchases = farmerPurchases.reduce((sum: number, p: any) => {
+        const amt = typeof p.totalAmount === 'number' ? p.totalAmount : (typeof p.amount === 'number' ? p.amount : parseFloat(String(p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0);
+        return sum + amt;
+      }, 0);
+
+      const computedPaid = farmerPayments.reduce((sum: number, pay: any) => {
+        const amt = typeof pay.amount === 'number' ? pay.amount : parseFloat(String(pay.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+        return sum + amt;
+      }, 0);
+
+      const computedMaterials = farmerMaterials.reduce((sum: number, m: any) => {
+        const amt = typeof m.totalAmount === 'number' ? m.totalAmount : parseFloat(String(m.totalAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+        return sum + amt;
+      }, 0);
+
+      const totalPurchase = Math.max(Number(farmer.totalPurchase || 0), computedPurchases);
+      const totalPaid = Math.max(Number(farmer.totalPaid || 0), computedPaid);
+      const advanceBal = Math.max(Number(farmer.advanceBalance || 0), Math.max(0, totalPaid - totalPurchase));
+      const due = (totalPurchase + computedMaterials) - totalPaid;
+
+      // Update Supabase
       await supabase.from('Farmer').update({
-        totalPaid: newTotalPaid,
-        outstandingAmount: newOutstanding,
-        advanceBalance: newAdvance,
-        totalPurchase: newTotalPurchase,
-      }).eq('id', data.id).throwOnError();
+        totalPurchase,
+        totalPaid,
+        outstandingAmount: due,
+        advanceBalance: advanceBal,
+      }).eq('id', actualId).throwOnError();
+
+      // Update Local Cache
+      const cached = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
+      const updatedCache = cached.map((f: any) => {
+        if (f.id === actualId || f.phone === actualPhone || f.farmerIdCode === actualCode || (f.name && f.name.toLowerCase() === actualName)) {
+          return {
+            ...f,
+            totalPurchase,
+            totalPaid,
+            outstandingAmount: due,
+            advanceBalance: advanceBal,
+          };
+        }
+        return f;
+      });
+      setLocalCache(`seavaig_farmers_cache_${tenantId}`, updatedCache);
     }
   } catch (err) {
-    console.error('Error in apiUpdateFarmerBalance Supabase update:', err);
+    console.error('Error in apiUpdateFarmerBalance:', err);
   }
 
-  const tenantId = getTenantId();
-  if (!tenantId) return;
-
-  const farmers = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
-  const updatedFarmers = farmers.map((f: any) => {
-    const match = f.id === farmerId || f.phone === farmerId || f.farmerIdCode === farmerId || (f.name && f.name.toLowerCase() === String(farmerId).toLowerCase());
-    if (match) {
-      let newTotalPaid = Number(f.totalPaid || 0);
-      let newTotalPurchase = Number(f.totalPurchase || 0);
-      let newAdvance = Number(f.advanceBalance || 0);
-      
-      if (type === 'PURCHASE') {
-        newTotalPurchase += dueAmt;
-        newTotalPaid += paidAmt;
-        newAdvance = Math.max(0, newAdvance - advanceApplied);
-      } else if (type === 'PAYMENT') {
-        newTotalPaid += paidAmt;
-      } else if (type === 'MATERIAL') {
-        newTotalPurchase += dueAmt;
-      }
-
-      const newOutstanding = newTotalPurchase - newTotalPaid;
-      
-      return {
-        ...f,
-        totalPaid: newTotalPaid,
-        outstandingAmount: newOutstanding,
-        advanceBalance: newAdvance,
-        totalPurchase: newTotalPurchase,
-      };
-    }
-    return f;
-  });
-  setLocalCache(`seavaig_farmers_cache_${tenantId}`, updatedFarmers);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('farmers_changed'));
   }
