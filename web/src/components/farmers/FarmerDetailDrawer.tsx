@@ -57,13 +57,32 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
       const pay = await apiGetPayments();
       const mat = await apiGetFarmerMaterials(farmer.id);
       
-      const fp = Array.isArray(p) ? p.filter((x: any) => x.farmerName === farmer.name || x.farmerId === farmer.id) : [];
-      const fpay = Array.isArray(pay) ? pay.filter((x: any) => x.farmerName === farmer.name || x.farmerId === farmer.id) : [];
+      const isFarmerMatch = (x: any) => {
+        if (!x) return false;
+        const fId = String(farmer.id || '');
+        const fPhone = String(farmer.phone || '');
+        const fCode = String(farmer.farmerIdCode || farmer.code || '');
+        const fName = String(farmer.name || '').trim().toLowerCase();
+
+        const xFarmerId = String(x.farmerId || '');
+        const xPhone = String(x.phone || '');
+        const xName = String(x.farmerName || '').trim().toLowerCase();
+
+        return (
+          (fId && (xFarmerId === fId || x.farmerId === fId)) ||
+          (fPhone && (xFarmerId === fPhone || xPhone === fPhone)) ||
+          (fCode && (xFarmerId === fCode || x.farmerId === fCode)) ||
+          (fName && xName && fName === xName)
+        );
+      };
+
+      const fp = Array.isArray(p) ? p.filter(isFarmerMatch) : [];
+      const fpay = Array.isArray(pay) ? pay.filter(isFarmerMatch) : [];
       const fmat = Array.isArray(mat) ? mat : [];
       
-      setPurchases(fp.reverse());
-      setPayments(fpay.reverse());
-      setMaterials(fmat.reverse());
+      setPurchases(fp);
+      setPayments(fpay);
+      setMaterials(fmat);
       
       let allItems: any[] = [];
       let totalPurchase = 0;
@@ -71,12 +90,12 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
       let totalMaterial = 0;
 
       fp.forEach((x: any) => {
-        const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
+        const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount || x.totalAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
         totalPurchase += amt;
         allItems.push({
            dateStr: x.date,
-           timestamp: new Date(x.date).getTime() || 0,
-           refNo: x.id,
+           timestamp: new Date(x.date || x.purchaseDate || 0).getTime() || 0,
+           refNo: x.purchaseNo || x.id,
            type: 'PURCHASE',
            description: x.crop || 'Crop Purchase',
            weightOrQty: `${x.weight} @ ${x.rate}`,
@@ -88,14 +107,14 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
       });
       
       fpay.forEach((x: any) => {
-        const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
+        const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
         totalPaid += amt;
         allItems.push({
            dateStr: x.date,
-           timestamp: new Date(x.date).getTime() || 0,
-           refNo: x.id,
+           timestamp: new Date(x.date || x.paymentDate || 0).getTime() || 0,
+           refNo: x.paymentNo || x.id,
            type: 'PAYMENT',
-           description: `Payment (${x.method})`,
+           description: `Payment (${x.method || x.paymentMode || 'Cash'})`,
            weightOrQty: '-',
            debitVal: amt,
            creditVal: 0,
@@ -105,7 +124,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
       });
 
       fmat.forEach((x: any) => {
-        const amt = typeof x.totalAmount === 'number' ? x.totalAmount : parseFloat(String(x.totalAmount).replace(/[^0-9.-]+/g, '')) || 0;
+        const amt = typeof x.totalAmount === 'number' ? x.totalAmount : parseFloat(String(x.totalAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
         totalMaterial += amt;
         allItems.push({
            dateStr: x.createdAt ? new Date(x.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Unknown',
@@ -153,7 +172,21 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
       });
       setRealTransactions(computed.reverse()); // Newest first for view
     };
+
     fetchLedger();
+    const handleUpdate = () => fetchLedger();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('purchases_changed', handleUpdate);
+      window.addEventListener('payments_changed', handleUpdate);
+      window.addEventListener('farmer_materials_changed', handleUpdate);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('purchases_changed', handleUpdate);
+        window.removeEventListener('payments_changed', handleUpdate);
+        window.removeEventListener('farmer_materials_changed', handleUpdate);
+      }
+    };
   }, [farmer]);
 
   const statementData: StatementData = {

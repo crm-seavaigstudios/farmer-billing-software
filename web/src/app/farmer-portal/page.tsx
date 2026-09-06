@@ -364,8 +364,8 @@ export default function FarmerPortalPage() {
     transactions: ledger,
   };
 
-  const purchasesList = rawPurchases;
-  const paymentsList = rawPayments;
+  const purchasesList = rawPurchases.filter((p: any) => isDateInRange(parseCustomDate(p.date || p.purchaseDate || p.createdAt)));
+  const paymentsList = rawPayments.filter((pay: any) => isDateInRange(parseCustomDate(pay.date || pay.paymentDate || pay.createdAt)));
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-16">
