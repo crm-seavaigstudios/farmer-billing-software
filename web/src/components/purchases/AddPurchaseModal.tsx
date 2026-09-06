@@ -174,6 +174,11 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     const payload = {
       farmerId: selectedFarmer?.id || 'far-01',
       farmerName: selectedFarmer?.name || 'Farmer',
+      totalAmount: calculatedTotal,
+      amount: calculatedTotal,
+      totalWeight: quantityOrWeight,
+      weight: `${quantityOrWeight} ${unit}`,
+      rate: `₹${ratePerUnit}/${unit}`,
       paidAmount: totalDeductionsApplied,
       dueAmount: dueAmount,
       paymentStatus: dueAmount === 0 ? 'PAID' : (totalDeductionsApplied > 0 ? 'PARTIAL' : 'UNPAID'),
@@ -182,6 +187,7 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
         grade: 'A_GRADE',
         weightKg: quantityOrWeight,
         ratePerKg: ratePerUnit,
+        totalAmount: calculatedTotal,
         unit: unit,
         packagingCategory: activeCategory
       }],

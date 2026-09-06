@@ -136,8 +136,12 @@ export const apiGetFarmers = async () => {
         const farmerMaterials = (allMaterials || []).filter((m: any) => isFarmerMatch(m, f));
 
         const computedPurchases = farmerPurchases.reduce((sum: number, p: any) => {
-          const amt = typeof p.totalAmount === 'number' ? p.totalAmount : (typeof p.amount === 'number' ? p.amount : parseFloat(String(p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0);
-          return sum + amt;
+          const itemWeight = parseFloat(String(p.weight || p.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+          const itemRate = parseFloat(String(p.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+          const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
+          const rawAmt = p.totalAmount ?? p.amount ?? p.netAmount ?? calcVal ?? 0;
+          const parsed = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+          return sum + (parsed > 0 ? parsed : calcVal);
         }, 0);
 
         const computedPaid = farmerPayments.reduce((sum: number, pay: any) => {
@@ -492,6 +496,20 @@ export const apiGetPurchases = async () => {
         const pItems = itemsMap[p.id] || itemsMap[p.purchaseNo] || [];
         const firstItem = pItems[0];
         const farmer = farmers.find((f: any) => f.id === p.farmerId || f.phone === p.farmerId || f.farmerIdCode === p.farmerId);
+
+        const parsedWeight = parseFloat(String(firstItem?.weightKg || p.totalWeight || p.weight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+        const parsedRate = parseFloat(String(firstItem?.ratePerKg || p.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+        const calculatedFromWeightRate = (parsedWeight > 0 && parsedRate > 0) ? (parsedWeight * parsedRate) : 0;
+        const itemTotal = firstItem ? (Number(firstItem.totalAmount) || calculatedFromWeightRate) : 0;
+
+        const rawAmt = p.totalAmount ?? p.amount ?? p.netAmount ?? itemTotal ?? calculatedFromWeightRate ?? 0;
+        const numAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+        const finalAmount = numAmt > 0 ? numAmt : (calculatedFromWeightRate > 0 ? calculatedFromWeightRate : itemTotal);
+
+        const unitStr = firstItem?.unit || 'KG';
+        const weightStr = `${parsedWeight} ${unitStr}`;
+        const rateStr = `₹${parsedRate}/${unitStr}`;
+
         return {
           id: p.purchaseNo || p.id,
           dbId: p.id,
@@ -502,13 +520,13 @@ export const apiGetPurchases = async () => {
           village: farmer?.village || '',
           crop: firstItem?.cropName || p.crop || 'Strawberry',
           grade: firstItem?.grade || p.grade || 'A_GRADE',
-          weight: firstItem ? `${firstItem.weightKg} ${firstItem.unit || 'KG'}` : (p.totalWeight ? `${p.totalWeight} KG` : (p.weight || '0 KG')),
-          rate: firstItem ? `₹${firstItem.ratePerKg}/${firstItem.unit || 'KG'}` : (p.rate || '₹0/KG'),
-          amount: parseFloat(p.totalAmount || p.amount || 0) || 0,
-          totalAmount: parseFloat(p.totalAmount || p.amount || 0) || 0,
+          weight: weightStr,
+          rate: rateStr,
+          amount: finalAmount,
+          totalAmount: finalAmount,
           paidAmount: parseFloat(p.paidAmount || 0) || 0,
-          dueAmount: parseFloat(p.dueAmount || 0) || 0,
-          paymentStatus: p.paymentStatus || 'UNPAID',
+          dueAmount: parseFloat(p.dueAmount !== undefined ? p.dueAmount : finalAmount) || 0,
+          paymentStatus: p.paymentStatus || (finalAmount > 0 && parseFloat(p.paidAmount || 0) >= finalAmount ? 'PAID' : 'UNPAID'),
           date: p.date || (p.purchaseDate ? p.purchaseDate.split('T')[0] : new Date(p.createdAt || Date.now()).toLocaleDateString('en-IN')),
           purchaseDate: p.purchaseDate || p.createdAt || p.date || null,
           storageLocation: p.storageLocation || '',
@@ -668,7 +686,13 @@ export const apiCreatePurchase = async (purchaseData: any) => {
   const tenantShort = getTenantShort(tenantId);
 
   const item = purchaseData.items?.[0];
-  const purAmt = Number(purchaseData.totalAmount ?? purchaseData.amount ?? ((item?.weightKg || 0) * (item?.ratePerKg || 0)));
+  const itemWeight = parseFloat(String(item?.weightKg || purchaseData.totalWeight || purchaseData.weight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+  const itemRate = parseFloat(String(item?.ratePerKg || purchaseData.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+  const itemCalcTotal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
+  const rawPurAmt = purchaseData.totalAmount ?? purchaseData.amount ?? item?.totalAmount ?? itemCalcTotal ?? 0;
+  const numPurAmt = typeof rawPurAmt === 'number' ? rawPurAmt : (parseFloat(String(rawPurAmt).replace(/[^0-9.-]+/g, '')) || 0);
+  const purAmt = numPurAmt > 0 ? numPurAmt : (itemCalcTotal > 0 ? itemCalcTotal : 0);
+
   const today = new Date();
   const mmyy = String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
   
@@ -707,6 +731,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     } catch {}
   }
 
+  const unitStr = item?.unit || 'KG';
   const purchaseObj = {
     id: billNo,
     dbId: globalId,
@@ -714,15 +739,15 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     purchaseNo: billNo,
     farmerId: validFarmerId,
     farmerName: purchaseData.farmerName || 'Farmer',
-    crop: item?.cropName || '',
+    crop: item?.cropName || 'Strawberry (A Grade)',
     grade: item?.grade || 'A_GRADE',
-    weight: `${item?.weightKg || 0} ${item?.unit || 'KG'}`,
-    rate: `₹${item?.ratePerKg || 0}/${item?.unit || 'KG'}`,
+    weight: `${itemWeight} ${unitStr}`,
+    rate: `₹${itemRate}/${unitStr}`,
     amount: purAmt,
     totalAmount: purAmt,
     paidAmount: Number(purchaseData.paidAmount || 0),
-    dueAmount: Number(purchaseData.dueAmount ?? purAmt),
-    paymentStatus: purchaseData.paymentStatus || 'UNPAID',
+    dueAmount: Number(purchaseData.dueAmount !== undefined ? purchaseData.dueAmount : purAmt),
+    paymentStatus: purchaseData.paymentStatus || (purAmt > 0 && Number(purchaseData.paidAmount || 0) >= purAmt ? 'PAID' : 'UNPAID'),
     date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     storageLocation: purchaseData.storageLocation || '',
     items: purchaseData.items || []

@@ -100,19 +100,25 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
       let totalMaterial = 0;
 
       fp.forEach((x: any) => {
-        const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount || x.totalAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+        const itemWeight = parseFloat(String(x.weight || x.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+        const itemRate = parseFloat(String(x.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+        const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
+        const rawAmt = x.amount ?? x.totalAmount ?? x.netAmount ?? calcVal ?? 0;
+        const parsed = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+        const amt = parsed > 0 ? parsed : calcVal;
+
         totalPurchase += amt;
         allItems.push({
-           dateStr: x.date,
+           dateStr: x.date || x.purchaseDate,
            timestamp: new Date(x.date || x.purchaseDate || 0).getTime() || 0,
            refNo: x.purchaseNo || x.id,
            type: 'PURCHASE',
-           description: x.crop || 'Crop Purchase',
+           description: x.crop || 'Strawberry (A Grade)',
            weightOrQty: `${x.weight} @ ${x.rate}`,
            debitVal: 0,
            creditVal: amt,
            notes: x.notes,
-           raw: x
+           raw: { ...x, amount: amt, totalAmount: amt }
         });
       });
       
@@ -675,9 +681,9 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                                 {tx.type === 'PURCHASE' && (
                                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                                     <div><span className="text-slate-400 block mb-1">Crop / Grade</span><span className="font-bold">{tx.raw.crop} {tx.raw.grade ? `(${tx.raw.grade})` : ''}</span></div>
-                                    <div><span className="text-slate-400 block mb-1">Weight</span><span className="font-bold">{tx.raw.weight} kg</span></div>
-                                    <div><span className="text-slate-400 block mb-1">Rate / kg</span><span className="font-bold">₹{tx.raw.rate}</span></div>
-                                    <div><span className="text-slate-400 block mb-1">Deductions</span><span className="font-bold text-rose-500">{tx.raw.deductions || 'None'}</span></div>
+                                    <div><span className="text-slate-400 block mb-1">Weight</span><span className="font-bold">{tx.raw.weight}</span></div>
+                                    <div><span className="text-slate-400 block mb-1">Rate / kg</span><span className="font-bold">{tx.raw.rate}</span></div>
+                                    <div><span className="text-slate-400 block mb-1">Bill Amount</span><span className="font-bold text-emerald-600">₹{Number(tx.raw.totalAmount || tx.raw.amount || 0).toLocaleString('en-IN')}</span></div>
                                   </div>
                                 )}
                                 {tx.type === 'PAYMENT' && (
