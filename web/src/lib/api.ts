@@ -85,48 +85,55 @@ export const apiGetDashboardStats = async (filterStart?: number, filterEnd?: num
 };
 
 // ----------------------------------------------------
+// UNIVERSAL FARMER MATCHER HELPER
+// ----------------------------------------------------
+export const isFarmerMatch = (transaction: any, farmer: any): boolean => {
+  if (!transaction || !farmer) return false;
+  const fId = String(farmer.id || '').trim().toLowerCase();
+  const fPhone = String(farmer.phone || '').replace(/[^0-9]/g, '');
+  const fCode = String(farmer.farmerIdCode || farmer.code || '').trim().toLowerCase();
+  const fName = String(farmer.name || '').trim().toLowerCase();
+
+  const pFarmerId = String(transaction.farmerId || transaction.id || '').trim().toLowerCase();
+  const pPhone = String(transaction.phone || '').replace(/[^0-9]/g, '');
+  const pCode = String(transaction.farmerIdCode || transaction.code || '').trim().toLowerCase();
+  const pName = String(transaction.farmerName || transaction.name || '').trim().toLowerCase();
+
+  // 1. Direct ID match
+  if (fId && (pFarmerId === fId || String(transaction.id || '').toLowerCase() === fId || String(transaction.farmerId || '').toLowerCase() === fId)) return true;
+  // 2. Phone match (exact or clean digits)
+  if (fPhone && (pFarmerId === fPhone || (pPhone && pPhone === fPhone))) return true;
+  // 3. Farmer ID code match (e.g. FAR-01)
+  if (fCode && (pFarmerId === fCode || pCode === fCode)) return true;
+  // 4. Name match (case-insensitive and trimmed)
+  if (fName && (pName === fName || pFarmerId === fName)) return true;
+
+  return false;
+};
+
+// ----------------------------------------------------
 // FARMERS API (SUPABASE + RESILIENT FALLBACK)
 // ----------------------------------------------------
 export const apiGetFarmers = async () => {
   const tenantId = getTenantId();
   if (!tenantId) return [];
   try {
-    const [farmersRes, purchasesRes, paymentsRes, materialsRes] = await Promise.all([
+    const [farmersRes, allPurchases, allPayments, allMaterials] = await Promise.all([
       supabase.from('Farmer').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false }),
-      supabase.from('Purchase').select('*').eq('tenantId', tenantId),
-      supabase.from('Payment').select('*').eq('tenantId', tenantId),
-      supabase.from('FarmerMaterialPurchase').select('*'),
+      apiGetPurchases(),
+      apiGetPayments(),
+      apiGetAllFarmerMaterials(),
     ]);
 
-    const data = farmersRes.data || [];
-    const allPurchases = purchasesRes.data || [];
-    const allPayments = paymentsRes.data || [];
-    const allMaterials = materialsRes.data || [];
+    const data = (farmersRes.data && farmersRes.data.length > 0)
+      ? farmersRes.data
+      : getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
 
     if (data.length > 0) {
       const mapped = data.map((f: any) => {
-        const fId = String(f.id || '').trim();
-        const fPhone = String(f.phone || '').trim();
-        const fCode = String(f.farmerIdCode || f.code || '').trim();
-        const fName = String(f.name || '').trim().toLowerCase();
-
-        const isMatch = (x: any) => {
-          if (!x) return false;
-          const xFarmerId = String(x.farmerId || '').trim();
-          const xPhone = String(x.phone || '').trim();
-          const xName = String(x.farmerName || '').trim().toLowerCase();
-
-          return (
-            (fId && xFarmerId === fId) ||
-            (fPhone && (xFarmerId === fPhone || xPhone === fPhone)) ||
-            (fCode && xFarmerId === fCode) ||
-            (fName && xName && fName === xName)
-          );
-        };
-
-        const farmerPurchases = allPurchases.filter(isMatch);
-        const farmerPayments = allPayments.filter(isMatch);
-        const farmerMaterials = allMaterials.filter(isMatch);
+        const farmerPurchases = (allPurchases || []).filter((p: any) => isFarmerMatch(p, f));
+        const farmerPayments = (allPayments || []).filter((pay: any) => isFarmerMatch(pay, f));
+        const farmerMaterials = (allMaterials || []).filter((m: any) => isFarmerMatch(m, f));
 
         const computedPurchases = farmerPurchases.reduce((sum: number, p: any) => {
           const amt = typeof p.totalAmount === 'number' ? p.totalAmount : (typeof p.amount === 'number' ? p.amount : parseFloat(String(p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0);
@@ -139,7 +146,7 @@ export const apiGetFarmers = async () => {
         }, 0);
 
         const computedMaterials = farmerMaterials.reduce((sum: number, m: any) => {
-          const amt = typeof m.totalAmount === 'number' ? m.totalAmount : parseFloat(String(m.totalAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          const amt = typeof m.totalPrice === 'number' ? m.totalPrice : (typeof m.totalAmount === 'number' ? m.totalAmount : parseFloat(String(m.totalAmount || 0).replace(/[^0-9.-]+/g, '')) || 0);
           return sum + amt;
         }, 0);
 
@@ -575,34 +582,17 @@ export const apiUpdateFarmerBalance = async (
 
     if (farmer) {
       const actualId = farmer.id;
-      const actualPhone = farmer.phone;
-      const actualCode = farmer.farmerIdCode;
-      const actualName = (farmer.name || '').trim().toLowerCase();
 
       // 2. Query all purchases, payments, materials for this farmer
-      const [purRes, payRes, matRes] = await Promise.all([
-        supabase.from('Purchase').select('*').eq('tenantId', tenantId),
-        supabase.from('Payment').select('*').eq('tenantId', tenantId),
-        supabase.from('FarmerMaterialPurchase').select('*'),
+      const [allPurchases, allPayments, allMaterials] = await Promise.all([
+        apiGetPurchases(),
+        apiGetPayments(),
+        apiGetAllFarmerMaterials(),
       ]);
 
-      const isMatch = (x: any) => {
-        if (!x) return false;
-        const xFarmerId = String(x.farmerId || '').trim();
-        const xPhone = String(x.phone || '').trim();
-        const xName = String(x.farmerName || '').trim().toLowerCase();
-
-        return (
-          (actualId && xFarmerId === actualId) ||
-          (actualPhone && (xFarmerId === actualPhone || xPhone === actualPhone)) ||
-          (actualCode && xFarmerId === actualCode) ||
-          (actualName && xName && actualName === xName)
-        );
-      };
-
-      const farmerPurchases = (purRes.data || []).filter(isMatch);
-      const farmerPayments = (payRes.data || []).filter(isMatch);
-      const farmerMaterials = (matRes.data || []).filter(isMatch);
+      const farmerPurchases = (allPurchases || []).filter((p: any) => isFarmerMatch(p, farmer));
+      const farmerPayments = (allPayments || []).filter((pay: any) => isFarmerMatch(pay, farmer));
+      const farmerMaterials = (allMaterials || []).filter((m: any) => isFarmerMatch(m, farmer));
 
       const computedPurchases = farmerPurchases.reduce((sum: number, p: any) => {
         const amt = typeof p.totalAmount === 'number' ? p.totalAmount : (typeof p.amount === 'number' ? p.amount : parseFloat(String(p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0);
@@ -615,7 +605,7 @@ export const apiUpdateFarmerBalance = async (
       }, 0);
 
       const computedMaterials = farmerMaterials.reduce((sum: number, m: any) => {
-        const amt = typeof m.totalAmount === 'number' ? m.totalAmount : parseFloat(String(m.totalAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+        const amt = typeof m.totalPrice === 'number' ? m.totalPrice : (typeof m.totalAmount === 'number' ? m.totalAmount : parseFloat(String(m.totalAmount || 0).replace(/[^0-9.-]+/g, '')) || 0);
         return sum + amt;
       }, 0);
 
@@ -635,7 +625,7 @@ export const apiUpdateFarmerBalance = async (
       // Update Local Cache
       const cached = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
       const updatedCache = cached.map((f: any) => {
-        if (f.id === actualId || f.phone === actualPhone || f.farmerIdCode === actualCode || (f.name && f.name.toLowerCase() === actualName)) {
+        if (isFarmerMatch(farmer, f) || f.id === actualId) {
           return {
             ...f,
             totalPurchase,

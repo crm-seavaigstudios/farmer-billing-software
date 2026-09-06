@@ -5,7 +5,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { AddFarmerModal } from '@/components/farmers/AddFarmerModal';
 import { EditFarmerModal } from '@/components/farmers/EditFarmerModal';
-import { FarmerDetailSidebar } from '@/components/farmers/FarmerDetailSidebar';
+import { FarmerDetailDrawer } from '@/components/farmers/FarmerDetailDrawer';
 import { AddFarmerMaterialModal } from '@/components/farmers/AddFarmerMaterialModal';
 import { AddFarmerAdvanceModal } from '@/components/farmers/AddFarmerAdvanceModal';
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
@@ -378,8 +378,9 @@ export default function FarmersPage() {
         farmers={categoryModalFarmers}
       />
 
-      <FarmerDetailSidebar
+      <FarmerDetailDrawer
         farmerId={selectedDetailFarmerId}
+        farmer={farmers.find(f => f.id === selectedDetailFarmerId || f.farmerIdCode === selectedDetailFarmerId) || null}
         refreshKey={sidebarRefreshKey}
         onClose={() => setSelectedDetailFarmerId(null)}
         onOpenMaterialModal={(fId) => {

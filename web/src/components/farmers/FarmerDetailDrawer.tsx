@@ -24,24 +24,53 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { PrintStatementModal, StatementData } from '@/components/common/PrintStatementModal';
-import { apiGetPurchases, apiGetPayments, apiGetFarmerMaterials } from '@/lib/api';
+import { apiGetPurchases, apiGetPayments, apiGetFarmerMaterials, isFarmerMatch, apiGetFarmers, apiGetFarmerDetails } from '@/lib/api';
 import { useEffect } from 'react';
 
-interface FarmerDetailDrawerProps {
-  farmer: any | null;
+export interface FarmerDetailDrawerProps {
+  farmer?: any | null;
+  farmerId?: string | null;
+  refreshKey?: number;
   onClose: () => void;
+  onOpenMaterialModal?: (farmerId: string) => void;
+  onOpenAdvanceModal?: (farmerId: string) => void;
 }
 
 export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
-  farmer,
+  farmer: initialFarmer,
+  farmerId,
+  refreshKey,
   onClose,
+  onOpenMaterialModal,
+  onOpenAdvanceModal,
 }) => {
   const { language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'ADVANCES' | 'LEDGER'>('PROFILE');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
-  if (!farmer) return null;
+  const [currentFarmer, setCurrentFarmer] = useState<any>(initialFarmer || null);
+
+  useEffect(() => {
+    if (initialFarmer) {
+      setCurrentFarmer(initialFarmer);
+      return;
+    }
+    if (farmerId) {
+      (async () => {
+        const farmers = await apiGetFarmers();
+        const found = Array.isArray(farmers) ? farmers.find((f: any) => f.id === farmerId || f.farmerIdCode === farmerId) : null;
+        if (found) {
+          setCurrentFarmer(found);
+        } else {
+          const detail = await apiGetFarmerDetails(farmerId);
+          if (detail) setCurrentFarmer(detail);
+        }
+      })();
+    }
+  }, [initialFarmer, farmerId, refreshKey]);
+
+  const farmer = currentFarmer;
 
   const [purchases, setPurchases] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
@@ -56,28 +85,9 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
       const p = await apiGetPurchases();
       const pay = await apiGetPayments();
       const mat = await apiGetFarmerMaterials(farmer.id);
-      
-      const isFarmerMatch = (x: any) => {
-        if (!x) return false;
-        const fId = String(farmer.id || '');
-        const fPhone = String(farmer.phone || '');
-        const fCode = String(farmer.farmerIdCode || farmer.code || '');
-        const fName = String(farmer.name || '').trim().toLowerCase();
 
-        const xFarmerId = String(x.farmerId || '');
-        const xPhone = String(x.phone || '');
-        const xName = String(x.farmerName || '').trim().toLowerCase();
-
-        return (
-          (fId && (xFarmerId === fId || x.farmerId === fId)) ||
-          (fPhone && (xFarmerId === fPhone || xPhone === fPhone)) ||
-          (fCode && (xFarmerId === fCode || x.farmerId === fCode)) ||
-          (fName && xName && fName === xName)
-        );
-      };
-
-      const fp = Array.isArray(p) ? p.filter(isFarmerMatch) : [];
-      const fpay = Array.isArray(pay) ? pay.filter(isFarmerMatch) : [];
+      const fp = Array.isArray(p) ? p.filter((x: any) => isFarmerMatch(x, farmer)) : [];
+      const fpay = Array.isArray(pay) ? pay.filter((x: any) => isFarmerMatch(x, farmer)) : [];
       const fmat = Array.isArray(mat) ? mat : [];
       
       setPurchases(fp);
@@ -476,6 +486,14 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                       <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
                         {language === 'mr' ? 'अ‍ॅडव्हान्स पेमेंट नोंदी' : 'Advance Payment History'} ({advancePayments.length})
                       </h3>
+                      {onOpenAdvanceModal && (
+                        <button
+                          onClick={() => onOpenAdvanceModal(farmer.id)}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
+                        >
+                          + {language === 'mr' ? 'नवीन अ‍ॅडव्हान्स' : 'New Advance'}
+                        </button>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -620,20 +638,38 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="p-6 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between">
-          <button
-            onClick={() => setIsPrintModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer"
-          >
-            <Printer className="w-4 h-4" />
-            <span>Print Ledger Statement PDF</span>
-          </button>
+        <div className="p-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsPrintModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print Ledger</span>
+            </button>
+            {onOpenMaterialModal && (
+              <button
+                onClick={() => onOpenMaterialModal(farmer.id)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 cursor-pointer"
+              >
+                + Material
+              </button>
+            )}
+            {onOpenAdvanceModal && (
+              <button
+                onClick={() => onOpenAdvanceModal(farmer.id)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 cursor-pointer"
+              >
+                + Advance
+              </button>
+            )}
+          </div>
 
           <button
             onClick={onClose}
-            className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl text-xs hover:bg-slate-50"
+            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl text-xs hover:bg-slate-50 cursor-pointer"
           >
-            Close Drawer
+            Close
           </button>
         </div>
       </div>
