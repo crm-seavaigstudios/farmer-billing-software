@@ -199,14 +199,16 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     };
   }, [farmer]);
 
+  if (!farmer) return null;
+
   const statementData: StatementData = {
-    farmerId: farmer.id || 'FAR-10001',
-    farmerName: farmer.name || 'Ramesh Patil',
-    phone: farmer.phone || '9823456789',
-    village: farmer.village || 'Nandgaon',
-    aadhaar: farmer.aadhaar || 'XXXX-XXXX-8910',
-    bankAccount: farmer.bankAccount || '990011223344',
-    ifsc: farmer.ifsc || 'MAHB0001234',
+    farmerId: farmer?.id || farmer?.farmerIdCode || 'FAR-10001',
+    farmerName: farmer?.name || 'Farmer',
+    phone: farmer?.phone || '',
+    village: farmer?.village || '',
+    aadhaar: farmer?.aadhaar || 'XXXX-XXXX-8910',
+    bankAccount: farmer?.bankAccount || '',
+    ifsc: farmer?.ifsc || '',
     totalPurchases: `₹${totals.purchase.toLocaleString('en-IN')}`,
     totalPaid: `₹${totals.paid.toLocaleString('en-IN')}`,
     advanceGiven: `₹${totals.material.toLocaleString('en-IN')}`, // mapping material to advance in print for now
@@ -221,19 +223,19 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
         <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white font-black text-lg flex items-center justify-center shadow-md shadow-blue-500/20">
-              {farmer.name.charAt(0)}
+              {farmer?.name ? farmer.name.charAt(0) : 'F'}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black text-slate-900">{farmer.name}</h2>
+                <h2 className="text-lg font-black text-slate-900">{farmer?.name || 'Farmer Profile'}</h2>
                 <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-100">
-                  {farmer.id}
+                  {farmer?.farmerIdCode || farmer?.id || ''}
                 </span>
               </div>
               <p className="text-xs font-semibold text-slate-400 mt-0.5 flex items-center gap-2">
-                <span>📍 {farmer.village}</span>
+                <span>📍 {farmer?.village || 'Village'}</span>
                 <span>•</span>
-                <span>📞 {farmer.phone}</span>
+                <span>📞 {farmer?.phone || 'No phone'}</span>
               </p>
             </div>
           </div>

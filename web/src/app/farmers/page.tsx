@@ -378,20 +378,22 @@ export default function FarmersPage() {
         farmers={categoryModalFarmers}
       />
 
-      <FarmerDetailDrawer
-        farmerId={selectedDetailFarmerId}
-        farmer={farmers.find(f => f.id === selectedDetailFarmerId || f.farmerIdCode === selectedDetailFarmerId) || null}
-        refreshKey={sidebarRefreshKey}
-        onClose={() => setSelectedDetailFarmerId(null)}
-        onOpenMaterialModal={(fId) => {
-          setSelectedDetailFarmerId(fId);
-          setIsMaterialModalOpen(true);
-        }}
-        onOpenAdvanceModal={(fId) => {
-          setSelectedDetailFarmerId(fId);
-          setIsAdvanceModalOpen(true);
-        }}
-      />
+      {selectedDetailFarmerId && (
+        <FarmerDetailDrawer
+          farmerId={selectedDetailFarmerId}
+          farmer={farmers.find(f => f.id === selectedDetailFarmerId || f.farmerIdCode === selectedDetailFarmerId) || null}
+          refreshKey={sidebarRefreshKey}
+          onClose={() => setSelectedDetailFarmerId(null)}
+          onOpenMaterialModal={(fId) => {
+            setSelectedDetailFarmerId(fId);
+            setIsMaterialModalOpen(true);
+          }}
+          onOpenAdvanceModal={(fId) => {
+            setSelectedDetailFarmerId(fId);
+            setIsAdvanceModalOpen(true);
+          }}
+        />
+      )}
 
       <AddFarmerMaterialModal
         isOpen={isMaterialModalOpen}
