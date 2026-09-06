@@ -22,7 +22,8 @@ import {
   Receipt,
   CheckCircle,
   Clock,
-  Eye
+  Eye,
+  TrendingUp
 } from 'lucide-react';
 import { PrintStatementModal, StatementData } from '@/components/common/PrintStatementModal';
 

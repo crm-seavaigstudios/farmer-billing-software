@@ -155,7 +155,7 @@ export const apiGetFarmers = async () => {
             totalPaid,
             outstandingAmount: due,
             advanceBalance: advanceBal,
-          }).eq('id', f.id).then(() => {}).catch(() => {});
+          }).eq('id', f.id).then(() => {}, () => {});
         }
 
         return {
