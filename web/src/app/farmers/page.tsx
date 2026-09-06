@@ -280,7 +280,11 @@ export default function FarmersPage() {
                     </tr>
                   ) : (
                     filteredFarmers.map((f, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                      <tr 
+                        key={idx} 
+                        onClick={() => setSelectedDetailFarmerId(f.id)} 
+                        className="hover:bg-blue-50/40 cursor-pointer transition-colors"
+                      >
                         <td className="py-3.5 px-4 font-black text-blue-600">{f.farmerIdCode || f.id}</td>
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-900">{f.name}</div>
@@ -329,7 +333,7 @@ export default function FarmersPage() {
                           })()}
                         </td>
                         <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
+                          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={() => setSelectedDetailFarmerId(f.id)}
                               className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-[11px] font-extrabold border border-blue-100 flex items-center gap-1 cursor-pointer"
@@ -339,7 +343,10 @@ export default function FarmersPage() {
                               <span>Passbook</span>
                             </button>
                             <button
-                              onClick={() => setEditingFarmer(f)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingFarmer(f);
+                              }}
                               className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold border border-slate-200 flex items-center gap-1 cursor-pointer"
                             >
                               <Edit3 className="w-3 h-3 text-slate-500" />

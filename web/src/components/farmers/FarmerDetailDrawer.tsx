@@ -45,7 +45,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
   onOpenAdvanceModal,
 }) => {
   const { language } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'ADVANCES' | 'LEDGER'>('PROFILE');
+  const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'ADVANCES' | 'LEDGER'>('LEDGER');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
@@ -248,102 +248,140 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           </button>
         </div>
 
-        {/* Financial Summary Cards */}
-        <div className="p-6 bg-slate-50 border-b border-slate-100 flex flex-col gap-2">
-          <div className="flex justify-end mb-1">
-            <button
-              onClick={() => setSplitKPI(!splitKPI)}
-              className="text-[10px] px-2 py-1 bg-white border border-slate-200 rounded text-slate-500 hover:bg-slate-100 font-bold transition-colors"
-            >
-              {splitKPI ? 'Combine Payments & Materials' : 'Split Payments & Materials'}
-            </button>
-          </div>
-          <div className="grid grid-cols-4 gap-3 text-xs">
-            <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Purchases</span>
-              <span className="text-sm font-extrabold text-slate-900 mt-0.5 block">₹{totals.purchase.toLocaleString('en-IN')}</span>
+        {/* Financial Summary KPI Cards */}
+        <div className="p-4 bg-slate-50/90 border-b border-slate-200/80">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+            {/* 1. Total Purchases */}
+            <div className="bg-blue-50/80 border border-blue-100 rounded-2xl p-3 shadow-2xs">
+              <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider block">
+                {language === 'mr' ? 'एकूण खरेदी' : 'Total Purchases'}
+              </span>
+              <span className="text-base font-black text-slate-900 mt-1 block">
+                ₹{totals.purchase.toLocaleString('en-IN')}
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
+                {purchases.length} {language === 'mr' ? 'खरेदी आवक' : 'bills'}
+              </span>
             </div>
 
-            {!splitKPI ? (
-              <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs col-span-2">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Deductions (Paid + Material)</span>
-                <span className="text-sm font-extrabold text-emerald-600 mt-0.5 block">₹{(totals.paid + totals.material).toLocaleString('en-IN')}</span>
-              </div>
-            ) : (
-              <>
-                <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Paid Out</span>
-                  <span className="text-sm font-extrabold text-emerald-600 mt-0.5 block">₹{totals.paid.toLocaleString('en-IN')}</span>
-                </div>
-                <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
-                  <span className="text-[10px] font-semibold text-blue-600 uppercase block">Materials Given</span>
-                  <span className="text-sm font-extrabold text-blue-700 mt-0.5 block">₹{totals.material.toLocaleString('en-IN')}</span>
-                </div>
-              </>
-            )}
+            {/* 2. Total Paid */}
+            <div className="bg-emerald-50/80 border border-emerald-100 rounded-2xl p-3 shadow-2xs">
+              <span className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider block">
+                {language === 'mr' ? 'एकूण भरणा / जमा' : 'Total Paid Out'}
+              </span>
+              <span className="text-base font-black text-emerald-700 mt-1 block">
+                ₹{totals.paid.toLocaleString('en-IN')}
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
+                {payments.length} {language === 'mr' ? 'पेमेंट्स' : 'payments'}
+              </span>
+            </div>
 
-            <div className="bg-white border border-rose-100 rounded-xl p-3 shadow-2xs">
-              <span className="text-[10px] font-semibold text-rose-500 uppercase block">Net Outstanding</span>
-              <span className="text-sm font-black text-rose-600 mt-0.5 block">₹{totals.outstanding.toLocaleString('en-IN')}</span>
+            {/* 3. Material Supplies */}
+            <div className="bg-purple-50/80 border border-purple-100 rounded-2xl p-3 shadow-2xs">
+              <span className="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider block">
+                {language === 'mr' ? 'साहित्य पुरवठा' : 'Materials Given'}
+              </span>
+              <span className="text-base font-black text-purple-700 mt-1 block">
+                ₹{totals.material.toLocaleString('en-IN')}
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
+                {materials.length} {language === 'mr' ? 'साहित्य नोंदी' : 'items'}
+              </span>
+            </div>
+
+            {/* 4. Net Outstanding / Advance */}
+            <div className={`rounded-2xl p-3 shadow-2xs border ${
+              totals.outstanding > 0 
+                ? 'bg-rose-50/80 border-rose-100' 
+                : totals.outstanding < 0 
+                  ? 'bg-indigo-50/80 border-indigo-100' 
+                  : 'bg-slate-100 border-slate-200'
+            }`}>
+              <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${
+                totals.outstanding > 0 ? 'text-rose-600' : totals.outstanding < 0 ? 'text-indigo-600' : 'text-slate-600'
+              }`}>
+                {totals.outstanding > 0 
+                  ? (language === 'mr' ? 'बाकी देणे (Due)' : 'Net Due to Pay') 
+                  : totals.outstanding < 0 
+                    ? (language === 'mr' ? 'अ‍ॅडव्हान्स शिल्लक' : 'Advance Balance') 
+                    : (language === 'mr' ? 'हिशोब पूर्ण' : 'Fully Settled')}
+              </span>
+              <span className={`text-base font-black mt-1 block ${
+                totals.outstanding > 0 ? 'text-rose-700' : totals.outstanding < 0 ? 'text-indigo-700' : 'text-slate-800'
+              }`}>
+                {totals.outstanding < 0 
+                  ? `-₹${Math.abs(totals.outstanding).toLocaleString('en-IN')}`
+                  : `₹${totals.outstanding.toLocaleString('en-IN')}`}
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
+                {totals.outstanding > 0 ? 'Pending' : totals.outstanding < 0 ? 'Advance' : 'Nil'}
+              </span>
             </div>
           </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="px-6 border-b border-slate-200 flex gap-6 bg-white">
-          <button
-            onClick={() => setActiveTab('PROFILE')}
-            className={`py-3 text-xs font-extrabold border-b-2 transition-all cursor-pointer ${
-              activeTab === 'PROFILE'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            {language === 'mr' ? 'प्रोफाईल व पिके' : 'Profile & Crops'}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('PURCHASES')}
-            className={`py-3 text-xs font-extrabold border-b-2 transition-all cursor-pointer ${
-              activeTab === 'PURCHASES'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            {language === 'mr' ? 'खरेदी आवक' : 'Purchases History'}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('PAYMENTS')}
-            className={`py-3 text-xs font-extrabold border-b-2 transition-all cursor-pointer ${
-              activeTab === 'PAYMENTS'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            {language === 'mr' ? 'पेमेंट भरणा' : 'Payments'}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('ADVANCES')}
-            className={`py-3 text-xs font-extrabold border-b-2 transition-all cursor-pointer ${
-              activeTab === 'ADVANCES'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            {language === 'mr' ? 'अ‍ॅडव्हान्स जमा' : 'Advances'}
-          </button>
-
+        <div className="px-4 border-b border-slate-200 flex gap-2 bg-white overflow-x-auto">
           <button
             onClick={() => setActiveTab('LEDGER')}
-            className={`py-3 text-xs font-extrabold border-b-2 transition-all cursor-pointer ${
+            className={`py-3 px-3 text-xs font-extrabold border-b-2 whitespace-nowrap transition-all cursor-pointer ${
               activeTab === 'LEDGER'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
           >
-            {language === 'mr' ? 'खातेवही स्टेटमेंट' : 'Ledger Statement'}
+            📊 {language === 'mr' ? 'खातेवही पासबुक' : 'Passbook Ledger'}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('PURCHASES')}
+            className={`py-3 px-3 text-xs font-extrabold border-b-2 whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'PURCHASES'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <span>🛒 {language === 'mr' ? 'खरेदी आवक' : 'Purchases'}</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-50 text-blue-700 font-bold border border-blue-100">
+              {purchases.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('PAYMENTS')}
+            className={`py-3 px-3 text-xs font-extrabold border-b-2 whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'PAYMENTS'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <span>💵 {language === 'mr' ? 'भरणा नोंदी' : 'Payments'}</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-50 text-emerald-700 font-bold border border-emerald-100">
+              {payments.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ADVANCES')}
+            className={`py-3 px-3 text-xs font-extrabold border-b-2 whitespace-nowrap transition-all cursor-pointer ${
+              activeTab === 'ADVANCES'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            ⚡ {language === 'mr' ? 'अ‍ॅडव्हान्स जमा' : 'Advances'}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('PROFILE')}
+            className={`py-3 px-3 text-xs font-extrabold border-b-2 whitespace-nowrap transition-all cursor-pointer ${
+              activeTab === 'PROFILE'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            👤 {language === 'mr' ? 'प्रोफाईल व पिके' : 'Profile'}
           </button>
         </div>
 
@@ -411,21 +449,65 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
 
           {activeTab === 'PURCHASES' && (
             <div className="space-y-3 text-xs">
-              <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Recent Strawberry Procurement Deliveries</h3>
-              <div className="space-y-2">
-                {purchases.length === 0 && <p className="text-slate-400">No purchases found.</p>}
-                {purchases.map((p) => (
-                  <div key={p.id} className="bg-white border border-slate-200 rounded-xl p-3 flex justify-between items-center">
-                    <div>
-                      <span className="font-bold text-blue-600">{p.id}</span>
-                      <p className="font-extrabold text-slate-900">{p.crop}</p>
-                      <p className="text-[10px] text-slate-400">{p.date} • {p.weight} @ {p.rate}</p>
-                    </div>
-                    <span className="text-sm font-black text-slate-900">
-                      ₹{Number(String(p.amount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}
-                    </span>
+              <div className="flex justify-between items-center">
+                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
+                  {language === 'mr' ? 'खरेदी आवक नोंदी' : 'Procurement Purchases'} ({purchases.length})
+                </h3>
+                <span className="font-bold text-slate-500">
+                  {language === 'mr' ? 'एकूण खरेदी' : 'Total'}: <span className="font-black text-slate-900">₹{totals.purchase.toLocaleString('en-IN')}</span>
+                </span>
+              </div>
+              <div className="space-y-2.5">
+                {purchases.length === 0 ? (
+                  <div className="py-10 text-center text-slate-400 font-bold bg-slate-50 rounded-2xl border border-slate-100">
+                    No crop purchases recorded for this farmer.
                   </div>
-                ))}
+                ) : (
+                  purchases.map((p, idx) => (
+                    <div key={idx} className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs hover:border-blue-200 transition-colors">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-blue-600 text-xs">{p.purchaseNo || p.id}</span>
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black bg-blue-50 text-blue-700 border border-blue-100">
+                              {p.grade || 'A_GRADE'}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black ${
+                              p.paymentStatus === 'PAID' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                              p.paymentStatus === 'PARTIAL' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                              'bg-rose-50 text-rose-700 border border-rose-100'
+                            }`}>
+                              {p.paymentStatus || 'UNPAID'}
+                            </span>
+                          </div>
+                          <h4 className="font-black text-slate-900 text-sm mt-1">{p.crop || 'Crop Harvest'}</h4>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            <span>⚖️ {p.weight}</span> • <span>₹ {p.rate}</span>
+                            {p.storageLocation && <span> • 📍 {p.storageLocation}</span>}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1">📅 {p.date || p.purchaseDate}</p>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="text-[10px] font-semibold text-slate-400 block uppercase">Bill Amount</span>
+                          <span className="text-base font-black text-slate-900 block">
+                            ₹{Number(String(p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}
+                          </span>
+                          {p.paidAmount > 0 && (
+                            <span className="text-[10px] text-emerald-600 font-bold block mt-0.5">
+                              Paid: ₹{Number(p.paidAmount).toLocaleString('en-IN')}
+                            </span>
+                          )}
+                          {p.dueAmount > 0 && (
+                            <span className="text-[10px] text-rose-600 font-bold block">
+                              Due: ₹{Number(p.dueAmount).toLocaleString('en-IN')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
