@@ -204,15 +204,12 @@ export const PrintStatementModal: React.FC<PrintStatementModalProps> = ({
 
             {/* Signature Area */}
             <div className="pt-8 flex justify-between items-end text-[10px] text-slate-400 font-semibold border-t border-slate-100">
-              <div>
-                <p>Farmer Signature / अंगठा</p>
-                <div className="w-28 h-px bg-slate-300 mt-8" />
-              </div>
-              <div className="text-center">
+              <div className="text-left">
                 {tenant.signatureUrl && (
-                  <img src={tenant.signatureUrl} alt="Signature" className="h-10 object-contain mx-auto mb-1" />
+                  <img src={tenant.signatureUrl} alt="Signature" className="h-10 object-contain mb-1" />
                 )}
                 <p>Authorized Signatory</p>
+                <div className="w-28 h-px bg-slate-300 mt-2" />
               </div>
               <div className="text-right">
                 <p>{businessName} Official Stamp</p>

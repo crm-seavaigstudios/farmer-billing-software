@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { useLanguage } from '@/context/LanguageContext';
+import { useTenant } from '@/context/TenantContext';
 import {
   Truck,
   Package,
@@ -16,7 +17,8 @@ import {
   FileText,
   Building2,
   CheckCircle2,
-  History
+  History,
+  Printer
 } from 'lucide-react';
 import {
   apiGetTraders,
@@ -32,6 +34,7 @@ import {
 
 export default function TradersPage() {
   const { t, language } = useLanguage();
+  const { tenant } = useTenant();
   const [traders, setTraders] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [summary, setSummary] = useState({
@@ -53,6 +56,8 @@ export default function TradersPage() {
   const [selectedBillForPayment, setSelectedBillForPayment] = useState<any>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyBill, setHistoryBill] = useState<any>(null);
+  const [isPrintBillModalOpen, setIsPrintBillModalOpen] = useState(false);
+  const [billToPrint, setBillToPrint] = useState<any>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [name, setName] = useState('');
@@ -465,6 +470,17 @@ export default function TradersPage() {
                             </td>
                             <td className="py-3.5 px-4 text-right">
                               <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    setBillToPrint(p);
+                                    setIsPrintBillModalOpen(true);
+                                  }}
+                                  className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[10px] font-bold cursor-pointer flex items-center gap-1"
+                                  title="Print Supply Bill Receipt"
+                                >
+                                  <Printer className="w-3 h-3" />
+                                  Print
+                                </button>
                                 {dueNum > 0 && (
                                   <button
                                     onClick={() => {
@@ -867,6 +883,172 @@ export default function TradersPage() {
                   </div>
                 )}
               </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    setBillToPrint(historyBill);
+                    setIsHistoryModalOpen(false);
+                    setIsPrintBillModalOpen(true);
+                  }}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 font-extrabold rounded-xl text-white shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Print Supply Bill / पावती प्रिंट करा</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trader Supply Bill Print Modal */}
+      {isPrintBillModalOpen && billToPrint && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white p-5 flex justify-between items-center no-print">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600/80 flex items-center justify-center text-white">
+                  <Printer className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base">व्यापारी पुरवठा पावती (Trader Supply Receipt)</h3>
+                  <p className="text-xs text-slate-300">{tenant?.companyName || 'Agro Agency'} • {tenant?.ownerPhone || ''}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setIsPrintBillModalOpen(false);
+                  setBillToPrint(null);
+                }}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Printable Content */}
+            <div className="p-6 overflow-y-auto space-y-4 text-xs font-sans">
+              {/* Agency & Trader Details */}
+              <div className="border-b border-slate-200 pb-4 flex justify-between items-start">
+                <div>
+                  <h2 className="text-base font-black text-slate-900">{tenant?.companyName || 'Agro Agency'}</h2>
+                  <p className="text-[11px] text-slate-500 font-semibold">{tenant?.address || 'Market Yard / Procurement Center'}</p>
+                  <p className="text-[11px] text-slate-500 font-semibold">Phone: {tenant?.ownerPhone || '—'} {tenant?.gstin ? `| GSTIN: ${tenant.gstin}` : ''}</p>
+                </div>
+                <div className="text-right">
+                  <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-black text-xs border border-blue-200">
+                    {billToPrint.id || 'TB-001'}
+                  </span>
+                  <p className="text-[10px] text-slate-400 font-bold mt-1">
+                    Date: {billToPrint.date || new Date().toLocaleDateString('en-IN')}
+                  </p>
+                </div>
+              </div>
+
+              {/* Trader Info Card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">व्यापारी / Trader:</span>
+                  <span className="font-black text-slate-900">{billToPrint.traderName || 'Trader'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">व्यवसाय / Business:</span>
+                  <span className="font-bold text-slate-800">{billToPrint.businessName || '—'}</span>
+                </div>
+                {billToPrint.vehicleNo && (
+                  <div>
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">वाहन क्र. / Vehicle No:</span>
+                    <span className="font-bold text-slate-800">{billToPrint.vehicleNo}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">पेमेंट स्थिती / Status:</span>
+                  <span className={`font-black ${
+                    billToPrint.paymentStatus === 'PAID' ? 'text-emerald-600' : 'text-rose-600'
+                  }`}>
+                    {billToPrint.paymentStatus || 'UNPAID'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Itemized Order Table */}
+              <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-600 border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3">साहित्य / Item Description</th>
+                      <th className="py-2.5 px-3 text-right">नग / Qty</th>
+                      <th className="py-2.5 px-3 text-right">दर / Rate</th>
+                      <th className="py-2.5 px-3 text-right">रक्कम / Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="hover:bg-slate-50">
+                      <td className="py-2.5 px-3 font-extrabold text-slate-800">
+                        {billToPrint.itemName}
+                        <span className="ml-1 text-[10px] text-slate-400 font-bold">({billToPrint.category || 'SUPPLY'})</span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-slate-700">{billToPrint.quantity} {billToPrint.unit || 'QTY'}</td>
+                      <td className="py-2.5 px-3 text-right font-bold text-slate-700">₹{billToPrint.rate}</td>
+                      <td className="py-2.5 px-3 text-right font-black text-slate-900">
+                        ₹{(Number(billToPrint.quantity || 1) * Number(billToPrint.rate || 0)).toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Financial Breakdown */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
+                <div className="flex justify-between items-center font-bold text-slate-700">
+                  <span>एकूण रक्कम (Gross Amount):</span>
+                  <span>₹{(Number(billToPrint.quantity || 1) * Number(billToPrint.rate || 0)).toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between items-center font-bold text-emerald-700">
+                  <span>जमा रक्कम (Paid Amount):</span>
+                  <span>₹{Number(billToPrint.paidAmount || 0).toLocaleString('en-IN')}</span>
+                </div>
+                <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-sm font-black text-slate-900">
+                  <span>शिल्लक बाकी (Remaining Due):</span>
+                  <span className={Math.max(0, (Number(billToPrint.quantity || 1) * Number(billToPrint.rate || 0)) - Number(billToPrint.paidAmount || 0)) > 0 ? 'text-rose-600' : 'text-emerald-700'}>
+                    ₹{Math.max(0, (Number(billToPrint.quantity || 1) * Number(billToPrint.rate || 0)) - Number(billToPrint.paidAmount || 0)).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Signatures */}
+              <div className="pt-6 border-t border-slate-200 flex justify-end items-end text-center">
+                <div>
+                  <div className="h-8 flex items-center justify-center text-blue-600 font-black text-[10px] mb-1">
+                    {tenant?.signatureUrl && (
+                      <img src={tenant.signatureUrl} alt="Signature" className="h-8 object-contain mx-auto" />
+                    )}
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-500 block">अधिकृत सही व शिक्का / Authorized Signatory</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 border-t border-slate-200 p-4 flex justify-end gap-2 no-print">
+              <button
+                onClick={() => {
+                  setIsPrintBillModalOpen(false);
+                  setBillToPrint(null);
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                बंद करा / Close
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md transition-colors cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>प्रिंट पावती / Print Receipt</span>
+              </button>
             </div>
           </div>
         </div>

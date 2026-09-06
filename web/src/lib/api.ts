@@ -419,45 +419,7 @@ export const apiGetPurchases = async () => {
   return getLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
 };
 
-export const apiUpdatePurchase = async (id: string, updateData: any) => {
-  const payload: any = {};
-  if (updateData.totalAmount !== undefined) payload.totalAmount = updateData.totalAmount;
-  if (updateData.amount !== undefined) payload.totalAmount = updateData.amount; // fallback
-  if (updateData.paidAmount !== undefined) payload.paidAmount = updateData.paidAmount;
-  if (updateData.dueAmount !== undefined) payload.dueAmount = updateData.dueAmount;
-  if (updateData.paymentStatus !== undefined) payload.paymentStatus = updateData.paymentStatus;
-  if (updateData.storageLocation !== undefined) payload.storageLocation = updateData.storageLocation;
-  if (updateData.weight !== undefined) {
-    payload.totalWeight = parseFloat(String(updateData.weight).replace(/[^0-9.-]+/g, '')) || 0;
-  }
-  
-  try {
-    await supabase.from('Purchase').update(payload).or(`id.eq.${id},purchaseNo.eq.${id}`).throwOnError();
-    
-    // Update PurchaseItem crop details if modified
-    if (updateData.crop !== undefined || updateData.rate !== undefined || updateData.weight !== undefined) {
-      const { data: itemData } = await supabase.from('PurchaseItem').select('id').eq('purchaseId', id).limit(1);
-      if (itemData && itemData.length > 0) {
-        const itemId = itemData[0].id;
-        const itemPayload: any = {};
-        if (updateData.crop !== undefined) itemPayload.cropName = updateData.crop;
-        if (updateData.rate !== undefined) {
-          itemPayload.ratePerKg = parseFloat(String(updateData.rate).replace(/[^0-9.-]+/g, '')) || 0;
-        }
-        if (updateData.weight !== undefined) {
-          itemPayload.weightKg = parseFloat(String(updateData.weight).replace(/[^0-9.-]+/g, '')) || 0;
-        }
-        await supabase.from('PurchaseItem').update(itemPayload).eq('id', itemId);
-      }
-    }
-  } catch {}
 
-  const current = getLocalCache(`seavaig_purchases_cache_${getTenantId()}`, []);
-  const updated = current.map((p: any) => (p.id === id ? { ...p, ...updateData } : p));
-  setLocalCache(`seavaig_purchases_cache_${getTenantId()}`, updated);
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('purchases_changed'));
-  return updated;
-};
 
 export const apiUpdateFarmerAdvance = async (farmerId: string, amount: number) => {
   try {
@@ -590,10 +552,9 @@ export const apiCreatePurchase = async (purchaseData: any) => {
       if (isNaN(serial)) serial = 1;
     }
   }
-  const tenantSuffix = (tenantId || '').slice(-4);
-  const billNo = `${ddmmyy}-${serial}-${tenantSuffix}`;
+  const billNo = `PB-${ddmmyy}-${String(serial).padStart(3, '0')}`;
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  const globalId = purchaseData.id || `pur-${tenantSuffix}-${Date.now()}-${randomSuffix}`;
+  const globalId = purchaseData.id || `pur-${Date.now()}-${randomSuffix}`;
   
   const purchaseObj = {
     id: billNo,
@@ -1126,8 +1087,12 @@ export const apiGetTenants = async () => {
 };
 
 export const apiCreateTenant = async (tenantData: any) => {
+  const cleanPhone = String(tenantData.ownerPhone || '').replace(/[^0-9]/g, '');
+  const phoneSuffix = cleanPhone.length >= 4 ? cleanPhone.slice(-4) : Math.floor(1000 + Math.random() * 9000).toString();
+  const tenantId = tenantData.id || `TEN-${phoneSuffix}`;
+
   const newTenant = {
-    id: tenantData.id || `TEN-${Date.now()}`,
+    id: tenantId,
     companyCode: tenantData.companyCode || `COMP-${Math.floor(300 + Math.random() * 600)}`,
     companyName: tenantData.companyName,
     ownerName: tenantData.ownerName,
@@ -1632,9 +1597,8 @@ export const apiCreatePayment = async (payData: any) => {
       if (isNaN(serial)) serial = 1;
     }
   }
-  const tenantSuffix = (tenantId || '').slice(-4);
-  const paymentNo = `PV-${mmyy}-${String(serial).padStart(3, '0')}-${tenantSuffix}`;
-  const newPaymentId = payData.id || `PAY-${tenantSuffix}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const paymentNo = `PV-${mmyy}-${String(serial).padStart(3, '0')}`;
+  const newPaymentId = payData.id || `PAY-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
   const cleanAmount = typeof payData.amount === 'number'
     ? payData.amount

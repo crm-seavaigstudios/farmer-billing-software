@@ -285,11 +285,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
             </div>
 
             {/* Signatures & Stamps */}
-            <div className="pt-6 mt-4 border-t border-dashed border-slate-300 flex justify-between items-end">
-              <div className="text-center">
-                <div className="h-8 border-b border-slate-400 w-24 mx-auto mb-1"></div>
-                <span className="text-[9px] font-bold text-slate-500">शेतकऱ्याची सही</span>
-              </div>
+            <div className="pt-6 mt-4 border-t border-dashed border-slate-300 flex justify-end items-end">
               <div className="text-center">
                 <div className="h-8 flex items-center justify-center text-blue-600 font-black text-[10px] mb-1"></div>
                 <span className="text-[9px] font-bold text-slate-500">अधिकृत सही व शिक्का</span>
