@@ -479,6 +479,12 @@ export const apiUpdateFarmerAdvance = async (farmerId: string, amount: number) =
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('farmers_changed'));
 };
 
+export const getTenantShort = (tenantId?: string | null): string => {
+  if (!tenantId) return '0000';
+  const clean = tenantId.replace(/[^0-9]/g, '');
+  return clean.length >= 4 ? clean.slice(-4) : (tenantId.slice(-4) || '0000');
+};
+
 export const apiUpdateFarmerBalance = async (
   farmerId: string, 
   paidAmt: number, 
@@ -487,23 +493,29 @@ export const apiUpdateFarmerBalance = async (
   advanceApplied: number = 0
 ) => {
   try {
-    const { data } = await supabase.from('Farmer').select('*').eq('id', farmerId).single();
+    const { data: farmerRecords } = await supabase
+      .from('Farmer')
+      .select('*')
+      .or(`id.eq.${farmerId},phone.eq.${farmerId}`)
+      .limit(1);
+
+    const data = farmerRecords?.[0];
     if (data) {
-      let newTotalPaid = data.totalPaid || 0;
-      let newOutstanding = data.outstandingAmount || 0;
-      let newAdvance = data.advanceBalance || 0;
-      let newTotalPurchase = data.totalPurchase || 0;
+      let newTotalPaid = Number(data.totalPaid || 0);
+      let newOutstanding = Number(data.outstandingAmount || 0);
+      let newAdvance = Number(data.advanceBalance || 0);
+      let newTotalPurchase = Number(data.totalPurchase || 0);
       
       if (type === 'PURCHASE') {
-        newTotalPaid += paidAmt; // any fresh cash paid on the spot (default 0)
-        newOutstanding += dueAmt; // gross purchase amount
+        newTotalPaid += paidAmt;
+        newOutstanding += dueAmt;
         newAdvance = Math.max(0, newAdvance - advanceApplied);
         newTotalPurchase += dueAmt;
       } else if (type === 'PAYMENT') {
         newTotalPaid += paidAmt;
-        newOutstanding += dueAmt; // dueAmt is negative, e.g. -paidAmt
+        newOutstanding += dueAmt;
       } else if (type === 'MATERIAL') {
-        newOutstanding -= dueAmt; // subtract from outstanding (debit/farmer owes us)
+        newOutstanding -= dueAmt;
       }
       
       await supabase.from('Farmer').update({
@@ -511,20 +523,22 @@ export const apiUpdateFarmerBalance = async (
         outstandingAmount: newOutstanding,
         advanceBalance: newAdvance,
         totalPurchase: newTotalPurchase,
-      }).eq('id', farmerId).throwOnError();
+      }).eq('id', data.id).throwOnError();
     }
-  } catch {}
+  } catch (err) {
+    console.error('Error in apiUpdateFarmerBalance Supabase update:', err);
+  }
 
   const tenantId = getTenantId();
   if (!tenantId) return;
 
   const farmers = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
   const updatedFarmers = farmers.map((f: any) => {
-    if (f.id === farmerId) {
-      let newTotalPaid = f.totalPaid || 0;
-      let newOutstanding = f.outstandingAmount || 0;
-      let newAdvance = f.advanceBalance || 0;
-      let newTotalPurchase = f.totalPurchase || 0;
+    if (f.id === farmerId || f.phone === farmerId || f.farmerIdCode === farmerId) {
+      let newTotalPaid = Number(f.totalPaid || 0);
+      let newOutstanding = Number(f.outstandingAmount || 0);
+      let newAdvance = Number(f.advanceBalance || 0);
+      let newTotalPurchase = Number(f.totalPurchase || 0);
       
       if (type === 'PURCHASE') {
         newTotalPaid += paidAmt;
@@ -549,37 +563,41 @@ export const apiUpdateFarmerBalance = async (
     return f;
   });
   setLocalCache(`seavaig_farmers_cache_${tenantId}`, updatedFarmers);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('farmers_changed'));
+  }
 };
 
 export const apiCreatePurchase = async (purchaseData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
+  const tenantShort = getTenantShort(tenantId);
 
   const item = purchaseData.items?.[0];
   const purAmt = Number((item?.weightKg || 0) * (item?.ratePerKg || 0));
   const today = new Date();
-  const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
+  const mmyy = String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
   
+  // 1. Query highest existing serial for this tenant & month pattern
   const { data: latestData } = await supabase
     .from('Purchase')
     .select('purchaseNo')
-    .eq('tenantId', tenantId)
-    .like('purchaseNo', `${ddmmyy}-%`)
+    .like('purchaseNo', `PB-${mmyy}-${tenantShort}-%`)
     .order('createdAt', { ascending: false })
-    .limit(1);
+    .limit(20);
 
   let serial = 1;
   if (latestData && latestData.length > 0) {
-    const latestStr = latestData[0].purchaseNo || '';
-    const parts = latestStr.split('-');
-    if (parts.length > 1) {
-      serial = parseInt(parts[1], 10) + 1;
-      if (isNaN(serial)) serial = 1;
-    }
+    const existingSerials = latestData.map((d: any) => {
+      const parts = (d.purchaseNo || '').split('-');
+      const num = parseInt(parts[parts.length - 1], 10);
+      return isNaN(num) ? 0 : num;
+    });
+    serial = Math.max(...existingSerials, 0) + 1;
   }
-  const billNo = `PB-${ddmmyy}-${String(serial).padStart(3, '0')}`;
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  const globalId = purchaseData.id || `pur-${Date.now()}-${randomSuffix}`;
+
+  let billNo = `PB-${mmyy}-${tenantShort}-${String(serial).padStart(3, '0')}`;
+  let globalId = purchaseData.id || `pur-${tenantShort}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
   
   const purchaseObj = {
     id: billNo,
@@ -589,35 +607,58 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     farmerId: purchaseData.farmerId,
     farmerName: purchaseData.farmerName || 'Farmer',
     crop: item?.cropName || '',
+    grade: item?.grade || 'A_GRADE',
     weight: `${item?.weightKg || 0} ${item?.unit || 'KG'}`,
     rate: `₹${item?.ratePerKg || 0}/${item?.unit || 'KG'}`,
     amount: purAmt,
+    totalAmount: purAmt,
     paidAmount: Number(purchaseData.paidAmount || 0),
     dueAmount: Number(purchaseData.dueAmount ?? purAmt),
     paymentStatus: purchaseData.paymentStatus || 'UNPAID',
     date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-    storageLocation: purchaseData.storageLocation || ''
+    storageLocation: purchaseData.storageLocation || '',
+    items: purchaseData.items || []
   };
 
-  try {
-    await supabase.from('Purchase').insert([{
-      id: globalId,
-      tenantId,
-      purchaseNo: billNo,
-      farmerId: purchaseObj.farmerId,
-      totalWeight: Number(item?.weightKg || 0),
-      totalAmount: Number(purchaseObj.amount),
-      paidAmount: Number(purchaseObj.paidAmount),
-      dueAmount: Number(purchaseObj.dueAmount),
-      paymentStatus: purchaseObj.paymentStatus,
-      purchaseDate: purchaseObj.date,
-      date: purchaseObj.date,
-      storageLocation: purchaseObj.storageLocation
-    }]).throwOnError();
-    
-    if (item) {
+  // 2. Safe Auto-Retry Loop on 409 Conflict
+  let attempts = 0;
+  let success = false;
+  while (attempts < 5 && !success) {
+    attempts++;
+    try {
+      await supabase.from('Purchase').insert([{
+        id: globalId,
+        tenantId,
+        purchaseNo: billNo,
+        farmerId: purchaseObj.farmerId,
+        totalWeight: Number(item?.weightKg || 0),
+        totalAmount: Number(purchaseObj.amount),
+        paidAmount: Number(purchaseObj.paidAmount),
+        dueAmount: Number(purchaseObj.dueAmount),
+        paymentStatus: purchaseObj.paymentStatus,
+        purchaseDate: purchaseObj.date,
+        date: purchaseObj.date,
+        storageLocation: purchaseObj.storageLocation
+      }]).throwOnError();
+      success = true;
+    } catch (e: any) {
+      if (attempts >= 5) {
+        console.error('Final attempt failed in apiCreatePurchase:', e);
+        throw e;
+      }
+      serial++;
+      billNo = `PB-${mmyy}-${tenantShort}-${String(serial).padStart(3, '0')}`;
+      globalId = `pur-${tenantShort}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      purchaseObj.id = billNo;
+      purchaseObj.dbId = globalId;
+      purchaseObj.purchaseNo = billNo;
+    }
+  }
+  
+  if (item) {
+    try {
       await supabase.from('PurchaseItem').insert([{
-        id: `pitem-${Date.now()}-${randomSuffix}`,
+        id: `pitem-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
         purchaseId: globalId,
         cropName: item.cropName || '',
         weightKg: Number(item.weightKg || 0),
@@ -625,15 +666,23 @@ export const apiCreatePurchase = async (purchaseData: any) => {
         totalAmount: Number(item.weightKg || 0) * Number(item.ratePerKg || 0),
         unit: item.unit || 'KG',
         grade: item.grade || 'A_GRADE'
-      }]).throwOnError();
+      }]);
+    } catch (e) {
+      console.error('Error inserting PurchaseItem:', e);
     }
-  } catch (e) { console.error(e); throw e; }
+  }
   
   const current = getLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
   const updated = [purchaseObj, ...current];
   setLocalCache(`seavaig_purchases_cache_${tenantId}`, updated);
+
   if (purchaseData.farmerId) {
-    await apiUpdateFarmerBalance(purchaseData.farmerId, 0, purAmt, 'PURCHASE', purchaseData.advanceApplied || 0);
+    await apiUpdateFarmerBalance(purchaseData.farmerId, Number(purchaseData.paidAmount || 0), purAmt, 'PURCHASE', purchaseData.advanceApplied || 0);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('purchases_changed'));
+    window.dispatchEvent(new Event('farmers_changed'));
   }
   return purchaseObj;
 };
@@ -1272,6 +1321,7 @@ export const apiGetSales = async () => {
 export const apiCreateSale = async (saleData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
+  const tenantShort = getTenantShort(tenantId);
   
   const today = new Date();
   const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
@@ -1279,21 +1329,21 @@ export const apiCreateSale = async (saleData: any) => {
   const { data: latestData } = await supabase
     .from('Sale')
     .select('billNo')
-    .eq('tenantId', tenantId)
-    .like('billNo', `${ddmmyy}-%`)
+    .like('billNo', `SB-${ddmmyy}-${tenantShort}-%`)
     .order('createdAt', { ascending: false })
-    .limit(1);
+    .limit(20);
 
   let serial = 1;
   if (latestData && latestData.length > 0) {
-    const latestStr = latestData[0].billNo || '';
-    const parts = latestStr.split('-');
-    if (parts.length > 1) {
-      serial = parseInt(parts[parts.length - 1], 10) + 1;
-    }
+    const existingSerials = latestData.map((d: any) => {
+      const parts = (d.billNo || '').split('-');
+      const num = parseInt(parts[parts.length - 1], 10);
+      return isNaN(num) ? 0 : num;
+    });
+    serial = Math.max(...existingSerials, 0) + 1;
   }
-  const serialBillNo = saleData.billNo || `${ddmmyy}-${serial}`;
-  const newId = saleData.id || `sale-${(tenantId || '').slice(-4)}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const serialBillNo = saleData.billNo || `SB-${ddmmyy}-${tenantShort}-${String(serial).padStart(3, '0')}`;
+  const newId = saleData.id || `sale-${tenantShort}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   
   // Non-schema columns to strip before sending to Supabase Sale table
   const invalidCols = ['driverSignatureUrl', 'deliveryStatus', 'paymentHistory', 'notes', 'rate', 'price', 'cropName', 'weight'];
@@ -1467,26 +1517,27 @@ export const apiCreateWorker = async (workerData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
   
+  const tenantShort = getTenantShort(tenantId);
   const today = new Date();
   const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
   
   const { data: latestData } = await supabase
     .from('DailyWorker')
     .select('workerCode')
-    .eq('tenantId', tenantId)
-    .like('workerCode', `W-${ddmmyy}-%`)
+    .like('workerCode', `W-${ddmmyy}-${tenantShort}-%`)
     .order('createdAt', { ascending: false })
-    .limit(1);
+    .limit(20);
 
   let serial = 1;
   if (latestData && latestData.length > 0) {
-    const latestStr = latestData[0].workerCode || '';
-    const parts = latestStr.split('-');
-    if (parts.length > 2) {
-      serial = parseInt(parts[2], 10) + 1;
-    }
+    const existingSerials = latestData.map((d: any) => {
+      const parts = (d.workerCode || '').split('-');
+      const num = parseInt(parts[parts.length - 1], 10);
+      return isNaN(num) ? 0 : num;
+    });
+    serial = Math.max(...existingSerials, 0) + 1;
   }
-  const workerCode = `W-${ddmmyy}-${String(serial).padStart(2, '0')}`;
+  const workerCode = `W-${ddmmyy}-${tenantShort}-${String(serial).padStart(2, '0')}`;
   
   try {
     const workerObj = {
@@ -1627,6 +1678,7 @@ export const apiGetPayments = async () => {
 export const apiCreatePayment = async (payData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
+  const tenantShort = getTenantShort(tenantId);
   
   const today = new Date();
   const mmyy = String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
@@ -1634,57 +1686,90 @@ export const apiCreatePayment = async (payData: any) => {
   const { data: latestData } = await supabase
     .from('Payment')
     .select('paymentNo')
-    .eq('tenantId', tenantId)
-    .like('paymentNo', `PV-${mmyy}-%`)
+    .like('paymentNo', `PV-${mmyy}-${tenantShort}-%`)
     .order('createdAt', { ascending: false })
-    .limit(1);
+    .limit(20);
 
   let serial = 1;
   if (latestData && latestData.length > 0) {
-    const latestStr = latestData[0].paymentNo || '';
-    const parts = latestStr.split('-');
-    if (parts.length > 2) {
-      serial = parseInt(parts[2], 10) + 1;
-      if (isNaN(serial)) serial = 1;
-    }
+    const existingSerials = latestData.map((d: any) => {
+      const parts = (d.paymentNo || '').split('-');
+      const num = parseInt(parts[parts.length - 1], 10);
+      return isNaN(num) ? 0 : num;
+    });
+    serial = Math.max(...existingSerials, 0) + 1;
   }
-  const paymentNo = `PV-${mmyy}-${String(serial).padStart(3, '0')}`;
-  const newPaymentId = payData.id || `PAY-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  let paymentNo = payData.paymentNo || `PV-${mmyy}-${tenantShort}-${String(serial).padStart(3, '0')}`;
+  let globalId = payData.id || `pay-${tenantShort}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
   const cleanAmount = typeof payData.amount === 'number'
     ? payData.amount
     : Number(String(payData.amount || '0').replace(/[^0-9.-]+/g, '')) || 0;
 
-  const validPaymentDb: any = {
-    id: newPaymentId,
-    paymentNo: payData.paymentNo || paymentNo,
-    farmerId: payData.farmerId,
-    amount: cleanAmount,
-    paymentMode: payData.paymentMode || payData.method || 'CASH',
-    paymentDate: payData.paymentDate || payData.date || new Date().toISOString().slice(0, 10),
-    notes: payData.notes || '',
-    tenantId,
-    paymentType: payData.paymentType || 'FARMER_PAYOUT',
-  };
-  if (payData.purchaseId) {
-    validPaymentDb.purchaseId = payData.purchaseId;
+  let attempts = 0;
+  let success = false;
+  while (attempts < 5 && !success) {
+    attempts++;
+    const validPaymentDb: any = {
+      id: globalId,
+      paymentNo,
+      farmerId: payData.farmerId,
+      amount: cleanAmount,
+      paymentMode: payData.paymentMode || payData.method || 'CASH',
+      paymentDate: payData.paymentDate || payData.date || new Date().toISOString().slice(0, 10),
+      notes: payData.notes || '',
+      tenantId,
+      paymentType: payData.paymentType || 'FARMER_PAYOUT',
+    };
+    if (payData.purchaseId) {
+      validPaymentDb.purchaseId = payData.purchaseId;
+    }
+    
+    try {
+      await supabase.from('Payment').insert([validPaymentDb]).throwOnError();
+      success = true;
+    } catch (e: any) {
+      if (attempts >= 5) {
+        console.error('Final attempt failed in apiCreatePayment:', e);
+        // fallback to upsert on id
+        try {
+          await supabase.from('Payment').upsert([validPaymentDb], { onConflict: 'id' });
+          success = true;
+        } catch (upsertErr) {
+          console.error('Upsert fallback failed in apiCreatePayment:', upsertErr);
+        }
+        break;
+      }
+      serial++;
+      paymentNo = `PV-${mmyy}-${tenantShort}-${String(serial).padStart(3, '0')}`;
+      globalId = `pay-${tenantShort}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
   }
-  
-  try {
-    await supabase.from('Payment').upsert([validPaymentDb], { onConflict: 'id' }).throwOnError();
-  } catch (e) {
-    console.error('Error in apiCreatePayment:', e);
+
+  // Real-time update farmer balance in DB and Cache
+  if (payData.farmerId) {
+    await apiUpdateFarmerBalance(payData.farmerId, cleanAmount, -cleanAmount, 'PAYMENT', 0);
   }
 
   const current = getLocalCache(`seavaig_payments_cache_${tenantId}`, []);
   const mappedObj = {
-    ...validPaymentDb,
+    id: paymentNo,
+    dbId: globalId,
+    paymentNo,
+    farmerId: payData.farmerId,
     farmerName: payData.farmerName || 'Farmer',
     phone: payData.phone || '',
     village: payData.village || '',
-    method: validPaymentDb.paymentMode,
+    amount: cleanAmount,
+    paymentMode: payData.paymentMode || payData.method || 'CASH',
+    method: payData.paymentMode || payData.method || 'CASH',
     status: 'COMPLETED',
-    date: validPaymentDb.paymentDate,
+    date: payData.paymentDate || payData.date || new Date().toISOString().slice(0, 10),
+    paymentDate: payData.paymentDate || payData.date || new Date().toISOString().slice(0, 10),
+    notes: payData.notes || '',
+    tenantId,
+    paymentType: payData.paymentType || 'FARMER_PAYOUT',
   };
   setLocalCache(`seavaig_payments_cache_${tenantId}`, [mappedObj, ...current]);
   if (typeof window !== 'undefined') {

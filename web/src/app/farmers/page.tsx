@@ -64,6 +64,24 @@ export default function FarmersPage() {
       setIsLiveSynced(true);
     }
     loadData();
+
+    const handleDataChanged = () => {
+      loadData();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('farmers_changed', handleDataChanged);
+      window.addEventListener('purchases_changed', handleDataChanged);
+      window.addEventListener('payments_changed', handleDataChanged);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('farmers_changed', handleDataChanged);
+        window.removeEventListener('purchases_changed', handleDataChanged);
+        window.removeEventListener('payments_changed', handleDataChanged);
+      }
+    };
   }, []);
 
   const handleAddFarmer = (newFarmer: any) => {
