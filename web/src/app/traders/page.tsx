@@ -914,7 +914,7 @@ export default function TradersPage() {
                 </div>
                 <div>
                   <h3 className="font-black text-base">व्यापारी पुरवठा पावती (Trader Supply Receipt)</h3>
-                  <p className="text-xs text-slate-300">{tenant?.companyName || 'Agro Agency'} • {tenant?.ownerPhone || ''}</p>
+                  <p className="text-xs text-slate-300">{tenant?.businessName || 'Agro Agency'} • {tenant?.phone || ''}</p>
                 </div>
               </div>
               <button
@@ -933,9 +933,9 @@ export default function TradersPage() {
               {/* Agency & Trader Details */}
               <div className="border-b border-slate-200 pb-4 flex justify-between items-start">
                 <div>
-                  <h2 className="text-base font-black text-slate-900">{tenant?.companyName || 'Agro Agency'}</h2>
+                  <h2 className="text-base font-black text-slate-900">{tenant?.businessName || 'Agro Agency'}</h2>
                   <p className="text-[11px] text-slate-500 font-semibold">{tenant?.address || 'Market Yard / Procurement Center'}</p>
-                  <p className="text-[11px] text-slate-500 font-semibold">Phone: {tenant?.ownerPhone || '—'} {tenant?.gstin ? `| GSTIN: ${tenant.gstin}` : ''}</p>
+                  <p className="text-[11px] text-slate-500 font-semibold">Phone: {tenant?.phone || '—'} {tenant?.gstin ? `| GSTIN: ${tenant.gstin}` : ''}</p>
                 </div>
                 <div className="text-right">
                   <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-black text-xs border border-blue-200">
