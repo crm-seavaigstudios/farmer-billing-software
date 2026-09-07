@@ -11,7 +11,7 @@ import { AddFarmerAdvanceModal } from '@/components/farmers/AddFarmerAdvanceModa
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetFarmers, apiGetPurchases, apiGetPayments, apiUpdateFarmer, isFarmerMatch, getTenantId } from '@/lib/api';
+import { apiGetFarmers, apiGetPurchases, apiGetPayments, apiGetAllFarmerMaterials, apiUpdateFarmer, isFarmerMatch, getTenantId } from '@/lib/api';
 import {
   Users,
   Search,
@@ -29,14 +29,16 @@ export default function FarmersPage() {
   const { t } = useLanguage();
   const [farmers, setFarmers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [editingFarmer, setEditingFarmer] = useState<any>(null);
   const [isLiveSynced, setIsLiveSynced] = useState(false);
-
-  // Detail Drawer, Material & Advance Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingFarmer, setEditingFarmer] = useState<any | null>(null);
   const [selectedDetailFarmerId, setSelectedDetailFarmerId] = useState<string | null>(null);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+
+  // Material & Advance modal states
+  const [selectedFarmerForMaterial, setSelectedFarmerForMaterial] = useState<{ id: string; name: string } | null>(null);
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
+  const [selectedFarmerForAdvance, setSelectedFarmerForAdvance] = useState<{ id: string; name: string } | null>(null);
   const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
 
   // Category Modal State
@@ -49,18 +51,21 @@ export default function FarmersPage() {
 
   const [purchases, setPurchases] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
   const [timelineFilter, setTimelineFilter] = useState<{ filter: TimelineFilter; start?: string; end?: string }>({ filter: 'ALL_TIME' });
 
   useEffect(() => {
     async function loadData() {
-      const [fRes, purRes, payRes] = await Promise.all([
+      const [fRes, purRes, payRes, matRes] = await Promise.all([
         apiGetFarmers(),
         apiGetPurchases(),
         apiGetPayments(),
+        apiGetAllFarmerMaterials(),
       ]);
       if (fRes && Array.isArray(fRes)) setFarmers(fRes);
       if (purRes && Array.isArray(purRes)) setPurchases(purRes);
       if (payRes && Array.isArray(payRes)) setPayments(payRes);
+      if (matRes && Array.isArray(matRes)) setMaterials(matRes);
       setIsLiveSynced(true);
     }
     loadData();
@@ -73,6 +78,8 @@ export default function FarmersPage() {
       window.addEventListener('farmers_changed', handleDataChanged);
       window.addEventListener('purchases_changed', handleDataChanged);
       window.addEventListener('payments_changed', handleDataChanged);
+      window.addEventListener('materials_changed', handleDataChanged);
+      window.addEventListener('material_issued', handleDataChanged);
     }
 
     return () => {
@@ -80,6 +87,8 @@ export default function FarmersPage() {
         window.removeEventListener('farmers_changed', handleDataChanged);
         window.removeEventListener('purchases_changed', handleDataChanged);
         window.removeEventListener('payments_changed', handleDataChanged);
+        window.removeEventListener('materials_changed', handleDataChanged);
+        window.removeEventListener('material_issued', handleDataChanged);
       }
     };
   }, []);
@@ -277,6 +286,29 @@ export default function FarmersPage() {
                   ) : (
                     filteredFarmers.map((f, idx) => {
                       const farmerPurchases = purchases.filter((p: any) => isFarmerMatch(p, f));
+                      const farmerPayments = payments.filter((p: any) => isFarmerMatch(p, f));
+                      const farmerMaterials = materials.filter((m: any) => isFarmerMatch(m, f));
+
+                      const totalPurchases = farmerPurchases.reduce((sum: number, p: any) => {
+                        const itemWeight = parseFloat(String(p.weight || p.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+                        const itemRate = parseFloat(String(p.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+                        const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
+                        const rawAmt = p.totalAmount ?? p.amount ?? p.netAmount ?? calcVal ?? 0;
+                        const amt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+                        return sum + (amt > 0 ? amt : calcVal);
+                      }, 0);
+
+                      const totalPaid = farmerPayments.reduce((sum: number, pay: any) => {
+                        return sum + (Number(pay.amount) || 0);
+                      }, 0);
+
+                      const totalMaterials = farmerMaterials.reduce((sum: number, m: any) => {
+                        const qty = Number(m.quantity || 1);
+                        const price = Number(m.unitPrice || 0);
+                        const calcTotal = qty * price;
+                        return sum + Number(m.totalAmount || m.totalPrice || m.amount || calcTotal || 0);
+                      }, 0);
+
                       const pendingBills = farmerPurchases.filter((p: any) => {
                         const isPaid = p.paymentStatus === 'PAID';
                         const due = Number(p.dueAmount ?? (Number(p.totalAmount ?? p.amount ?? 0) - Number(p.paidAmount ?? 0)));
@@ -301,8 +333,9 @@ export default function FarmersPage() {
                         return sum + Math.max(0, due);
                       }, 0);
 
-                      const advanceBal = Number(f.advanceBalance || 0);
-                      const netRowDue = pendingBills.length > 0 ? pendingDueTotal : (advanceBal > 0 ? -advanceBal : 0);
+                      // Agricultural Net Balance = Total Purchases (Credits +) - [Total Paid/Advances (Debits -) + Total Materials (Debits -)]
+                      const netBalance = totalPurchases - (totalPaid + totalMaterials);
+                      const netRowDue = (pendingBills.length > 0 && pendingDueTotal > 0) ? pendingDueTotal : netBalance;
 
                       return (
                       <tr 
@@ -325,13 +358,13 @@ export default function FarmersPage() {
                           {(() => {
                             let label = 'ALL_SETTLED (पूर्ण हिशोब)';
                             let color = 'bg-slate-50 text-slate-700 border-slate-100';
-                            if (pendingBills.length > 0 && pendingDueTotal > 0) {
-                              label = `PENDING_DUE (${pendingBills.length} बाकी)`;
+                            if (netRowDue > 0) {
+                              label = `PENDING_DUE (${pendingBills.length > 0 ? `${pendingBills.length} बाकी` : 'बाकी देणे'})`;
                               color = 'bg-rose-50 text-rose-700 border-rose-100';
-                            } else if (advanceBal > 0 || netRowDue < 0) {
+                            } else if (netRowDue < 0) {
                               label = 'ADVANCE (अ‍ॅडव्हान्स जमा)';
                               color = 'bg-indigo-50 text-indigo-700 border-indigo-100';
-                            } else if (farmerPurchases.length > 0 && pendingBills.length === 0) {
+                            } else if ((farmerPurchases.length > 0 || farmerPayments.length > 0 || farmerMaterials.length > 0) && netRowDue === 0) {
                               label = 'FULL_PAID (पूर्ण भरणा)';
                               color = 'bg-emerald-50 text-emerald-700 border-emerald-100';
                             }
@@ -343,7 +376,7 @@ export default function FarmersPage() {
                           })()}
                         </td>
                         <td className="py-3.5 px-4 font-bold text-slate-900">
-                          ₹{pendingPurchasesTotal.toLocaleString('en-IN')}
+                          ₹{pendingBills.length > 0 ? pendingPurchasesTotal.toLocaleString('en-IN') : (farmerPurchases.length > 0 ? totalPurchases.toLocaleString('en-IN') : 0)}
                           {pendingBills.length > 0 && (
                             <span className="text-[10px] text-slate-400 block font-normal">
                               ({pendingBills.length} pending {pendingBills.length === 1 ? 'bill' : 'bills'})
@@ -351,7 +384,7 @@ export default function FarmersPage() {
                           )}
                         </td>
                         <td className="py-3.5 px-4 font-extrabold text-emerald-600">
-                          ₹{pendingPaidTotal.toLocaleString('en-IN')}
+                          ₹{pendingBills.length > 0 ? pendingPaidTotal.toLocaleString('en-IN') : totalPaid.toLocaleString('en-IN')}
                         </td>
                         <td className="py-3.5 px-4 font-extrabold text-amber-600">
                           {netRowDue < 0 

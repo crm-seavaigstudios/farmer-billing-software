@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { X, DollarSign, Calendar, FileText, CheckCircle2 } from 'lucide-react';
-import { apiCreatePayment, apiUpdateFarmerAdvance, getTenantId } from '@/lib/api';
+import { apiCreatePayment, getTenantId } from '@/lib/api';
 
 interface AddFarmerAdvanceModalProps {
   isOpen: boolean;
@@ -38,9 +38,6 @@ export function AddFarmerAdvanceModal({
       paymentType: 'ADVANCE_PAYOUT',
       notes,
     });
-
-    // Update database & tenant-specific local cache
-    await apiUpdateFarmerAdvance(farmerId, amountNum);
 
     setLoading(false);
     onSuccess();

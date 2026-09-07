@@ -154,13 +154,15 @@ export const apiGetFarmers = async () => {
           return sum + amt;
         }, 0);
 
-        const totalPurchase = Math.max(Number(f.totalPurchase || 0), computedPurchases);
-        const totalPaid = Math.max(Number(f.totalPaid || 0), computedPaid);
-        const advanceBal = Math.max(Number(f.advanceBalance || 0), Math.max(0, totalPaid - totalPurchase));
-        const due = (totalPurchase + computedMaterials) - totalPaid;
+        const totalPurchase = computedPurchases;
+        const totalPaid = computedPaid;
+        const totalDebits = computedPaid + computedMaterials;
+        const netBalance = computedPurchases - totalDebits;
+        const advanceBal = Math.max(0, totalDebits - computedPurchases);
+        const due = Math.max(0, netBalance);
 
         // Auto-heal Supabase record asynchronously if out of sync
-        if (computedPurchases > Number(f.totalPurchase || 0) || computedPaid > Number(f.totalPaid || 0)) {
+        if (computedPurchases !== Number(f.totalPurchase || 0) || computedPaid !== Number(f.totalPaid || 0) || advanceBal !== Number(f.advanceBalance || 0)) {
           supabase.from('Farmer').update({
             totalPurchase,
             totalPaid,
@@ -793,10 +795,12 @@ export const apiUpdateFarmerBalance = async (
         return sum + amt;
       }, 0);
 
-      const totalPurchase = Math.max(Number(farmer.totalPurchase || 0), computedPurchases);
-      const totalPaid = Math.max(Number(farmer.totalPaid || 0), computedPaid);
-      const advanceBal = Math.max(Number(farmer.advanceBalance || 0), Math.max(0, totalPaid - totalPurchase));
-      const due = (totalPurchase + computedMaterials) - totalPaid;
+      const totalPurchase = computedPurchases;
+      const totalPaid = computedPaid;
+      const totalDebits = computedPaid + computedMaterials;
+      const netBalance = computedPurchases - totalDebits;
+      const advanceBal = Math.max(0, totalDebits - computedPurchases);
+      const due = Math.max(0, netBalance);
 
       // Update Supabase
       await supabase.from('Farmer').update({
@@ -1215,7 +1219,7 @@ export const apiCreateTraderPurchase = async (tpData: any) => {
   };
 
   try {
-    await supabase.from('TraderPurchase').upsert([dbTpObj], { onConflict: 'id' }).throwOnError();
+    await supabase.from('TraderPurchase').insert([dbTpObj]).throwOnError();
     if (tpData.traderId) {
       await apiUpdateTraderBalance(tpData.traderId, paidAmt, dueAmt);
     }
