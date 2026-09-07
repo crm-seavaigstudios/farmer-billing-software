@@ -360,12 +360,16 @@ export default function FarmersPage() {
                           )}
                         </td>
                         <td className="py-3.5 px-4 font-extrabold text-emerald-600">
-                          ₹{totalPaid.toLocaleString('en-IN')}
-                          {farmerPayments.length > 0 && (
+                          ₹{(totalPaid + totalMaterials).toLocaleString('en-IN')}
+                          {totalMaterials > 0 ? (
+                            <span className="text-[10px] text-slate-500 block font-normal">
+                              (₹{totalPaid.toLocaleString('en-IN')} + ₹{totalMaterials.toLocaleString('en-IN')} mtl)
+                            </span>
+                          ) : farmerPayments.length > 0 ? (
                             <span className="text-[10px] text-slate-400 block font-normal">
                               ({farmerPayments.length} {farmerPayments.length === 1 ? 'payout' : 'payouts'})
                             </span>
-                          )}
+                          ) : null}
                         </td>
                         <td className="py-3.5 px-4 font-extrabold text-amber-600">
                           {netRowDue < 0 

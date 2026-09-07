@@ -42,7 +42,7 @@ export default function FarmerPortalPage() {
   const [splitKPI, setSplitKPI] = useState(false);
   const [loading, setLoading] = useState(true);
   
-  const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'LEDGER'>('LEDGER');
+  const [activeTab, setActiveTab] = useState<'LEDGER' | 'PURCHASES' | 'PAYMENTS' | 'MATERIALS' | 'PROFILE'>('LEDGER');
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState(false);
@@ -452,9 +452,9 @@ export default function FarmerPortalPage() {
       {/* Main Container */}
       <div className="max-w-5xl mx-auto px-4 -mt-2 space-y-4">
 
-        {/* Modular Financial KPI Cards */}
+        {/* Modular Financial KPI Cards - Exact Mirror of Drawer */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-3">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-wrap justify-between items-center gap-2">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-emerald-600" />
               <span className="text-xs font-bold text-slate-700">Timeline Filter:</span>
@@ -488,95 +488,136 @@ export default function FarmerPortalPage() {
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsBreakdownModalOpen(true)}
-                className="text-[11px] px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-600 rounded-lg font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                title="View itemized breakdown of total purchase, payments & advances"
-              >
-                <TrendingUp className="w-3.5 h-3.5" />
-                <span>तपशील पहा (View Totals Breakdown)</span>
-              </button>
-              <button
-                onClick={() => setSplitKPI(!splitKPI)}
-                className="text-[11px] px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 font-bold transition-colors cursor-pointer"
-              >
-                {splitKPI ? 'Combine Deductions' : 'Split Deductions'}
-              </button>
-            </div>
+            <button
+              onClick={() => setIsPrintModalOpen(true)}
+              className="text-[11px] px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print Statement PDF</span>
+            </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Purchases</span>
-              <span className="text-sm font-black text-slate-900 mt-0.5 block">₹{totals.purchase.toLocaleString('en-IN')}</span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+            {/* 1. Total Purchases */}
+            <div className="bg-blue-50/80 border border-blue-100 rounded-2xl p-3 shadow-2xs">
+              <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider block">
+                एकूण खरेदी (Total Purchases)
+              </span>
+              <span className="text-base font-black text-slate-900 mt-1 block">
+                ₹{totals.purchase.toLocaleString('en-IN')}
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
+                {rawPurchases.length} खरेदी आवक
+              </span>
             </div>
 
-            {!splitKPI ? (
-              <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 col-span-1 sm:col-span-2">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Deductions (Paid + Material)</span>
-                <span className="text-sm font-black text-emerald-600 mt-0.5 block">₹{(totals.paid + totals.material).toLocaleString('en-IN')}</span>
-              </div>
-            ) : (
-              <>
-                <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase block">Total Paid Out</span>
-                  <span className="text-sm font-black text-emerald-600 mt-0.5 block">₹{totals.paid.toLocaleString('en-IN')}</span>
-                </div>
-                <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3">
-                  <span className="text-[10px] font-semibold text-blue-600 uppercase block">Materials Given</span>
-                  <span className="text-sm font-black text-blue-700 mt-0.5 block">₹{totals.material.toLocaleString('en-IN')}</span>
-                </div>
-              </>
-            )}
+            {/* 2. Total Paid */}
+            <div className="bg-emerald-50/80 border border-emerald-100 rounded-2xl p-3 shadow-2xs">
+              <span className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider block">
+                एकूण भरणा / जमा (Total Paid Out)
+              </span>
+              <span className="text-base font-black text-emerald-700 mt-1 block">
+                ₹{totals.paid.toLocaleString('en-IN')}
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
+                {rawPayments.length} पेमेंट्स
+              </span>
+            </div>
 
-            <div className="bg-rose-50/50 border border-rose-100 rounded-xl p-3">
-              <span className="text-[10px] font-semibold text-rose-500 uppercase block">Net Outstanding</span>
-              <span className="text-sm font-black text-rose-600 mt-0.5 block">₹{totals.outstanding.toLocaleString('en-IN')}</span>
+            {/* 3. Material Supplies */}
+            <div className="bg-purple-50/80 border border-purple-100 rounded-2xl p-3 shadow-2xs">
+              <span className="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider block">
+                साहित्य पुरवठा (Materials Given)
+              </span>
+              <span className="text-base font-black text-purple-700 mt-1 block">
+                ₹{totals.material.toLocaleString('en-IN')}
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
+                {rawMaterials.length} साहित्य नोंदी
+              </span>
+            </div>
+
+            {/* 4. Net Outstanding / Advance */}
+            <div className={`rounded-2xl p-3 shadow-2xs border ${
+              totals.outstanding > 0 
+                ? 'bg-rose-50/80 border-rose-100' 
+                : totals.outstanding < 0 
+                  ? 'bg-indigo-50/80 border-indigo-100' 
+                  : 'bg-slate-100 border-slate-200'
+            }`}>
+              <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${
+                totals.outstanding > 0 ? 'text-rose-600' : totals.outstanding < 0 ? 'text-indigo-600' : 'text-slate-600'
+              }`}>
+                {totals.outstanding > 0 
+                  ? 'बाकी देणे (Net Due)' 
+                  : totals.outstanding < 0 
+                    ? 'अ‍ॅडव्हान्स शिल्लक (Advance)' 
+                    : 'हिशोब पूर्ण (Fully Settled)'}
+              </span>
+              <span className={`text-base font-black mt-1 block ${
+                totals.outstanding > 0 ? 'text-rose-700' : totals.outstanding < 0 ? 'text-indigo-700' : 'text-slate-800'
+              }`}>
+                {totals.outstanding < 0 
+                  ? `-₹${Math.abs(totals.outstanding).toLocaleString('en-IN')}`
+                  : `₹${totals.outstanding.toLocaleString('en-IN')}`}
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
+                {totals.outstanding > 0 ? 'Pending' : totals.outstanding < 0 ? 'Advance' : 'Nil'}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* 4 Tabs Navigation */}
+        {/* 5 Tabs Navigation - Exact Mirror of Drawer */}
         <div className="flex bg-white rounded-2xl shadow-sm border border-slate-200 p-1.5 overflow-x-auto gap-1">
           <button
-            onClick={() => setActiveTab('PROFILE')}
-            className={`flex-1 min-w-[130px] py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'PROFILE' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-            }`}
-          >
-            <User className="w-3.5 h-3.5" />
-            <span>प्रोफाईल (Profile)</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('PURCHASES')}
-            className={`flex-1 min-w-[130px] py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'PURCHASES' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-            }`}
-          >
-            <ArrowUpCircle className="w-3.5 h-3.5" />
-            <span>खरेदी आवक (Purchases)</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('PAYMENTS')}
-            className={`flex-1 min-w-[130px] py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'PAYMENTS' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-            }`}
-          >
-            <ArrowDownCircle className="w-3.5 h-3.5" />
-            <span>पेमेंट व उचल (Payments)</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('LEDGER')}
-            className={`flex-1 min-w-[130px] py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 min-w-[120px] py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activeTab === 'LEDGER' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>खातेवही (Ledger)</span>
+            <span>📊 खातेवही (Ledger)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('PURCHASES')}
+            className={`flex-1 min-w-[120px] py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === 'PURCHASES' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+            }`}
+          >
+            <ArrowUpCircle className="w-3.5 h-3.5" />
+            <span>🛒 खरेदी ({rawPurchases.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('PAYMENTS')}
+            className={`flex-1 min-w-[120px] py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === 'PAYMENTS' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+            }`}
+          >
+            <ArrowDownCircle className="w-3.5 h-3.5" />
+            <span>💵 भरणा ({rawPayments.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('MATERIALS')}
+            className={`flex-1 min-w-[120px] py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === 'MATERIALS' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+            }`}
+          >
+            <Sprout className="w-3.5 h-3.5" />
+            <span>📦 साहित्य ({rawMaterials.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('PROFILE')}
+            className={`flex-1 min-w-[120px] py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === 'PROFILE' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>👤 प्रोफाईल (Profile)</span>
           </button>
         </div>
 
@@ -795,114 +836,80 @@ export default function FarmerPortalPage() {
             </div>
           )}
 
-          {/* TAB 4: INTERACTIVE LEDGER STATEMENT */}
-          {activeTab === 'LEDGER' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 min-h-[400px]">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
-                <h3 className="font-black text-slate-800 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-emerald-600" />
-                  खातेवही स्टेटमेंट (Running Account Ledger)
-                </h3>
-                <button
-                  onClick={() => setIsPrintModalOpen(true)}
-                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Print PDF</span>
-                </button>
+          {/* TAB: MATERIALS SUPPLIES */}
+          {activeTab === 'MATERIALS' && (
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between items-center bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-purple-100 flex items-center justify-center text-purple-700">
+                    <Sprout className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-slate-800 text-sm">
+                      साहित्य पुरवठा नोंदी (Material Supplies Issued)
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">बियाणे, खते, क्रेट्स व इतर पुरवठा</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">एकूण नावे (Total Debit)</span>
+                  <span className="text-base font-black text-purple-700">₹{totals.material.toLocaleString('en-IN')}</span>
+                </div>
               </div>
 
-              <div className="overflow-x-auto border border-slate-200 rounded-2xl">
-                <table className="w-full text-left text-xs min-w-[600px]">
-                  <thead>
-                    <tr className="bg-slate-50 text-[10px] text-slate-400 font-extrabold uppercase border-b border-slate-100">
-                      <th className="py-2.5 px-2.5 text-center w-10">#</th>
-                      <th className="py-2.5 px-3">Date</th>
-                      <th className="py-2.5 px-3">Description</th>
-                      <th className="py-2.5 px-3 text-right">Debit</th>
-                      <th className="py-2.5 px-3 text-right">Credit</th>
-                      <th className="py-2.5 px-3 text-right">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {ledger.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="py-8 text-center text-slate-400 font-bold">No transactions recorded yet.</td>
-                      </tr>
-                    ) : (
-                      ledger.map((tx, idx) => (
-                        <React.Fragment key={idx}>
-                          <tr 
-                            onClick={() => setExpandedRowId(expandedRowId === tx.refNo ? null : tx.refNo)}
-                            className={`hover:bg-slate-50 font-medium cursor-pointer transition-colors ${expandedRowId === tx.refNo ? 'bg-slate-50' : ''}`}
-                          >
-                            <td className="py-2.5 px-2.5 text-center font-bold text-slate-400 text-[10px]">
-                              {tx.srNo || (ledger.length - idx)}
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-500 text-[11px] whitespace-nowrap">
-                               <div className="flex items-center gap-1">
-                                 {expandedRowId === tx.refNo ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
-                                 {tx.date}
-                               </div>
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-800">
-                              <span className="font-bold">{tx.description}</span>
-                              <span className="text-[10px] text-slate-400 block">{tx.refNo}</span>
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-bold text-rose-600">{tx.debit}</td>
-                            <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{tx.credit}</td>
-                            <td className="py-2.5 px-3 text-right font-black text-slate-900">{tx.balance}</td>
-                          </tr>
-                          {expandedRowId === tx.refNo && (
-                            <tr className="bg-slate-50/50">
-                              <td colSpan={6} className="py-3 px-4 border-b border-slate-100">
-                                <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm text-xs cursor-default">
-                                  {tx.type === 'PURCHASE' && (
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                      <div><span className="text-slate-400 block mb-1">Crop / Grade</span><span className="font-bold">{tx.raw.crop} {tx.raw.grade ? `(${tx.raw.grade})` : ''}</span></div>
-                                      <div><span className="text-slate-400 block mb-1">Weight</span><span className="font-bold">{tx.raw.weight || tx.raw.netWeight} kg</span></div>
-                                      <div><span className="text-slate-400 block mb-1">Rate / kg</span><span className="font-bold">₹{tx.raw.rate}</span></div>
-                                      <div><span className="text-slate-400 block mb-1">Deductions</span><span className="font-bold text-rose-500">{tx.raw.deductions || 'None'}</span></div>
-                                    </div>
-                                  )}
-                                  {tx.type === 'PAYMENT' && (
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                                      <div><span className="text-slate-400 block mb-1">Payment Mode</span><span className="font-bold">{tx.raw.paymentMode || tx.raw.method || tx.raw.paymentMethod || 'Cash'}</span></div>
-                                      <div><span className="text-slate-400 block mb-1">Reference</span><span className="font-bold">{tx.raw.paymentNo || tx.raw.reference || tx.raw.transactionId || 'N/A'}</span></div>
-                                      <div><span className="text-slate-400 block mb-1">Notes</span><span className="font-bold">{tx.raw.notes || 'None'}</span></div>
-                                    </div>
-                                  )}
-                                  {tx.type === 'MATERIAL' && (
-                                    <div className="space-y-2">
-                                      <div className="font-bold text-slate-800 border-b border-slate-100 pb-2 mb-2 flex items-center justify-between">
-                                        <span>साहित्य पुरवठा तपशील (Material Issue Details)</span>
-                                        <span className="text-xs font-black text-rose-600">-₹{Number(tx.raw.totalAmount || tx.raw.totalPrice || (tx.raw.quantity * tx.raw.unitPrice) || 0).toLocaleString('en-IN')}</span>
-                                      </div>
-                                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                        <div><span className="text-slate-400 block mb-1">साहित्य / Item</span><span className="font-bold text-slate-800">{tx.raw.itemName || 'Material Item'}</span></div>
-                                        <div><span className="text-slate-400 block mb-1">प्रमाण / Quantity</span><span className="font-bold text-slate-800">{tx.raw.quantity} {tx.raw.unit || 'Qty'}</span></div>
-                                        <div><span className="text-slate-400 block mb-1">दर / Unit Price</span><span className="font-bold text-slate-800">₹{Number(tx.raw.unitPrice || 0).toLocaleString('en-IN')}</span></div>
-                                        <div><span className="text-slate-400 block mb-1">एकूण नावे / Total Debit</span><span className="font-black text-rose-600">₹{Number(tx.raw.totalAmount || tx.raw.totalPrice || (tx.raw.quantity * tx.raw.unitPrice) || 0).toLocaleString('en-IN')}</span></div>
-                                      </div>
-                                      {tx.raw.notes && (
-                                        <div className="mt-2 text-slate-500 pt-1 border-t border-slate-50">
-                                          <span className="font-semibold text-slate-400">टीप (Notes):</span> {tx.raw.notes}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+              <div className="space-y-2">
+                {rawMaterials.length === 0 ? (
+                  <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-sm">
+                    <Sprout className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                    <p className="font-extrabold text-slate-700">कोणत्याही साहित्याची नोंद आढळली नाही</p>
+                    <p className="text-xs text-slate-400 mt-1">No material supplies issued to this farmer.</p>
+                  </div>
+                ) : (
+                  rawMaterials.map((m: any, idx: number) => {
+                    const qty = Number(m.quantity || 1);
+                    const price = Number(m.unitPrice || 0);
+                    const calcVal = qty * price;
+                    const rawAmt = m.totalAmount ?? m.totalPrice ?? m.amount ?? calcVal ?? 0;
+                    const parsedAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+                    const amt = parsedAmt > 0 ? parsedAmt : calcVal;
+                    const dateVal = m.date || m.createdAt;
+                    const dateFormatted = dateVal 
+                      ? new Date(dateVal).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                      : 'Unknown';
+
+                    return (
+                      <div
+                        key={idx}
+                        className="bg-white border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between shadow-2xs hover:border-purple-200 transition-colors"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-purple-700 text-sm">{m.itemName || 'Material Item'}</span>
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black bg-purple-50 text-purple-700 border border-purple-100">
+                              {qty} {m.unit || 'QTY'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600">
+                            दर: ₹{price.toLocaleString('en-IN')} / {m.unit || 'QTY'}
+                            {m.notes && <span className="text-slate-400 font-normal"> • {m.notes}</span>}
+                          </p>
+                          <p className="text-[10px] text-slate-400">📅 {dateFormatted}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-base font-black text-purple-700 block">
+                            ₹{amt.toLocaleString('en-IN')}
+                          </span>
+                          <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wide">नावे (Debit)</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}
+
+          {/* TAB: LEDGER STATEMENT is defined above */}
 
         </div>
 

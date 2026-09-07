@@ -340,9 +340,10 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                     type="button"
                     onClick={() => {
                       const selectedBill = farmerPurchases.find((p: any) => p.id === formData.purchaseId || p.purchaseNo === formData.purchaseId);
-                      const billDue = selectedBill ? (Number(selectedBill.dueAmount ?? selectedBill.amount) || 0) : 0;
-                      const fillVal = formData.purchaseId && billDue > 0 ? Math.min(farmerFinancials.netDue, billDue) : farmerFinancials.netDue;
-                      setFormData(prev => ({ ...prev, amount: String(fillVal) }));
+                      const billAmt = selectedBill ? Number(selectedBill.totalAmount ?? selectedBill.amount ?? selectedBill.netAmount ?? 0) : 0;
+                      const liveDue = farmerFinancials.netDue > 0 ? Math.min(billAmt > 0 ? billAmt : farmerFinancials.netDue, farmerFinancials.netDue) : 0;
+                      const fillVal = formData.purchaseId && liveDue > 0 ? liveDue : farmerFinancials.netDue;
+                      setFormData(prev => ({ ...prev, amount: String(fillVal > 0 ? fillVal : '') }));
                     }}
                     className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-extrabold rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1"
                   >
@@ -362,15 +363,26 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
             </label>
             <select
               value={formData.purchaseId}
-              onChange={(e) => setFormData({ ...formData, purchaseId: e.target.value })}
+              onChange={(e) => {
+                const pId = e.target.value;
+                const selectedBill = farmerPurchases.find((p: any) => p.id === pId || p.purchaseNo === pId);
+                const billAmt = selectedBill ? Number(selectedBill.totalAmount ?? selectedBill.amount ?? selectedBill.netAmount ?? 0) : 0;
+                const liveDue = farmerFinancials.netDue > 0 ? Math.min(billAmt > 0 ? billAmt : farmerFinancials.netDue, farmerFinancials.netDue) : 0;
+                setFormData(prev => ({ 
+                  ...prev, 
+                  purchaseId: pId,
+                  amount: pId && liveDue > 0 ? String(liveDue) : prev.amount
+                }));
+              }}
               className="w-full px-3 py-2 bg-slate-50 border border-blue-200 rounded-xl text-xs font-semibold text-slate-800"
             >
               <option value="">-- Pay against General Account Balance --</option>
               {farmerPurchases.map((p: any) => {
-                const dueNum = typeof p.dueAmount === 'number' ? p.dueAmount : parseFloat(String(p.dueAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+                const billAmt = Number(p.totalAmount ?? p.amount ?? p.netAmount ?? 0);
+                const liveBillDue = farmerFinancials.netDue > 0 ? Math.min(billAmt > 0 ? billAmt : farmerFinancials.netDue, farmerFinancials.netDue) : 0;
                 return (
                   <option key={p.id} value={p.id}>
-                    Bill #{p.purchaseNo || p.id} ({p.crop || 'Crop'} - ₹{dueNum.toLocaleString('en-IN')} Due)
+                    Bill #{p.purchaseNo || p.id} ({p.crop || 'Crop'} - ₹{liveBillDue.toLocaleString('en-IN')} Due)
                   </option>
                 );
               })}
