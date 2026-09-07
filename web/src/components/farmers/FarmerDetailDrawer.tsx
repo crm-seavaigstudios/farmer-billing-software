@@ -45,7 +45,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
   onOpenAdvanceModal,
 }) => {
   const { language } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'ADVANCES' | 'LEDGER'>('LEDGER');
+  const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'ADVANCES' | 'MATERIALS' | 'LEDGER'>('LEDGER');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
@@ -58,135 +58,153 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     }
     if (farmerId) {
       (async () => {
-        const farmers = await apiGetFarmers();
-        const found = Array.isArray(farmers) ? farmers.find((f: any) => f.id === farmerId || f.farmerIdCode === farmerId) : null;
-        if (found) {
-          setCurrentFarmer(found);
-        } else {
-          const detail = await apiGetFarmerDetails(farmerId);
-          if (detail) setCurrentFarmer(detail);
+        try {
+          const farmers = await apiGetFarmers();
+          const found = Array.isArray(farmers) ? farmers.find((f: any) => f.id === farmerId || f.farmerIdCode === farmerId) : null;
+          if (found) {
+            setCurrentFarmer(found);
+          } else {
+            const detail = await apiGetFarmerDetails(farmerId);
+            if (detail) setCurrentFarmer(detail);
+          }
+        } catch (e) {
+          console.error('Error fetching farmer:', e);
         }
       })();
     }
-  }, [initialFarmer, farmerId, refreshKey]);
+  }, [farmerId, initialFarmer, refreshKey]);
 
   const farmer = currentFarmer;
 
   const [purchases, setPurchases] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
-  const [realTransactions, setRealTransactions] = useState<any[]>([]);
   const [totals, setTotals] = useState({ purchase: 0, paid: 0, material: 0, outstanding: 0 });
-  const [splitKPI, setSplitKPI] = useState(false);
+  const [realTransactions, setRealTransactions] = useState<any[]>([]);
 
   useEffect(() => {
     if (!farmer) return;
     const fetchLedger = async () => {
-      const p = await apiGetPurchases();
-      const pay = await apiGetPayments();
-      const mat = await apiGetFarmerMaterials(farmer.id);
+      try {
+        const p = await apiGetPurchases();
+        const pay = await apiGetPayments();
+        const mat = await apiGetFarmerMaterials(farmer.id);
 
-      const fp = Array.isArray(p) ? p.filter((x: any) => isFarmerMatch(x, farmer)) : [];
-      const fpay = Array.isArray(pay) ? pay.filter((x: any) => isFarmerMatch(x, farmer)) : [];
-      const fmat = Array.isArray(mat) ? mat : [];
-      
-      setPurchases(fp);
-      setPayments(fpay);
-      setMaterials(fmat);
-      
-      let allItems: any[] = [];
-      let totalPurchase = 0;
-      let totalPaid = 0;
-      let totalMaterial = 0;
+        const fp = Array.isArray(p) ? p.filter((x: any) => isFarmerMatch(x, farmer)) : [];
+        const fpay = Array.isArray(pay) ? pay.filter((x: any) => isFarmerMatch(x, farmer)) : [];
+        const fmat = Array.isArray(mat) ? mat : [];
 
-      fp.forEach((x: any) => {
-        const itemWeight = parseFloat(String(x.weight || x.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
-        const itemRate = parseFloat(String(x.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
-        const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
-        const rawAmt = x.amount ?? x.totalAmount ?? x.netAmount ?? calcVal ?? 0;
-        const parsed = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
-        const amt = parsed > 0 ? parsed : calcVal;
+        setPurchases(fp);
+        setPayments(fpay);
+        setMaterials(fmat);
 
-        totalPurchase += amt;
-        allItems.push({
-           dateStr: x.date || x.purchaseDate,
-           timestamp: new Date(x.date || x.purchaseDate || 0).getTime() || 0,
-           refNo: x.purchaseNo || x.id,
-           type: 'PURCHASE',
-           description: x.crop || 'Strawberry (A Grade)',
-           weightOrQty: `${x.weight} @ ${x.rate}`,
-           debitVal: 0,
-           creditVal: amt,
-           notes: x.notes,
-           raw: { ...x, amount: amt, totalAmount: amt }
+        const allItems: any[] = [];
+        let totalPurchase = 0;
+        let totalPaid = 0;
+        let totalMaterial = 0;
+
+        fp.forEach((x: any) => {
+          const itemWeight = parseFloat(String(x.weight || x.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+          const itemRate = parseFloat(String(x.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+          const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
+          const rawAmt = x.amount ?? x.totalAmount ?? x.netAmount ?? calcVal ?? 0;
+          const parsed = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+          const amt = parsed > 0 ? parsed : calcVal;
+
+          totalPurchase += amt;
+          allItems.push({
+             dateStr: x.date || x.purchaseDate,
+             timestamp: new Date(x.date || x.purchaseDate || 0).getTime() || 0,
+             refNo: x.purchaseNo || x.id,
+             type: 'PURCHASE',
+             description: x.crop || 'Strawberry (A Grade)',
+             weightOrQty: `${x.weight} @ ${x.rate}`,
+             debitVal: 0,
+             creditVal: amt,
+             notes: x.notes,
+             raw: { ...x, amount: amt, totalAmount: amt }
+          });
         });
-      });
-      
-      fpay.forEach((x: any) => {
-        const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
-        totalPaid += amt;
-        allItems.push({
-           dateStr: x.date,
-           timestamp: new Date(x.date || x.paymentDate || 0).getTime() || 0,
-           refNo: x.paymentNo || x.id,
-           type: 'PAYMENT',
-           description: `Payment (${x.method || x.paymentMode || 'Cash'})`,
-           weightOrQty: '-',
-           debitVal: amt,
-           creditVal: 0,
-           notes: x.notes || x.method,
-           raw: x
+        
+        fpay.forEach((x: any) => {
+          const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          totalPaid += amt;
+          allItems.push({
+             dateStr: x.date,
+             timestamp: new Date(x.date || x.paymentDate || 0).getTime() || 0,
+             refNo: x.paymentNo || x.id,
+             type: 'PAYMENT',
+             description: `Payment (${x.method || x.paymentMode || 'Cash'})`,
+             weightOrQty: '-',
+             debitVal: amt,
+             creditVal: 0,
+             notes: x.notes || x.method,
+             raw: x
+          });
         });
-      });
 
-      fmat.forEach((x: any) => {
-        const amt = typeof x.totalAmount === 'number' ? x.totalAmount : parseFloat(String(x.totalAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
-        totalMaterial += amt;
-        allItems.push({
-           dateStr: x.createdAt ? new Date(x.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Unknown',
-           timestamp: new Date(x.createdAt || 0).getTime(),
-           refNo: x.id,
-           type: 'MATERIAL',
-           description: `Material Issue: ${x.itemName}`,
-           weightOrQty: `${x.quantity} ${x.unit}`,
-           debitVal: amt,
-           creditVal: 0,
-           notes: x.notes,
-           raw: x
+        fmat.forEach((x: any) => {
+          const qty = Number(x.quantity || 1);
+          const price = Number(x.unitPrice || 0);
+          const calcVal = qty * price;
+          const rawAmt = x.totalAmount ?? x.totalPrice ?? x.amount ?? calcVal ?? 0;
+          const parsedAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+          const amt = parsedAmt > 0 ? parsedAmt : calcVal;
+          totalMaterial += amt;
+
+          const dateVal = x.date || x.createdAt;
+          const dateFormatted = dateVal 
+            ? new Date(dateVal).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+            : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+          allItems.push({
+             dateStr: dateFormatted,
+             timestamp: dateVal ? new Date(dateVal).getTime() : Date.now(),
+             refNo: x.id,
+             type: 'MATERIAL',
+             description: `Material Issue: ${x.itemName}`,
+             weightOrQty: `${qty} ${x.unit || 'QTY'} @ ₹${price}`,
+             debitVal: amt,
+             creditVal: 0,
+             notes: x.notes,
+             raw: { ...x, quantity: qty, unitPrice: price, totalAmount: amt, totalPrice: amt }
+          });
         });
-      });
-      
-      const typeOrder: any = { 'MATERIAL': 1, 'PURCHASE': 2, 'PAYMENT': 3 };
-      allItems.sort((a, b) => {
-        if (a.timestamp !== b.timestamp) {
-          return a.timestamp - b.timestamp;
-        }
-        return typeOrder[a.type] - typeOrder[b.type];
-      });
-      
-      let bal = 0;
-      const computed = allItems.map(item => {
-         bal = bal + item.creditVal - item.debitVal;
-         return {
-            date: item.dateStr,
-            refNo: item.refNo,
-            type: item.type,
-            description: item.description,
-            weightOrQty: item.weightOrQty,
-            debit: item.debitVal > 0 ? `-₹${item.debitVal.toLocaleString('en-IN')}` : '—',
-            credit: item.creditVal > 0 ? `₹${item.creditVal.toLocaleString('en-IN')}` : '—',
-            balance: `₹${bal.toLocaleString('en-IN')}`,
-            raw: item.raw
-         };
-      });
-      
-      setTotals({ 
-        purchase: totalPurchase, 
-        paid: totalPaid, 
-        material: totalMaterial,
-        outstanding: bal 
-      });
-      setRealTransactions(computed.reverse()); // Newest first for view
+        
+        const typeOrder: any = { 'MATERIAL': 1, 'PURCHASE': 2, 'PAYMENT': 3 };
+        allItems.sort((a, b) => {
+          if (a.timestamp !== b.timestamp) {
+            return a.timestamp - b.timestamp;
+          }
+          return typeOrder[a.type] - typeOrder[b.type];
+        });
+        
+        let bal = 0;
+        const computed = allItems.map(item => {
+           bal = bal + item.creditVal - item.debitVal;
+           return {
+              date: item.dateStr,
+              refNo: item.refNo,
+              type: item.type,
+              description: item.description,
+              weightOrQty: item.weightOrQty,
+              debit: item.debitVal > 0 ? `-₹${item.debitVal.toLocaleString('en-IN')}` : '—',
+              credit: item.creditVal > 0 ? `₹${item.creditVal.toLocaleString('en-IN')}` : '—',
+              balance: `₹${bal.toLocaleString('en-IN')}`,
+              raw: item.raw
+           };
+        });
+        
+        setTotals({ 
+          purchase: totalPurchase, 
+          paid: totalPaid, 
+          material: totalMaterial,
+          outstanding: bal 
+        });
+        setRealTransactions(computed.reverse()); // Newest first for view
+      } catch (err) {
+        console.error('Error in fetchLedger:', err);
+      }
     };
 
     fetchLedger();
@@ -377,6 +395,20 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
             }`}
           >
             ⚡ {language === 'mr' ? 'अ‍ॅडव्हान्स जमा' : 'Advances'}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('MATERIALS')}
+            className={`py-3 px-3 text-xs font-extrabold border-b-2 whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'MATERIALS'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <span>📦 {language === 'mr' ? 'साहित्य पुरवठा' : 'Materials'}</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-50 text-purple-700 font-bold border border-purple-100">
+              {materials.length}
+            </span>
           </button>
 
           <button
@@ -623,6 +655,77 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
             </div>
           )}
 
+          {activeTab === 'MATERIALS' && (
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
+                  {language === 'mr' ? 'साहित्य पुरवठा नोंदी' : 'Material Supplies Issued'} ({materials.length})
+                </h3>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-500">
+                    {language === 'mr' ? 'एकूण नावे' : 'Total'}: <span className="font-black text-purple-700">₹{totals.material.toLocaleString('en-IN')}</span>
+                  </span>
+                  {onOpenMaterialModal && (
+                    <button
+                      onClick={() => onOpenMaterialModal(farmer.id)}
+                      className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
+                    >
+                      + {language === 'mr' ? 'नवीन साहित्य' : 'Issue Material'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {materials.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 font-bold bg-slate-50 rounded-2xl border border-slate-100">
+                    No material issues recorded for this farmer.
+                  </div>
+                ) : (
+                  materials.map((m: any, idx: number) => {
+                    const qty = Number(m.quantity || 1);
+                    const price = Number(m.unitPrice || 0);
+                    const calcVal = qty * price;
+                    const rawAmt = m.totalAmount ?? m.totalPrice ?? m.amount ?? calcVal ?? 0;
+                    const parsedAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+                    const amt = parsedAmt > 0 ? parsedAmt : calcVal;
+                    const dateVal = m.date || m.createdAt;
+                    const dateFormatted = dateVal 
+                      ? new Date(dateVal).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                      : 'Unknown';
+
+                    return (
+                      <div
+                        key={idx}
+                        className="bg-white border border-slate-200/80 rounded-xl p-3 flex items-center justify-between shadow-2xs hover:border-purple-200 transition-colors"
+                      >
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-purple-700">{m.itemName || 'Material Item'}</span>
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black bg-purple-50 text-purple-700 border border-purple-100">
+                              {qty} {m.unit || 'QTY'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600">
+                            दर: ₹{price.toLocaleString('en-IN')} / {m.unit || 'QTY'}
+                            {m.notes && <span className="text-slate-400 font-normal"> • {m.notes}</span>}
+                          </p>
+                          <p className="text-[10px] text-slate-400">{dateFormatted}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-black text-purple-700 block">
+                            ₹{amt.toLocaleString('en-IN')}
+                          </span>
+                          <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wide">नावे (Debit)</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
           {activeTab === 'LEDGER' && (
             <div className="space-y-3 text-xs">
               <div className="flex justify-between items-center">
@@ -695,20 +798,19 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                                 )}
                                 {tx.type === 'MATERIAL' && (
                                   <div className="space-y-2">
-                                    <div className="font-bold text-slate-800 border-b border-slate-100 pb-2 mb-2">Itemized Materials</div>
-                                    {tx.raw.materials && tx.raw.materials.length > 0 ? (
-                                      <ul className="space-y-1">
-                                        {tx.raw.materials.map((m: any, mIdx: number) => (
-                                          <li key={mIdx} className="flex justify-between">
-                                            <span className="text-slate-600">{m.itemName}</span>
-                                            <span className="font-bold">{m.quantity} {m.unit}</span>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    ) : (
-                                      <div className="flex justify-between items-center">
-                                         <span className="text-slate-600">{tx.raw.itemName || 'Material Item'}</span>
-                                         <span className="font-bold">{tx.raw.quantity} {tx.raw.unit}</span>
+                                    <div className="font-bold text-slate-800 border-b border-slate-100 pb-2 mb-2 flex items-center justify-between">
+                                      <span>साहित्य पुरवठा तपशील (Material Issue Details)</span>
+                                      <span className="text-xs font-black text-rose-600">-₹{Number(tx.raw.totalAmount || tx.raw.totalPrice || (tx.raw.quantity * tx.raw.unitPrice) || 0).toLocaleString('en-IN')}</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                      <div><span className="text-slate-400 block mb-1">साहित्य / Item</span><span className="font-bold text-slate-800">{tx.raw.itemName || 'Material Item'}</span></div>
+                                      <div><span className="text-slate-400 block mb-1">प्रमाण / Quantity</span><span className="font-bold text-slate-800">{tx.raw.quantity} {tx.raw.unit || 'QTY'}</span></div>
+                                      <div><span className="text-slate-400 block mb-1">दर / Unit Price</span><span className="font-bold text-slate-800">₹{Number(tx.raw.unitPrice || 0).toLocaleString('en-IN')}</span></div>
+                                      <div><span className="text-slate-400 block mb-1">एकूण नावे / Total Debit</span><span className="font-black text-rose-600">₹{Number(tx.raw.totalAmount || tx.raw.totalPrice || (tx.raw.quantity * tx.raw.unitPrice) || 0).toLocaleString('en-IN')}</span></div>
+                                    </div>
+                                    {tx.raw.notes && (
+                                      <div className="mt-2 text-slate-500 pt-1 border-t border-slate-50">
+                                        <span className="font-semibold text-slate-400">टीप (Notes):</span> {tx.raw.notes}
                                       </div>
                                     )}
                                   </div>
@@ -720,7 +822,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                       </React.Fragment>
                     ))}
                   </tbody>
-                </table>
+                  </table>
                 </div>
               </div>
             </div>

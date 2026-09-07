@@ -251,26 +251,41 @@ export const apiGetFarmerMaterials = async (farmerId: string) => {
   const tenantId = getTenantId();
   const cacheKey = tenantId ? `seavaig_material_supplies_cache_${tenantId}` : 'seavaig_material_supplies_cache';
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('FarmerMaterialPurchase')
       .select('*')
-      .eq('farmerId', farmerId)
       .order('createdAt', { ascending: false });
+    if (tenantId) {
+      query = query.eq('tenantId', tenantId);
+    }
+    const { data, error } = await query;
 
     if (!error && data && data.length > 0) {
-      const mapped = data.map((m: any) => ({
-        id: m.id,
-        farmerId: m.farmerId,
-        itemName: m.itemName,
-        quantity: m.quantity || 1,
-        unit: m.unit || 'QTY',
-        unitPrice: m.unitPrice || 0,
-        totalPrice: m.totalAmount || 0,
-        date: m.date ? new Date(m.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        isDeductedFromBill: m.isDeductedFromBill,
-      }));
+      const mapped = data.map((m: any) => {
+        const qty = Number(m.quantity || 1);
+        const price = Number(m.unitPrice || 0);
+        const calcTotal = qty * price;
+        const finalAmt = Number(m.totalAmount || m.totalPrice || m.amount || calcTotal || 0);
+        const dateStr = m.date ? (typeof m.date === 'string' ? m.date.split('T')[0] : new Date(m.date).toISOString().split('T')[0]) : (m.createdAt ? new Date(m.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+
+        return {
+          id: m.id,
+          farmerId: m.farmerId,
+          itemName: m.itemName,
+          quantity: qty,
+          unit: m.unit || 'QTY',
+          unitPrice: price,
+          totalPrice: finalAmt,
+          totalAmount: finalAmt,
+          amount: finalAmt,
+          date: dateStr,
+          createdAt: m.createdAt || m.date || new Date().toISOString(),
+          isDeductedFromBill: m.isDeductedFromBill,
+          notes: m.notes || '',
+        };
+      });
       setLocalCache(cacheKey, mapped);
-      return mapped;
+      return mapped.filter((m: any) => m.farmerId === farmerId);
     }
   } catch {}
   return getLocalCache(cacheKey, []).filter((m: any) => m.farmerId === farmerId);
@@ -286,17 +301,29 @@ export const apiGetAllFarmerMaterials = async () => {
       .order('createdAt', { ascending: false });
 
     if (!error && data && data.length > 0) {
-      const mapped = data.map((m: any) => ({
-        id: m.id,
-        farmerId: m.farmerId,
-        itemName: m.itemName,
-        quantity: m.quantity || 1,
-        unit: m.unit || 'QTY',
-        unitPrice: m.unitPrice || 0,
-        totalPrice: m.totalAmount || 0,
-        date: m.date ? new Date(m.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        isDeductedFromBill: m.isDeductedFromBill,
-      }));
+      const mapped = data.map((m: any) => {
+        const qty = Number(m.quantity || 1);
+        const price = Number(m.unitPrice || 0);
+        const calcTotal = qty * price;
+        const finalAmt = Number(m.totalAmount || m.totalPrice || m.amount || calcTotal || 0);
+        const dateStr = m.date ? (typeof m.date === 'string' ? m.date.split('T')[0] : new Date(m.date).toISOString().split('T')[0]) : (m.createdAt ? new Date(m.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+
+        return {
+          id: m.id,
+          farmerId: m.farmerId,
+          itemName: m.itemName,
+          quantity: qty,
+          unit: m.unit || 'QTY',
+          unitPrice: price,
+          totalPrice: finalAmt,
+          totalAmount: finalAmt,
+          amount: finalAmt,
+          date: dateStr,
+          createdAt: m.createdAt || m.date || new Date().toISOString(),
+          isDeductedFromBill: m.isDeductedFromBill,
+          notes: m.notes || '',
+        };
+      });
       setLocalCache(cacheKey, mapped);
       return mapped;
     }
@@ -347,16 +374,25 @@ export const apiCreateFarmerMaterialPurchase = async (matData: any) => {
     } catch {}
   }
 
+  const qty = Number(matData.quantity || 1);
+  const price = Number(matData.unitPrice || 0);
+  const finalPrice = Number(matData.totalPrice || matData.totalAmount || (qty * price));
+  const todayStr = new Date().toISOString().split('T')[0];
+
   const matObj = {
     id: newId,
     farmerId: validFarmerId,
     itemName: matData.itemName,
-    quantity: Number(matData.quantity || 1),
+    quantity: qty,
     unit: matData.unit || 'QTY',
-    unitPrice: Number(matData.unitPrice || 0),
-    totalPrice: Number(matData.quantity || 1) * Number(matData.unitPrice || 0),
-    date: new Date().toISOString().split('T')[0],
+    unitPrice: price,
+    totalPrice: finalPrice,
+    totalAmount: finalPrice,
+    amount: finalPrice,
+    date: todayStr,
+    createdAt: new Date().toISOString(),
     isDeductedFromBill: false,
+    notes: matData.notes || '',
   };
 
   try {
@@ -367,17 +403,24 @@ export const apiCreateFarmerMaterialPurchase = async (matData: any) => {
       quantity: matObj.quantity,
       unit: matObj.unit,
       unitPrice: matObj.unitPrice,
-      totalAmount: matObj.totalPrice,
+      totalAmount: matObj.totalAmount,
       date: new Date(),
+      createdAt: new Date().toISOString(),
       isDeductedFromBill: false,
     }]);
 
-    await apiUpdateFarmerBalance(matObj.farmerId, 0, matObj.totalPrice, 'MATERIAL');
-  } catch {}
+    await apiUpdateFarmerBalance(matObj.farmerId, 0, matObj.totalAmount, 'MATERIAL');
+  } catch (err) {
+    console.error('Error inserting material purchase:', err);
+  }
 
   const current = getLocalCache(cacheKey, []);
   const updated = [matObj, ...current];
   setLocalCache(cacheKey, updated);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('farmer_materials_changed'));
+    window.dispatchEvent(new Event('farmers_changed'));
+  }
   return updated[0];
 };
 
@@ -919,29 +962,42 @@ export const apiCreateTrader = async (trData: any) => {
   
   const current = getLocalCache(`seavaig_traders_cache_${tenantId}`, []);
   const newId = trData.id || `trd-${(tenantId || 'ten').slice(-4)}-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+  const traderCode = trData.traderCode || `TRD-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+  const name = trData.name || 'Trader';
+  const businessName = trData.businessName || name;
+  const nowIso = new Date().toISOString();
+
   const traderObj = {
     id: newId,
     tenantId,
-    traderCode: trData.traderCode || `TRD-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-    name: trData.name,
-    businessName: trData.businessName || trData.name,
-    phone: trData.phone,
-    gstNumber: trData.gstNumber || '',
-    address: trData.address || '',
-    totalPurchased: 0,
-    totalPaid: 0,
-    dueAmount: 0,
-    updatedAt: new Date().toISOString(),
+    traderCode,
+    name,
+    businessName,
+    phone: trData.phone || '',
+    email: trData.email || null,
+    gstNumber: trData.gstNumber || null,
+    address: trData.address || null,
+    totalPurchased: Number(trData.totalPurchased || 0),
+    totalPaid: Number(trData.totalPaid || 0),
+    dueAmount: Number(trData.dueAmount || 0),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   const dbTraderObj = {
     id: newId,
     tenantId,
-    name: trData.name,
-    phone: trData.phone,
-    totalPurchased: 0,
-    totalPaid: 0,
-    updatedAt: new Date().toISOString(),
+    traderCode,
+    name,
+    businessName,
+    phone: traderObj.phone,
+    email: traderObj.email,
+    gstNumber: traderObj.gstNumber,
+    address: traderObj.address,
+    totalPurchased: traderObj.totalPurchased,
+    totalPaid: traderObj.totalPaid,
+    dueAmount: traderObj.dueAmount,
+    updatedAt: nowIso,
   };
 
   try {
@@ -952,6 +1008,9 @@ export const apiCreateTrader = async (trData: any) => {
 
   const updated = [traderObj, ...current.filter((t: any) => t.id !== newId)];
   setLocalCache(`seavaig_traders_cache_${tenantId}`, updated);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('traders_changed'));
+  }
   return traderObj;
 };
 
@@ -1001,17 +1060,19 @@ export const apiCreateTraderPurchase = async (tpData: any) => {
   const tenantSuffix = (tenantId || '').slice(-4);
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
   const globalId = tpData.id || `tp-${tenantSuffix}-${Date.now()}-${randomSuffix}`;
-  const totalAmt = Number(tpData.quantity || 1) * Number(tpData.rate || 0);
+  const totalAmt = Number(tpData.totalAmount || (Number(tpData.quantity || 1) * Number(tpData.rate || 0)));
   const paidAmt = Number(tpData.paidAmount || 0);
   const dueAmt = Math.max(0, totalAmt - paidAmt);
   const paymentStatus = dueAmt === 0 ? 'PAID' : (paidAmt > 0 ? 'PARTIAL' : 'UNPAID');
+  const billNo = tpData.billNo || `TBILL${ddmmyy}-${randomSuffix}`;
+  const nowIso = new Date().toISOString();
 
   const tpObj = {
     id: globalId,
     tenantId,
-    billNo: `TBILL${ddmmyy}-${randomSuffix}`,
+    billNo,
     traderId: tpData.traderId,
-    itemName: tpData.itemName,
+    itemName: tpData.itemName || 'Material Batch',
     category: tpData.category || 'PACKAGING',
     quantity: Number(tpData.quantity || 1),
     unit: tpData.unit || 'QTY',
@@ -1020,23 +1081,36 @@ export const apiCreateTraderPurchase = async (tpData: any) => {
     paidAmount: paidAmt,
     dueAmount: dueAmt,
     paymentStatus,
-    vehicleNo: tpData.vehicleNo || '',
-    notes: tpData.notes || '',
-    date: new Date().toISOString().slice(0, 10),
+    vehicleNo: tpData.vehicleNo || null,
+    notes: tpData.notes || null,
+    date: tpData.date || nowIso.slice(0, 10),
+    createdAt: nowIso,
   };
 
   const dbTpObj = {
     id: globalId,
     tenantId,
-    rate: Number(tpData.rate || 0),
-    dueAmount: dueAmt,
-    paymentStatus,
+    billNo: tpObj.billNo,
+    traderId: tpObj.traderId,
+    itemName: tpObj.itemName,
+    category: tpObj.category,
+    quantity: tpObj.quantity,
+    unit: tpObj.unit,
+    rate: tpObj.rate,
+    totalAmount: tpObj.totalAmount,
+    paidAmount: tpObj.paidAmount,
+    dueAmount: tpObj.dueAmount,
+    paymentStatus: tpObj.paymentStatus,
+    vehicleNo: tpObj.vehicleNo,
+    notes: tpObj.notes,
     date: tpObj.date,
   };
 
   try {
     await supabase.from('TraderPurchase').upsert([dbTpObj], { onConflict: 'id' }).throwOnError();
-    await apiUpdateTraderBalance(tpData.traderId, paidAmt, dueAmt);
+    if (tpData.traderId) {
+      await apiUpdateTraderBalance(tpData.traderId, paidAmt, dueAmt);
+    }
   } catch (e) {
     console.error('Error creating trader purchase in Supabase:', e);
   }
@@ -1052,6 +1126,9 @@ export const apiCreateTraderPurchase = async (tpData: any) => {
     businessName: trader?.businessName || 'Business',
   };
   setLocalCache(`seavaig_trader_purchases_cache_${tenantId}`, [cacheObj, ...current]);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('trader_purchases_changed'));
+  }
   return cacheObj;
 };
 
