@@ -306,7 +306,7 @@ export default function FarmersPage() {
                       }, 0);
 
                       const advanceBal = Number(f.advanceBalance || 0);
-                      const netRowDue = pendingBills.length > 0 ? pendingDueTotal : (advanceBal > 0 ? -advanceBal : (Number(f.outstandingAmount || 0)));
+                      const netRowDue = pendingBills.length > 0 ? pendingDueTotal : (advanceBal > 0 ? -advanceBal : 0);
 
                       return (
                       <tr 
