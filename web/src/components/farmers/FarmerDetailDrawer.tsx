@@ -443,58 +443,69 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
         <div className="p-6 flex-1 overflow-y-auto space-y-4">
           {activeTab === 'PROFILE' && (
             <div className="space-y-4 text-xs">
+              {/* 1. Personal & Contact Details */}
               <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
                 <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <User className="w-4 h-4 text-blue-600" /> Personal & Contact Information
+                  <User className="w-4 h-4 text-blue-600" /> {language === 'mr' ? 'वैयक्तिक व संपर्क माहिती' : 'Personal & Contact Details'}
                 </h3>
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <div>
-                    <span className="text-slate-400 font-semibold block">Full Name:</span>
-                    <span className="font-extrabold text-slate-900">{farmer.name}</span>
+                    <span className="text-slate-400 font-semibold block">{language === 'mr' ? 'पूर्ण नाव:' : 'Full Name:'}</span>
+                    <span className="font-extrabold text-slate-900">{farmer.name || '—'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 font-semibold block">Mobile Phone:</span>
-                    <span className="font-bold text-slate-800">{farmer.phone}</span>
+                    <span className="text-slate-400 font-semibold block">{language === 'mr' ? 'मोबाईल नंबर:' : 'Mobile Phone:'}</span>
+                    <span className="font-bold text-slate-800">{farmer.phone || '—'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 font-semibold block">Village & District:</span>
-                    <span className="font-bold text-slate-800">{farmer.village}, Nashik</span>
+                    <span className="text-slate-400 font-semibold block">{language === 'mr' ? 'गाव:' : 'Village:'}</span>
+                    <span className="font-bold text-slate-800">{farmer.village || '—'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 font-semibold block">Aadhaar Identification:</span>
-                    <span className="font-bold text-slate-800">{farmer.aadhaar || 'XXXX-XXXX-8910'}</span>
+                    <span className="text-slate-400 font-semibold block">{language === 'mr' ? 'तालुका:' : 'Subdistrict / Taluka:'}</span>
+                    <span className="font-bold text-slate-800">{farmer.taluka || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-semibold block">{language === 'mr' ? 'जिल्हा:' : 'District:'}</span>
+                    <span className="font-bold text-slate-800">{farmer.district || '—'}</span>
                   </div>
                 </div>
               </div>
 
+              {/* 2. Bank Disbursal Account Details */}
               <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
                 <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <CreditCard className="w-4 h-4 text-emerald-600" /> Bank Disbursal Account Details
+                  <CreditCard className="w-4 h-4 text-emerald-600" /> {language === 'mr' ? 'बँक खाते तपशील' : 'Bank Account Details'}
                 </h3>
                 <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div>
-                    <span className="text-slate-400 font-semibold block">Bank Account Number:</span>
-                    <span className="font-extrabold text-slate-900">{farmer.bankAccount || '990011223344'}</span>
+                  <div className="col-span-2 sm:col-span-1">
+                    <span className="text-slate-400 font-semibold block">{language === 'mr' ? 'बँकेचे नाव:' : 'Bank Name:'}</span>
+                    <span className="font-extrabold text-slate-900">{farmer.bankName || '—'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 font-semibold block">Bank IFSC Code:</span>
-                    <span className="font-bold text-slate-800">{farmer.ifsc || 'MAHB0001234'}</span>
+                    <span className="text-slate-400 font-semibold block">{language === 'mr' ? 'खाते क्रमांक:' : 'Bank Account Number:'}</span>
+                    <span className="font-bold text-slate-800">{farmer.accountNumber || farmer.bankAccount || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-semibold block">{language === 'mr' ? 'IFSC कोड:' : 'Bank IFSC Code:'}</span>
+                    <span className="font-bold text-slate-800">{farmer.ifscCode || farmer.ifsc || '—'}</span>
                   </div>
                 </div>
               </div>
 
+              {/* 3. Cultivated Crops & Farm Acreage */}
               <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
                 <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sprout className="w-4 h-4 text-purple-600" /> Cultivated Crops & Farm Acreage
+                  <Sprout className="w-4 h-4 text-purple-600" /> {language === 'mr' ? 'पिके व शेती क्षेत्र' : 'Cultivated Crops & Farm Acreage'}
                 </h3>
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <div>
-                    <span className="text-slate-400 font-semibold block">Primary Crop Variety:</span>
-                    <span className="font-bold text-slate-900">Sweet Charlie Strawberry (A Grade)</span>
+                    <span className="text-slate-400 font-semibold block">{language === 'mr' ? 'पिकाची जात / व्हरायटी:' : 'Primary Crop Variety:'}</span>
+                    <span className="font-extrabold text-slate-900">{farmer.cropVariety || '—'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 font-semibold block">Farm Land Acreage:</span>
-                    <span className="font-bold text-slate-800">4.5 Acres (Nandgaon Cluster)</span>
+                    <span className="text-slate-400 font-semibold block">{language === 'mr' ? 'शेतीचे क्षेत्रफळ (Acreage):' : 'Farm Land Acreage:'}</span>
+                    <span className="font-bold text-slate-800">{farmer.acreage || '—'}</span>
                   </div>
                 </div>
               </div>

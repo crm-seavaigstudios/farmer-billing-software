@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, UserPlus, Phone, MapPin, Building, CreditCard, ShieldCheck, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, UserPlus, Phone, MapPin, Building, CreditCard, ShieldCheck, Sparkles, CheckCircle2, Sprout } from 'lucide-react';
 import { apiCreateFarmer, apiCheckFarmerNetwork, apiImportFarmerFromNetwork } from '@/lib/api';
 
 interface AddFarmerModalProps {
@@ -25,6 +25,8 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
     bankName: '',
     accountNumber: '',
     ifscCode: '',
+    cropVariety: '',
+    acreage: '',
   });
 
   const [networkMatch, setNetworkMatch] = useState<any>(null);
@@ -59,6 +61,8 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
       bankName: networkMatch.bankName || '',
       accountNumber: networkMatch.accountNumber || '',
       ifscCode: networkMatch.ifscCode || '',
+      cropVariety: networkMatch.cropVariety || '',
+      acreage: networkMatch.acreage || '',
     };
 
     const saved = await apiImportFarmerFromNetwork(importedData);
@@ -84,6 +88,8 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
       bankName: formData.bankName,
       accountNumber: formData.accountNumber,
       ifscCode: formData.ifscCode,
+      cropVariety: formData.cropVariety,
+      acreage: formData.acreage,
     };
 
     const savedFarmer = await apiCreateFarmer(newFarmer);
@@ -99,7 +105,8 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
     onAddFarmer(resultFarmer);
     setFormData({
       name: '', phone: '', village: '', taluka: '', district: '',
-      grade: 'A_GRADE', status: 'ACTIVE', aadhaar: '', bankName: '', accountNumber: '', ifscCode: ''
+      grade: 'A_GRADE', status: 'ACTIVE', aadhaar: '', bankName: '', accountNumber: '', ifscCode: '',
+      cropVariety: '', acreage: ''
     });
     onClose();
   };
@@ -296,6 +303,40 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
                   placeholder="MAHB0001234"
                   value={formData.ifscCode}
                   onChange={(e) => setFormData({ ...formData, ifscCode: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="h-px bg-slate-100" />
+
+          {/* Section 4: Cultivated Crops & Farm Acreage */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <Sprout className="w-3.5 h-3.5 text-purple-600" />
+              Cultivated Crops & Farm Land Acreage (पिके व शेती क्षेत्र)
+            </h3>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Crop Variety (पिकाची जात)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sweet Charlie / Winter Dawn"
+                  value={formData.cropVariety}
+                  onChange={(e) => setFormData({ ...formData, cropVariety: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Farm Land Acreage (शेतीचे क्षेत्रफळ)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 2.5 Acres / 20 Guntha"
+                  value={formData.acreage}
+                  onChange={(e) => setFormData({ ...formData, acreage: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>

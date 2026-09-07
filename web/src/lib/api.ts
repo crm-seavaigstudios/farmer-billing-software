@@ -169,6 +169,18 @@ export const apiGetFarmers = async () => {
           }).eq('id', f.id).then(() => {}, () => {});
         }
 
+        let cropVariety = '';
+        let acreage = '';
+        if (f.avatarUrl && typeof f.avatarUrl === 'string' && f.avatarUrl.startsWith('{')) {
+          try {
+            const meta = JSON.parse(f.avatarUrl);
+            cropVariety = meta.cropVariety || '';
+            acreage = meta.acreage || '';
+          } catch {}
+        }
+        if (f.cropVariety) cropVariety = f.cropVariety;
+        if (f.acreage) acreage = f.acreage;
+
         return {
           id: f.id,
           farmerIdCode: f.farmerIdCode || `FAR-${f.id.toString().slice(0, 5)}`,
@@ -176,6 +188,11 @@ export const apiGetFarmers = async () => {
           phone: f.phone,
           village: f.village || '',
           taluka: f.taluka || '',
+          district: f.district || '',
+          aadhaarNumber: f.aadhaarNumber || '',
+          aadhaar: f.aadhaarNumber || '',
+          cropVariety,
+          acreage,
           grade: f.grade || 'A_GRADE',
           totalPurchase,
           totalPaid,
@@ -198,7 +215,22 @@ export const apiGetFarmers = async () => {
 export const apiGetFarmerDetails = async (id: string) => {
   try {
     const { data } = await supabase.from('Farmer').select('*').eq('id', id).single();
-    if (data) return data;
+    if (data) {
+      let cropVariety = '';
+      let acreage = '';
+      if (data.avatarUrl && typeof data.avatarUrl === 'string' && data.avatarUrl.startsWith('{')) {
+        try {
+          const meta = JSON.parse(data.avatarUrl);
+          cropVariety = meta.cropVariety || '';
+          acreage = meta.acreage || '';
+        } catch {}
+      }
+      return {
+        ...data,
+        cropVariety: data.cropVariety || cropVariety,
+        acreage: data.acreage || acreage,
+      };
+    }
   } catch {}
   const list = getLocalCache(`seavaig_farmers_cache_${getTenantId()}`, []);
   return list.find((f: any) => f.id === id || f.farmerIdCode === id) || null;
@@ -213,6 +245,11 @@ export const apiCreateFarmer = async (farmerData: any) => {
   const autoCode = `FAR-${String(nextNum).padStart(2, '0')}`;
   const newId = `far-${Date.now()}`;
   
+  const cropMeta = JSON.stringify({
+    cropVariety: farmerData.cropVariety || '',
+    acreage: farmerData.acreage || '',
+  });
+
   const farmerObj = {
     id: newId,
     tenantId: tenantId,
@@ -222,6 +259,9 @@ export const apiCreateFarmer = async (farmerData: any) => {
     password: farmerData.phone, // Default password for APK
     village: farmerData.village || '',
     taluka: farmerData.taluka || '',
+    district: farmerData.district || '',
+    aadhaarNumber: farmerData.aadhaarNumber || farmerData.aadhaar || null,
+    avatarUrl: cropMeta,
     grade: farmerData.grade || 'A_GRADE',
     totalPurchase: 0,
     totalPaid: 0,
@@ -240,11 +280,66 @@ export const apiCreateFarmer = async (farmerData: any) => {
   // Update isolated cache
   const mappedObj = {
     ...farmerObj,
-    farmerIdCode: farmerObj.farmerIdCode
+    farmerIdCode: farmerObj.farmerIdCode,
+    cropVariety: farmerData.cropVariety || '',
+    acreage: farmerData.acreage || '',
+    aadhaar: farmerObj.aadhaarNumber || '',
   };
   const updated = [mappedObj, ...current];
   setLocalCache(`seavaig_farmers_cache_${tenantId}`, updated);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('farmers_changed'));
+  }
   return mappedObj;
+};
+
+export const apiUpdateFarmer = async (farmerData: any) => {
+  const tenantId = getTenantId();
+  if (!tenantId) return farmerData;
+
+  const cropMeta = JSON.stringify({
+    cropVariety: farmerData.cropVariety || '',
+    acreage: farmerData.acreage || '',
+  });
+
+  const updatePayload: any = {
+    name: farmerData.name,
+    phone: farmerData.phone,
+    village: farmerData.village || '',
+    taluka: farmerData.taluka || '',
+    district: farmerData.district || '',
+    grade: farmerData.grade || 'A_GRADE',
+    status: farmerData.status || 'ACTIVE',
+    bankName: farmerData.bankName || '',
+    accountNumber: farmerData.accountNumber || '',
+    ifscCode: farmerData.ifscCode || '',
+    aadhaarNumber: farmerData.aadhaarNumber || farmerData.aadhaar || null,
+    avatarUrl: cropMeta,
+  };
+
+  try {
+    await supabase.from('Farmer').update(updatePayload).eq('id', farmerData.id).throwOnError();
+  } catch (e) {
+    console.error('Error in apiUpdateFarmer Supabase update:', e);
+  }
+
+  const current = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
+  const updated = current.map((f: any) => {
+    if (f.id === farmerData.id) {
+      return {
+        ...f,
+        ...farmerData,
+        cropVariety: farmerData.cropVariety || '',
+        acreage: farmerData.acreage || '',
+      };
+    }
+    return f;
+  });
+  setLocalCache(`seavaig_farmers_cache_${tenantId}`, updated);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('farmers_changed'));
+  }
+  return farmerData;
 };
 
 export const apiGetFarmerMaterials = async (farmerId: string) => {

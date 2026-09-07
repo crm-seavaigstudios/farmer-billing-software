@@ -11,7 +11,7 @@ import { AddFarmerAdvanceModal } from '@/components/farmers/AddFarmerAdvanceModa
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetFarmers, apiGetPurchases, apiGetPayments, isFarmerMatch, getTenantId } from '@/lib/api';
+import { apiGetFarmers, apiGetPurchases, apiGetPayments, apiUpdateFarmer, isFarmerMatch, getTenantId } from '@/lib/api';
 import {
   Users,
   Search,
@@ -94,14 +94,10 @@ export default function FarmersPage() {
     }
   };
 
-  const handleSaveFarmer = (updatedFarmer: any) => {
+  const handleSaveFarmer = async (updatedFarmer: any) => {
     const updated = farmers.map((f) => (f.id === updatedFarmer.id ? updatedFarmer : f));
     setFarmers(updated);
-    const tenantId = getTenantId();
-    const cacheKey = tenantId ? `seavaig_farmers_cache_${tenantId}` : 'seavaig_farmers_cache';
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(cacheKey, JSON.stringify(updated));
-    }
+    await apiUpdateFarmer(updatedFarmer);
   };
 
   // Dynamic Financial Metrics Calculation

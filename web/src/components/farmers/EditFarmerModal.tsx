@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { X, UserCheck, Phone, MapPin, CreditCard, ShieldCheck } from 'lucide-react';
+import { X, UserCheck, Phone, MapPin, CreditCard, ShieldCheck, Sprout } from 'lucide-react';
 
 interface EditFarmerModalProps {
   isOpen: boolean;
@@ -22,12 +22,14 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
     village: '',
     taluka: '',
     district: '',
-    grade: 'A Grade Supplier',
+    grade: 'A_GRADE',
     status: 'ACTIVE',
     aadhaar: '',
     bankName: '',
     accountNumber: '',
     ifscCode: '',
+    cropVariety: '',
+    acreage: '',
   });
 
   useEffect(() => {
@@ -35,15 +37,17 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
       setFormData({
         name: farmer.name || '',
         phone: farmer.phone || '',
-        village: farmer.village || 'Nandgaon',
-        taluka: farmer.taluka || 'Sinnar',
-        district: farmer.district || 'Nashik',
-        grade: farmer.grade || 'A Grade Supplier',
+        village: farmer.village || '',
+        taluka: farmer.taluka || '',
+        district: farmer.district || '',
+        grade: farmer.grade || 'A_GRADE',
         status: farmer.status || 'ACTIVE',
-        aadhaar: farmer.aadhaar || '',
-        bankName: farmer.bankName || 'Bank of Maharashtra',
+        aadhaar: farmer.aadhaar || farmer.aadhaarNumber || '',
+        bankName: farmer.bankName || '',
         accountNumber: farmer.accountNumber || farmer.bankAccount || '',
-        ifscCode: farmer.ifscCode || farmer.ifsc || 'MAHB0001234',
+        ifscCode: farmer.ifscCode || farmer.ifsc || '',
+        cropVariety: farmer.cropVariety || '',
+        acreage: farmer.acreage || '',
       });
     }
   }, [farmer]);
@@ -62,9 +66,12 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
       grade: formData.grade,
       status: formData.status,
       aadhaar: formData.aadhaar,
+      aadhaarNumber: formData.aadhaar,
       bankName: formData.bankName,
       accountNumber: formData.accountNumber,
       ifscCode: formData.ifscCode,
+      cropVariety: formData.cropVariety,
+      acreage: formData.acreage,
     };
     onSaveFarmer(updatedFarmer);
     onClose();
@@ -80,8 +87,8 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
               <UserCheck className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-extrabold text-slate-900">Edit Farmer Profile & Bank Details</h2>
-              <p className="text-xs font-semibold text-slate-400">Update personal, contact & bank account information</p>
+              <h2 className="text-base font-extrabold text-slate-900">Edit Farmer Profile & Farm Details</h2>
+              <p className="text-xs font-semibold text-slate-400">Update personal, bank account & crop information</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100">
@@ -174,6 +181,7 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
                 <label className="text-xs font-bold text-slate-700 block mb-1">Village</label>
                 <input
                   type="text"
+                  placeholder="e.g. Nandgaon"
                   value={formData.village}
                   onChange={(e) => setFormData({ ...formData, village: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
@@ -184,6 +192,7 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
                 <label className="text-xs font-bold text-slate-700 block mb-1">Taluka</label>
                 <input
                   type="text"
+                  placeholder="e.g. Sinnar"
                   value={formData.taluka}
                   onChange={(e) => setFormData({ ...formData, taluka: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
@@ -194,6 +203,7 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
                 <label className="text-xs font-bold text-slate-700 block mb-1">District</label>
                 <input
                   type="text"
+                  placeholder="e.g. Nashik"
                   value={formData.district}
                   onChange={(e) => setFormData({ ...formData, district: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
@@ -216,6 +226,7 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
                 <label className="text-xs font-bold text-slate-700 block mb-1">Bank Name</label>
                 <input
                   type="text"
+                  placeholder="e.g. Bank of Maharashtra"
                   value={formData.bankName}
                   onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
@@ -226,6 +237,7 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
                 <label className="text-xs font-bold text-slate-700 block mb-1">Account Number</label>
                 <input
                   type="text"
+                  placeholder="e.g. 60294567890"
                   value={formData.accountNumber}
                   onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
@@ -238,6 +250,7 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
                 <label className="text-xs font-bold text-slate-700 block mb-1">IFSC Code</label>
                 <input
                   type="text"
+                  placeholder="e.g. MAHB0001234"
                   value={formData.ifscCode}
                   onChange={(e) => setFormData({ ...formData, ifscCode: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
@@ -248,8 +261,43 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
                 <label className="text-xs font-bold text-slate-700 block mb-1">Aadhaar Number</label>
                 <input
                   type="text"
+                  placeholder="e.g. 1234 5678 9012"
                   value={formData.aadhaar}
                   onChange={(e) => setFormData({ ...formData, aadhaar: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="h-px bg-slate-100" />
+
+          {/* Section 4: Cultivated Crops & Farm Acreage */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <Sprout className="w-3.5 h-3.5 text-purple-600" />
+              Cultivated Crops & Farm Land Acreage (पिके व शेती क्षेत्र)
+            </h3>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Crop Variety (पिकाची जात)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sweet Charlie / Winter Dawn"
+                  value={formData.cropVariety}
+                  onChange={(e) => setFormData({ ...formData, cropVariety: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Farm Land Acreage (शेतीचे क्षेत्रफळ)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 2.5 Acres / 20 Guntha"
+                  value={formData.acreage}
+                  onChange={(e) => setFormData({ ...formData, acreage: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
                 />
               </div>
