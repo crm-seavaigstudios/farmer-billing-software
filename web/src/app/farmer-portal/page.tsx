@@ -38,8 +38,9 @@ export default function FarmerPortalPage() {
   const [rawMaterials, setRawMaterials] = useState<any[]>([]);
   
   const [ledger, setLedger] = useState<any[]>([]);
-  const [totals, setTotals] = useState({ purchase: 0, paid: 0, material: 0, outstanding: 0 });
-  const [splitKPI, setSplitKPI] = useState(false);
+  const [lifetimeTotals, setLifetimeTotals] = useState({ purchase: 0, paid: 0, material: 0, outstanding: 0 });
+  const [activeTotals, setActiveTotals] = useState({ purchase: 0, paid: 0, material: 0, outstanding: 0 });
+  const [kpiViewMode, setKpiViewMode] = useState<'ACTIVE' | 'LIFETIME'>('ACTIVE');
   const [loading, setLoading] = useState(true);
   
   const [activeTab, setActiveTab] = useState<'LEDGER' | 'PURCHASES' | 'PAYMENTS' | 'MATERIALS' | 'PROFILE'>('LEDGER');
@@ -53,6 +54,25 @@ export default function FarmerPortalPage() {
 
   useEffect(() => {
     loadFarmerProfile();
+
+    const handleUpdate = () => {
+      loadFarmerProfile();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('purchases_changed', handleUpdate);
+      window.addEventListener('payments_changed', handleUpdate);
+      window.addEventListener('farmer_materials_changed', handleUpdate);
+      window.addEventListener('farmers_changed', handleUpdate);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('purchases_changed', handleUpdate);
+        window.removeEventListener('payments_changed', handleUpdate);
+        window.removeEventListener('farmer_materials_changed', handleUpdate);
+        window.removeEventListener('farmers_changed', handleUpdate);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -253,7 +273,7 @@ export default function FarmerPortalPage() {
       allItems.push({
          dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
          timestamp: d.getTime(),
-         refNo: x.billNo || x.id,
+         refNo: x.billNo || x.purchaseNo || x.id,
          type: 'PURCHASE',
          description: x.crop || 'Crop Purchase',
          weightOrQty: `${x.weight || x.netWeight || '-'} @ ${x.rate || '-'}`,
@@ -307,7 +327,7 @@ export default function FarmerPortalPage() {
       });
     });
     
-    // Chronological order from oldest to newest: Purchases (Credit) first on same date, then debits
+    // Strict Chronological Bank Statement Order: Oldest opening entry first, then sequential debits & credits
     const naturalOrder: any = { 'PURCHASE': 1, 'MATERIAL': 2, 'PAYMENT': 3 };
     allItems.sort((a, b) => {
       if (a.timestamp !== b.timestamp) {
@@ -333,14 +353,33 @@ export default function FarmerPortalPage() {
        };
     });
     
-    setTotals({ 
+    const netOutstanding = totalPurchase - (totalPaid + totalMaterial);
+
+    setLifetimeTotals({ 
       purchase: totalPurchase, 
       paid: totalPaid, 
       material: totalMaterial,
-      outstanding: bal
+      outstanding: netOutstanding
     });
-    // Reverse so latest transaction is on top
-    setLedger(computed.reverse());
+
+    if (netOutstanding <= 0) {
+      setActiveTotals({
+        purchase: 0,
+        paid: 0,
+        material: 0,
+        outstanding: netOutstanding
+      });
+    } else {
+      setActiveTotals({
+        purchase: totalPurchase,
+        paid: totalPaid,
+        material: totalMaterial,
+        outstanding: netOutstanding
+      });
+    }
+
+    // Chronological bank statement passbook order (1 to N)
+    setLedger(computed);
   };
 
   const handleLogout = () => {
@@ -359,6 +398,8 @@ export default function FarmerPortalPage() {
     );
   }
 
+  const totals = kpiViewMode === 'ACTIVE' ? activeTotals : lifetimeTotals;
+
   const statementData: StatementData = {
     farmerId: farmer.id || 'FAR-10001',
     farmerName: farmer.name || 'Farmer',
@@ -367,10 +408,10 @@ export default function FarmerPortalPage() {
     aadhaar: farmer.aadhaar || 'XXXX-XXXX-8910',
     bankAccount: farmer.bankAccount || '990011223344',
     ifsc: farmer.ifsc || 'MAHB0001234',
-    totalPurchases: `₹${totals.purchase.toLocaleString('en-IN')}`,
-    totalPaid: `₹${totals.paid.toLocaleString('en-IN')}`,
-    advanceGiven: `₹${totals.material.toLocaleString('en-IN')}`,
-    netBalance: `₹${totals.outstanding.toLocaleString('en-IN')}`,
+    totalPurchases: `₹${lifetimeTotals.purchase.toLocaleString('en-IN')}`,
+    totalPaid: `₹${lifetimeTotals.paid.toLocaleString('en-IN')}`,
+    advanceGiven: `₹${lifetimeTotals.material.toLocaleString('en-IN')}`,
+    netBalance: `₹${lifetimeTotals.outstanding.toLocaleString('en-IN')}`,
     transactions: ledger,
   };
 
@@ -452,12 +493,43 @@ export default function FarmerPortalPage() {
       {/* Main Container */}
       <div className="max-w-5xl mx-auto px-4 -mt-2 space-y-4">
 
-        {/* Modular Financial KPI Cards - Exact Mirror of Drawer */}
+        {/* Modular Financial KPI Cards & Active/Lifetime Toggle */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-3">
-          <div className="flex flex-wrap justify-between items-center gap-2">
+          {/* Mode Switcher Banner */}
+          <div className="flex flex-wrap justify-between items-center gap-2 bg-slate-50 px-3.5 py-2.5 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full animate-pulse ${kpiViewMode === 'ACTIVE' ? 'bg-amber-500' : 'bg-emerald-600'}`}></span>
+              <span className="text-xs font-extrabold text-slate-800">
+                {kpiViewMode === 'ACTIVE' 
+                  ? '📊 चालू बाकी हिशोब (Active Bills Summary)' 
+                  : '📜 एकूण जीवनकाळ हिशोब (Lifetime Ledger History)'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setKpiViewMode(kpiViewMode === 'ACTIVE' ? 'LIFETIME' : 'ACTIVE')}
+                className="px-3 py-1 bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 font-extrabold text-xs rounded-lg border border-slate-200 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+              >
+                {kpiViewMode === 'ACTIVE' ? (
+                  <>
+                    <span>📜</span>
+                    <span>एकूण जीवनकाळ हिशोब पहा (View Lifetime)</span>
+                  </>
+                ) : (
+                  <>
+                    <span>⏳</span>
+                    <span>चालू बाकी हिशोब पहा (View Active Bills)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap justify-between items-center gap-2 pt-1">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-emerald-600" />
-              <span className="text-xs font-bold text-slate-700">Timeline Filter:</span>
+              <span className="text-xs font-bold text-slate-700">तारीख फिल्टर (Timeline Filter):</span>
               <select 
                 value={dateFilter}
                 onChange={(e: any) => setDateFilter(e.target.value)}
@@ -487,40 +559,40 @@ export default function FarmerPortalPage() {
                 </div>
               )}
             </div>
-
-            <button
-              onClick={() => setIsPrintModalOpen(true)}
-              className="text-[11px] px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print Statement PDF</span>
-            </button>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
             {/* 1. Total Purchases */}
             <div className="bg-blue-50/80 border border-blue-100 rounded-2xl p-3 shadow-2xs">
               <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider block">
-                एकूण खरेदी (Total Purchases)
+                {kpiViewMode === 'ACTIVE' ? 'चालू खरेदी (Active Bills)' : 'एकूण खरेदी (Lifetime Purchases)'}
               </span>
               <span className="text-base font-black text-slate-900 mt-1 block">
                 ₹{totals.purchase.toLocaleString('en-IN')}
               </span>
               <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
-                {rawPurchases.length} खरेदी आवक
+                {kpiViewMode === 'ACTIVE' && lifetimeTotals.outstanding <= 0 ? (
+                  <span className="text-emerald-600 font-bold">0 Pending Bills</span>
+                ) : (
+                  `${rawPurchases.length} खरेदी आवक`
+                )}
               </span>
             </div>
 
             {/* 2. Total Paid */}
             <div className="bg-emerald-50/80 border border-emerald-100 rounded-2xl p-3 shadow-2xs">
               <span className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider block">
-                एकूण भरणा / जमा (Total Paid Out)
+                {kpiViewMode === 'ACTIVE' ? 'भरणा / जमा (Paid Amount)' : 'एकूण भरणा (Total Paid Out)'}
               </span>
               <span className="text-base font-black text-emerald-700 mt-1 block">
                 ₹{totals.paid.toLocaleString('en-IN')}
               </span>
               <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
-                {rawPayments.length} पेमेंट्स
+                {kpiViewMode === 'ACTIVE' && lifetimeTotals.outstanding <= 0 ? (
+                  <span className="text-emerald-600 font-bold">Settled</span>
+                ) : (
+                  `${rawPayments.length} पेमेंट्स`
+                )}
               </span>
             </div>
 
@@ -539,30 +611,30 @@ export default function FarmerPortalPage() {
 
             {/* 4. Net Outstanding / Advance */}
             <div className={`rounded-2xl p-3 shadow-2xs border ${
-              totals.outstanding > 0 
+              lifetimeTotals.outstanding > 0 
                 ? 'bg-rose-50/80 border-rose-100' 
-                : totals.outstanding < 0 
+                : lifetimeTotals.outstanding < 0 
                   ? 'bg-indigo-50/80 border-indigo-100' 
                   : 'bg-slate-100 border-slate-200'
             }`}>
               <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${
-                totals.outstanding > 0 ? 'text-rose-600' : totals.outstanding < 0 ? 'text-indigo-600' : 'text-slate-600'
+                lifetimeTotals.outstanding > 0 ? 'text-rose-600' : lifetimeTotals.outstanding < 0 ? 'text-indigo-600' : 'text-slate-600'
               }`}>
-                {totals.outstanding > 0 
+                {lifetimeTotals.outstanding > 0 
                   ? 'बाकी देणे (Net Due)' 
-                  : totals.outstanding < 0 
+                  : lifetimeTotals.outstanding < 0 
                     ? 'अ‍ॅडव्हान्स शिल्लक (Advance)' 
                     : 'हिशोब पूर्ण (Fully Settled)'}
               </span>
               <span className={`text-base font-black mt-1 block ${
-                totals.outstanding > 0 ? 'text-rose-700' : totals.outstanding < 0 ? 'text-indigo-700' : 'text-slate-800'
+                lifetimeTotals.outstanding > 0 ? 'text-rose-700' : lifetimeTotals.outstanding < 0 ? 'text-indigo-700' : 'text-slate-800'
               }`}>
-                {totals.outstanding < 0 
-                  ? `-₹${Math.abs(totals.outstanding).toLocaleString('en-IN')}`
-                  : `₹${totals.outstanding.toLocaleString('en-IN')}`}
+                {lifetimeTotals.outstanding < 0 
+                  ? `-₹${Math.abs(lifetimeTotals.outstanding).toLocaleString('en-IN')}`
+                  : `₹${lifetimeTotals.outstanding.toLocaleString('en-IN')}`}
               </span>
               <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
-                {totals.outstanding > 0 ? 'Pending' : totals.outstanding < 0 ? 'Advance' : 'Nil'}
+                {lifetimeTotals.outstanding > 0 ? 'Pending' : lifetimeTotals.outstanding < 0 ? 'Advance' : 'Nil (पूर्ण)'}
               </span>
             </div>
           </div>
@@ -624,6 +696,137 @@ export default function FarmerPortalPage() {
         {/* Tab Contents */}
         <div className="space-y-4">
           
+          {/* TAB 0: PASSBOOK LEDGER - EXACT MIRROR OF SIDE DRAWER */}
+          {activeTab === 'LEDGER' && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 space-y-4 text-xs">
+              <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-emerald-600" />
+                    खातेवही पासबुक (Running Debit/Credit Statement)
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
+                    सर्व खरेदी (जमा +) व भरणा/साहित्य (नावे -) नोंदींचे बँक पासबुक विवरण
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setIsPrintModalOpen(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Statement PDF</span>
+                </button>
+              </div>
+
+              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+                <div className="overflow-x-auto pb-1">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 text-[10px] text-slate-400 font-extrabold uppercase border-b border-slate-200/80">
+                        <th className="py-2.5 px-2.5 text-center w-10">#</th>
+                        <th className="py-2.5 px-3">Date (दिनांक)</th>
+                        <th className="py-2.5 px-3">Description (तपशील)</th>
+                        <th className="py-2.5 px-3 text-right">Debit / नावे (-)</th>
+                        <th className="py-2.5 px-3 text-right">Credit / जमा (+)</th>
+                        <th className="py-2.5 px-3 text-right">Balance / शिल्लक</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {ledger.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-12 text-center text-slate-400 font-bold">
+                            कोणत्याही नोंदी आढळल्या नाहीत (No ledger entries recorded yet).
+                          </td>
+                        </tr>
+                      ) : (
+                        ledger.map((tx, idx) => (
+                          <React.Fragment key={idx}>
+                            <tr 
+                              onClick={() => setExpandedRowId(expandedRowId === tx.refNo ? null : tx.refNo)}
+                              className={`hover:bg-slate-50 font-medium cursor-pointer transition-colors ${expandedRowId === tx.refNo ? 'bg-slate-50' : ''}`}
+                            >
+                              <td className="py-2.5 px-2.5 text-center font-bold text-slate-400 text-[10px]">
+                                {tx.srNo || (idx + 1)}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-600 text-[11px]">
+                                <div className="flex items-center gap-1">
+                                  {expandedRowId === tx.refNo ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
+                                  <span className="font-semibold">{tx.date}</span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-800">
+                                <span className="font-extrabold">{tx.description}</span>
+                                <span className="text-[10px] text-slate-400 block">{tx.refNo}</span>
+                              </td>
+                              <td className={`py-2.5 px-3 text-right font-bold ${tx.debit !== '—' ? 'text-rose-600' : 'text-slate-900'}`}>{tx.debit}</td>
+                              <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{tx.credit}</td>
+                              <td className="py-2.5 px-3 text-right font-black text-slate-900">{tx.balance}</td>
+                            </tr>
+                            {expandedRowId === tx.refNo && (
+                              <tr className="bg-slate-50/70">
+                                <td colSpan={6} className="py-3 px-4 border-b border-slate-100">
+                                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm text-xs cursor-default">
+                                    {tx.type === 'PURCHASE' && (
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                                          <span className="font-extrabold text-slate-800">खरेदी आवक पावती तपशील (Procurement Bill Breakdown)</span>
+                                          <span className="font-black text-emerald-600 text-sm">₹{Number(tx.raw.totalAmount || tx.raw.netAmount || tx.raw.amount || 0).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1">
+                                          <div><span className="text-slate-400 block mb-1">पिक / जात</span><span className="font-bold text-slate-800">{tx.raw.crop || 'Strawberry'}</span></div>
+                                          <div><span className="text-slate-400 block mb-1">वजन / परिमाण</span><span className="font-bold text-slate-800">{tx.raw.weight || tx.raw.totalWeight || '-'}</span></div>
+                                          <div><span className="text-slate-400 block mb-1">दर प्रति किलो</span><span className="font-bold text-slate-800">{tx.raw.rate || '-'}</span></div>
+                                          <div><span className="text-slate-400 block mb-1">एकूण बिल</span><span className="font-black text-emerald-600">₹{Number(tx.raw.totalAmount || tx.raw.netAmount || tx.raw.amount || 0).toLocaleString('en-IN')}</span></div>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {tx.type === 'PAYMENT' && (
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                                          <span className="font-extrabold text-slate-800">भरणा तपशील (Payment Disbursal Breakdown)</span>
+                                          <span className="font-black text-rose-600 text-sm">-₹{Number(tx.raw.amount || 0).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-1">
+                                          <div><span className="text-slate-400 block mb-1">पेमेंट प्रकार (Mode)</span><span className="font-bold text-slate-800">{tx.raw.paymentMode || tx.raw.method || 'CASH'}</span></div>
+                                          <div><span className="text-slate-400 block mb-1">संदर्भ क्र. (Ref)</span><span className="font-bold text-slate-800">{tx.raw.paymentNo || tx.raw.reference || tx.raw.id}</span></div>
+                                          <div><span className="text-slate-400 block mb-1">टीप (Notes)</span><span className="font-bold text-slate-800">{tx.raw.notes || 'None'}</span></div>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {tx.type === 'MATERIAL' && (
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                                          <span className="font-extrabold text-slate-800">साहित्य पुरवठा तपशील (Material Issue Breakdown)</span>
+                                          <span className="font-black text-rose-600 text-sm">-₹{Number(tx.raw.totalAmount || tx.raw.totalPrice || (tx.raw.quantity * tx.raw.unitPrice) || 0).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1">
+                                          <div><span className="text-slate-400 block mb-1">साहित्य / Item</span><span className="font-bold text-slate-800">{tx.raw.itemName || 'Material Item'}</span></div>
+                                          <div><span className="text-slate-400 block mb-1">प्रमाण / Quantity</span><span className="font-bold text-slate-800">{tx.raw.quantity} {tx.raw.unit || 'QTY'}</span></div>
+                                          <div><span className="text-slate-400 block mb-1">दर / Unit Price</span><span className="font-bold text-slate-800">₹{Number(tx.raw.unitPrice || 0).toLocaleString('en-IN')}</span></div>
+                                          <div><span className="text-slate-400 block mb-1">एकूण नावे / Total Debit</span><span className="font-black text-rose-600">₹{Number(tx.raw.totalAmount || tx.raw.totalPrice || (tx.raw.quantity * tx.raw.unitPrice) || 0).toLocaleString('en-IN')}</span></div>
+                                        </div>
+                                        {tx.raw.notes && (
+                                          <div className="mt-2 text-slate-500 pt-1 border-t border-slate-50">
+                                            <span className="font-semibold text-slate-400">टीप (Notes):</span> {tx.raw.notes}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* TAB 1: PROFILE & CROPS */}
           {activeTab === 'PROFILE' && (
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4 text-xs">
@@ -721,11 +924,12 @@ export default function FarmerPortalPage() {
               ) : (
                 <div className="space-y-3">
                   {purchasesList.map((p: any) => {
+                    const isFullySettled = lifetimeTotals.outstanding <= 0;
                     const billAmt = Number(String(p.netAmount || p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
-                    const paidAmt = Number(String(p.paidAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
-                    const dueAmt = Number(String(p.dueAmount || (billAmt - paidAmt)).replace(/[^0-9.-]+/g, '')) || 0;
-                    const isFullyPaid = dueAmt <= 0;
-                    const isPartial = paidAmt > 0 && dueAmt > 0;
+                    const displayDue = isFullySettled ? 0 : Math.min(billAmt, Math.max(0, lifetimeTotals.outstanding));
+                    const displayPaid = isFullySettled ? billAmt : Math.max(0, billAmt - displayDue);
+                    const isFullyPaid = isFullySettled || displayDue <= 0;
+                    const isPartial = !isFullySettled && displayPaid > 0 && displayDue > 0;
 
                     return (
                       <div key={p.id || p.billNo} className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm hover:border-emerald-300 transition-all space-y-3">
@@ -739,7 +943,7 @@ export default function FarmerPortalPage() {
                               <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
                                 isFullyPaid ? 'bg-emerald-100 text-emerald-800' : isPartial ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
                               }`}>
-                                {isFullyPaid ? 'Paid' : isPartial ? 'Partial' : 'Pending'}
+                                {isFullyPaid ? 'PAID (पूर्ण भरणा)' : isPartial ? 'PARTIAL (अंशतः)' : 'UNPAID (बाकी)'}
                               </span>
                             </div>
                             <p className="text-xs text-slate-500 font-semibold mt-1 flex items-center gap-1.5">
@@ -782,14 +986,14 @@ export default function FarmerPortalPage() {
                         {/* Financial Sub-Details & Action Button */}
                         <div className="flex flex-wrap justify-between items-center gap-2 pt-1">
                           <div className="flex items-center gap-4 text-xs font-bold">
-                            <span className="text-emerald-700">जमा: ₹{paidAmt.toLocaleString('en-IN')}</span>
-                            <span className={dueAmt > 0 ? 'text-rose-600 font-black' : 'text-slate-400'}>
-                              बाकी: ₹{dueAmt.toLocaleString('en-IN')}
+                            <span className="text-emerald-700">जमा: ₹{displayPaid.toLocaleString('en-IN')}</span>
+                            <span className={displayDue > 0 ? 'text-rose-600 font-black' : 'text-emerald-600 font-black'}>
+                              बाकी: ₹{displayDue.toLocaleString('en-IN')}
                             </span>
                           </div>
 
                           <button
-                            onClick={() => setSelectedPurchaseForReceipt(p)}
+                            onClick={() => setSelectedPurchaseForReceipt({ ...p, paidAmount: displayPaid, dueAmount: displayDue })}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
                           >
                             <Receipt className="w-3.5 h-3.5" />

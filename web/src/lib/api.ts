@@ -517,6 +517,7 @@ export const apiCreateFarmerMaterialPurchase = async (matData: any) => {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('farmer_materials_changed'));
     window.dispatchEvent(new Event('farmers_changed'));
+    window.dispatchEvent(new Event('purchases_changed'));
   }
   return updated[0];
 };
@@ -1050,6 +1051,10 @@ export const apiUpdatePurchase = async (purchaseId: string, updateData: any) => 
     return p;
   });
   setLocalCache(`seavaig_purchases_cache_${tenantId}`, updatedList);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('purchases_changed'));
+    window.dispatchEvent(new Event('farmers_changed'));
+  }
   return updatedList;
 };
 // ----------------------------------------------------
@@ -2141,6 +2146,7 @@ export const apiCreatePayment = async (payData: any) => {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('payments_changed'));
     window.dispatchEvent(new Event('farmers_changed'));
+    window.dispatchEvent(new Event('purchases_changed'));
   }
   return mappedObj;
 };

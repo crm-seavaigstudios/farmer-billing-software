@@ -151,28 +151,43 @@ export default function PurchasesPage() {
 
     async function loadData() {
       const dbPurchases = await apiGetPurchases();
-      if (dbPurchases && Array.isArray(dbPurchases) && dbPurchases.length > 0) {
-        setPurchases(dbPurchases);
+      if (dbPurchases && Array.isArray(dbPurchases)) {
+        const cleaned = dbPurchases.map((p: any) => {
+          const cleanAmt = typeof p.amount === 'number' ? p.amount : parseFloat(String(p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          const cleanDue = typeof p.dueAmount === 'number' ? p.dueAmount : parseFloat(String(p.dueAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          return {
+            ...p,
+            amount: cleanAmt,
+            dueAmount: cleanDue,
+          };
+        });
+        setPurchases(cleaned);
         setIsLiveSynced(true);
         if (typeof window !== 'undefined') {
-          localStorage.setItem(cacheKey, JSON.stringify(dbPurchases));
+          localStorage.setItem(cacheKey, JSON.stringify(cleaned));
         }
       }
     }
     loadData();
 
     const handleUpdate = () => {
-      const tenantId = getTenantId();
-      const cached = localStorage.getItem(tenantId ? `seavaig_purchases_cache_${tenantId}` : 'seavaig_purchases_cache');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) setPurchases(parsed);
-        } catch {}
+      loadData();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('purchases_changed', handleUpdate);
+      window.addEventListener('payments_changed', handleUpdate);
+      window.addEventListener('farmer_materials_changed', handleUpdate);
+      window.addEventListener('farmers_changed', handleUpdate);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('purchases_changed', handleUpdate);
+        window.removeEventListener('payments_changed', handleUpdate);
+        window.removeEventListener('farmer_materials_changed', handleUpdate);
+        window.removeEventListener('farmers_changed', handleUpdate);
       }
     };
-    window.addEventListener('purchases_changed', handleUpdate);
-    return () => window.removeEventListener('purchases_changed', handleUpdate);
   }, []);
 
   const handleAddPurchase = (newPurchase: any) => {
@@ -241,18 +256,19 @@ export default function PurchasesPage() {
       });
     });
     
-    const typeOrder: any = { 'MATERIAL': 1, 'PURCHASE': 2, 'PAYMENT': 3 };
+    const typeOrder: any = { 'PURCHASE': 1, 'MATERIAL': 2, 'PAYMENT': 3 };
     allItems.sort((a, b) => {
       if (a.timestamp !== b.timestamp) {
         return a.timestamp - b.timestamp;
       }
-      return typeOrder[a.type] - typeOrder[b.type];
+      return (typeOrder[a.type] || 0) - (typeOrder[b.type] || 0);
     });
     
     let bal = 0;
-    const computed = allItems.map(item => {
+    const computed = allItems.map((item, idx) => {
        bal = bal + item.creditVal - item.debitVal;
        return {
+          srNo: idx + 1,
           date: item.dateStr,
           refNo: item.refNo,
           type: item.type,
@@ -263,7 +279,8 @@ export default function PurchasesPage() {
        };
     });
     
-    setBillPayments(computed.reverse()); // Show newest first
+    // Chronological bank statement passbook order
+    setBillPayments(computed);
     setIsHistoryModalOpen(true);
   };
 
@@ -574,6 +591,7 @@ export default function PurchasesPage() {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 sticky top-0">
                     <tr className="text-[10px] font-black text-slate-400 uppercase">
+                      <th className="py-2 px-2.5 text-center w-8">#</th>
                       <th className="py-2 px-3">Date</th>
                       <th className="py-2 px-3">Type</th>
                       <th className="py-2 px-3 text-right">Credit (₹)</th>
@@ -584,6 +602,9 @@ export default function PurchasesPage() {
                   <tbody className="divide-y divide-slate-100">
                     {billPayments.map((p, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-2.5 text-center font-bold text-slate-400 text-[10px]">
+                          {p.srNo || (idx + 1)}
+                        </td>
                         <td className="py-2.5 px-3">
                           <div className="font-bold text-slate-900">{p.date}</div>
                           <div className="text-[9px] text-slate-400">{p.refNo}</div>
