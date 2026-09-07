@@ -108,7 +108,8 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
       const advs = (allPays || []).filter(
         (p: any) =>
           (p.farmerId === selectedFarmer.id || p.farmerName === selectedFarmer.name) &&
-          (String(p.notes || '').toLowerCase().includes('advance') || p.paymentType === 'ADVANCE' || Number(p.amount) > 0)
+          (p.paymentType === 'ADVANCE_PAYOUT' || p.paymentType === 'ADVANCE' || String(p.notes || '').toLowerCase().includes('advance')) &&
+          !p.isSettled
       );
       setFarmerAdvances(advs);
     }

@@ -309,33 +309,9 @@ export default function FarmersPage() {
                         return sum + Number(m.totalAmount || m.totalPrice || m.amount || calcTotal || 0);
                       }, 0);
 
-                      const pendingBills = farmerPurchases.filter((p: any) => {
-                        const isPaid = p.paymentStatus === 'PAID';
-                        const due = Number(p.dueAmount ?? (Number(p.totalAmount ?? p.amount ?? 0) - Number(p.paidAmount ?? 0)));
-                        return !isPaid && due > 0;
-                      });
-
-                      const pendingPurchasesTotal = pendingBills.reduce((sum: number, p: any) => {
-                        const itemWeight = parseFloat(String(p.weight || p.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
-                        const itemRate = parseFloat(String(p.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
-                        const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
-                        const rawAmt = p.totalAmount ?? p.amount ?? p.netAmount ?? calcVal ?? 0;
-                        const amt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
-                        return sum + (amt > 0 ? amt : calcVal);
-                      }, 0);
-
-                      const pendingPaidTotal = pendingBills.reduce((sum: number, p: any) => {
-                        return sum + Number(p.paidAmount ?? 0);
-                      }, 0);
-
-                      const pendingDueTotal = pendingBills.reduce((sum: number, p: any) => {
-                        const due = Number(p.dueAmount ?? (Number(p.totalAmount ?? p.amount ?? 0) - Number(p.paidAmount ?? 0)));
-                        return sum + Math.max(0, due);
-                      }, 0);
-
                       // Agricultural Net Balance = Total Purchases (Credits +) - [Total Paid/Advances (Debits -) + Total Materials (Debits -)]
                       const netBalance = totalPurchases - (totalPaid + totalMaterials);
-                      const netRowDue = (pendingBills.length > 0 && pendingDueTotal > 0) ? pendingDueTotal : netBalance;
+                      const netRowDue = netBalance;
 
                       return (
                       <tr 
@@ -359,7 +335,7 @@ export default function FarmersPage() {
                             let label = 'ALL_SETTLED (पूर्ण हिशोब)';
                             let color = 'bg-slate-50 text-slate-700 border-slate-100';
                             if (netRowDue > 0) {
-                              label = `PENDING_DUE (${pendingBills.length > 0 ? `${pendingBills.length} बाकी` : 'बाकी देणे'})`;
+                              label = 'PENDING_DUE (बाकी देणे)';
                               color = 'bg-rose-50 text-rose-700 border-rose-100';
                             } else if (netRowDue < 0) {
                               label = 'ADVANCE (अ‍ॅडव्हान्स जमा)';
@@ -376,15 +352,20 @@ export default function FarmersPage() {
                           })()}
                         </td>
                         <td className="py-3.5 px-4 font-bold text-slate-900">
-                          ₹{pendingBills.length > 0 ? pendingPurchasesTotal.toLocaleString('en-IN') : (farmerPurchases.length > 0 ? totalPurchases.toLocaleString('en-IN') : 0)}
-                          {pendingBills.length > 0 && (
+                          ₹{farmerPurchases.length > 0 ? totalPurchases.toLocaleString('en-IN') : 0}
+                          {farmerPurchases.length > 0 && (
                             <span className="text-[10px] text-slate-400 block font-normal">
-                              ({pendingBills.length} pending {pendingBills.length === 1 ? 'bill' : 'bills'})
+                              ({farmerPurchases.length} {farmerPurchases.length === 1 ? 'bill' : 'bills'})
                             </span>
                           )}
                         </td>
                         <td className="py-3.5 px-4 font-extrabold text-emerald-600">
-                          ₹{pendingBills.length > 0 ? pendingPaidTotal.toLocaleString('en-IN') : totalPaid.toLocaleString('en-IN')}
+                          ₹{totalPaid.toLocaleString('en-IN')}
+                          {farmerPayments.length > 0 && (
+                            <span className="text-[10px] text-slate-400 block font-normal">
+                              ({farmerPayments.length} {farmerPayments.length === 1 ? 'payout' : 'payouts'})
+                            </span>
+                          )}
                         </td>
                         <td className="py-3.5 px-4 font-extrabold text-amber-600">
                           {netRowDue < 0 
