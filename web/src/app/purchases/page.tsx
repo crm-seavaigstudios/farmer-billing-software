@@ -10,7 +10,17 @@ import { PrintReceiptModal, ReceiptData } from '@/components/common/PrintReceipt
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetPurchases, apiUpdatePurchase, apiCreatePayment, apiUpdateFarmerBalance, getTenantId } from '@/lib/api';
+import { 
+  apiGetPurchases, 
+  apiUpdatePurchase, 
+  apiCreatePayment, 
+  apiUpdateFarmerBalance, 
+  apiGetPayments, 
+  apiGetAllFarmerMaterials, 
+  apiGetFarmers, 
+  isFarmerMatch, 
+  getTenantId 
+} from '@/lib/api';
 
 const parseDateRobust = (dateStr: string): Date => {
   if (!dateStr) return new Date(0);
@@ -150,21 +160,96 @@ export default function PurchasesPage() {
     }
 
     async function loadData() {
-      const dbPurchases = await apiGetPurchases();
+      const [dbPurchases, dbPayments, dbMaterials, dbFarmers] = await Promise.all([
+        apiGetPurchases(),
+        apiGetPayments(),
+        apiGetAllFarmerMaterials(),
+        apiGetFarmers(),
+      ]);
+
       if (dbPurchases && Array.isArray(dbPurchases)) {
+        const paymentsList = Array.isArray(dbPayments) ? dbPayments : [];
+        const materialsList = Array.isArray(dbMaterials) ? dbMaterials : [];
+        const farmersList = Array.isArray(dbFarmers) ? dbFarmers : [];
+
+        const getTimestamp = (x: any) => {
+          const raw = x.createdAt || x.date || x.purchaseDate || x.paymentDate;
+          if (!raw) return 0;
+          const t = new Date(raw).getTime();
+          return isNaN(t) ? 0 : t;
+        };
+
         const cleaned = dbPurchases.map((p: any) => {
           const cleanAmt = typeof p.amount === 'number' ? p.amount : parseFloat(String(p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
-          const cleanDue = typeof p.dueAmount === 'number' ? p.dueAmount : parseFloat(String(p.dueAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
           return {
             ...p,
             amount: cleanAmt,
+          };
+        });
+
+        // Group purchases by farmer and compute FIFO allocation
+        const farmerGroups: Record<string, any[]> = {};
+        cleaned.forEach((p: any) => {
+          const key = p.farmerId || p.phone || p.farmerName || 'UNKNOWN';
+          if (!farmerGroups[key]) farmerGroups[key] = [];
+          farmerGroups[key].push(p);
+        });
+
+        const fifoResultMap: Record<string, { paidAmount: number; dueAmount: number; paymentStatus: string }> = {};
+
+        Object.entries(farmerGroups).forEach(([key, fPurchases]) => {
+          const firstP = fPurchases[0];
+          const matchedFarmer = farmersList.find((f: any) => isFarmerMatch(firstP, f)) || { id: firstP.farmerId, phone: firstP.phone, name: firstP.farmerName };
+
+          const fPayments = paymentsList.filter((pay: any) => isFarmerMatch(pay, matchedFarmer));
+          const fMaterials = materialsList.filter((mat: any) => isFarmerMatch(mat, matchedFarmer));
+
+          const totalPaid = fPayments.reduce((sum: number, pay: any) => sum + (Number(pay.amount) || 0), 0);
+          const totalMaterial = fMaterials.reduce((sum: number, m: any) => {
+            const qty = Number(m.quantity || 1);
+            const price = Number(m.unitPrice || 0);
+            return sum + Number(m.totalAmount || m.totalPrice || m.amount || (qty * price) || 0);
+          }, 0);
+
+          let remainingSettlementPool = totalPaid + totalMaterial;
+          const sorted = [...fPurchases].sort((a, b) => getTimestamp(a) - getTimestamp(b));
+
+          sorted.forEach((p) => {
+            const billAmt = Number(p.amount || 0);
+            const allocatedPaid = Math.min(billAmt, Math.max(0, remainingSettlementPool));
+            remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaid);
+            const allocatedDue = Math.max(0, billAmt - allocatedPaid);
+            const status = allocatedDue <= 0 ? 'PAID' : (allocatedPaid > 0 ? 'PARTIAL' : 'UNPAID');
+
+            fifoResultMap[p.id] = {
+              paidAmount: allocatedPaid,
+              dueAmount: allocatedDue,
+              paymentStatus: status,
+            };
+          });
+        });
+
+        const finalPurchases = cleaned.map((p: any) => {
+          const fifo = fifoResultMap[p.id];
+          if (fifo) {
+            return {
+              ...p,
+              paidAmount: fifo.paidAmount,
+              dueAmount: fifo.dueAmount,
+              paymentStatus: fifo.paymentStatus,
+            };
+          }
+          const cleanDue = typeof p.dueAmount === 'number' ? p.dueAmount : parseFloat(String(p.dueAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          return {
+            ...p,
             dueAmount: cleanDue,
           };
         });
-        setPurchases(cleaned);
+
+        setPurchases(finalPurchases);
         setIsLiveSynced(true);
         if (typeof window !== 'undefined') {
-          localStorage.setItem(cacheKey, JSON.stringify(cleaned));
+          localStorage.setItem(cacheKey, JSON.stringify(finalPurchases));
         }
       }
     }
@@ -216,12 +301,14 @@ export default function PurchasesPage() {
     const fpay = allPayments.filter((p: any) => p.farmerId === row.farmerId);
     const fmat = allMaterials || [];
     
+    let orderIdx = 0;
     let allItems: any[] = [];
     fp.forEach((x: any) => {
       const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount).replace(/[^0-9.-]+/g, '')) || 0;
       allItems.push({
          dateStr: x.date,
          timestamp: x.createdAt ? new Date(x.createdAt).getTime() : parseDateRobust(x.purchaseDate || x.date).getTime() || 0,
+         orderIdx: ++orderIdx,
          refNo: x.id,
          type: 'PURCHASE',
          description: x.crop || 'Crop Purchase',
@@ -235,6 +322,7 @@ export default function PurchasesPage() {
       allItems.push({
          dateStr: x.date,
          timestamp: x.createdAt ? new Date(x.createdAt).getTime() : parseDateRobust(x.date).getTime() || 0,
+         orderIdx: ++orderIdx,
          refNo: x.id,
          type: 'PAYMENT',
          description: `Payment (${x.method})`,
@@ -248,6 +336,7 @@ export default function PurchasesPage() {
       allItems.push({
          dateStr: x.createdAt ? parseDateRobust(x.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Unknown',
          timestamp: x.createdAt ? new Date(x.createdAt).getTime() : 0,
+         orderIdx: ++orderIdx,
          refNo: x.id,
          type: 'MATERIAL',
          description: `Material Issue: ${x.itemName}`,
@@ -256,12 +345,12 @@ export default function PurchasesPage() {
       });
     });
     
-    const typeOrder: any = { 'PURCHASE': 1, 'MATERIAL': 2, 'PAYMENT': 3 };
+    // Strict time-based bank-passbook sequence
     allItems.sort((a, b) => {
       if (a.timestamp !== b.timestamp) {
         return a.timestamp - b.timestamp;
       }
-      return (typeOrder[a.type] || 0) - (typeOrder[b.type] || 0);
+      return (a.orderIdx || 0) - (b.orderIdx || 0);
     });
     
     let bal = 0;

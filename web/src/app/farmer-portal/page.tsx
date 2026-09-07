@@ -36,6 +36,7 @@ export default function FarmerPortalPage() {
   const [rawPurchases, setRawPurchases] = useState<any[]>([]);
   const [rawPayments, setRawPayments] = useState<any[]>([]);
   const [rawMaterials, setRawMaterials] = useState<any[]>([]);
+  const [fifoMap, setFifoMap] = useState<Record<string, { allocatedPaid: number; allocatedDue: number; status: 'PAID' | 'PARTIAL' | 'UNPAID' }>>({});
   
   const [ledger, setLedger] = useState<any[]>([]);
   const [lifetimeTotals, setLifetimeTotals] = useState({ purchase: 0, paid: 0, material: 0, outstanding: 0 });
@@ -264,6 +265,14 @@ export default function FarmerPortalPage() {
     let totalPurchase = 0;
     let totalPaid = 0;
     let totalMaterial = 0;
+    let orderIdx = 0;
+
+    const getTimestamp = (x: any) => {
+      const raw = x.createdAt || x.date || x.purchaseDate || x.paymentDate;
+      if (!raw) return 0;
+      const t = new Date(raw).getTime();
+      return isNaN(t) ? 0 : t;
+    };
 
     rawPurchases.forEach((x: any) => {
       const d = parseCustomDate(x.date || x.purchaseDate || x.createdAt);
@@ -272,7 +281,8 @@ export default function FarmerPortalPage() {
       totalPurchase += amt;
       allItems.push({
          dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-         timestamp: d.getTime(),
+         timestamp: getTimestamp(x) || d.getTime(),
+         orderIdx: ++orderIdx,
          refNo: x.billNo || x.purchaseNo || x.id,
          type: 'PURCHASE',
          description: x.crop || 'Crop Purchase',
@@ -291,7 +301,8 @@ export default function FarmerPortalPage() {
       totalPaid += amt;
       allItems.push({
          dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-         timestamp: d.getTime(),
+         timestamp: getTimestamp(x) || d.getTime(),
+         orderIdx: ++orderIdx,
          refNo: x.paymentNo || x.paymentId || x.id,
          type: 'PAYMENT',
          description: `Payment (${x.paymentMode || x.method || x.paymentMethod || "Cash"})`,
@@ -315,7 +326,8 @@ export default function FarmerPortalPage() {
       totalMaterial += amt;
       allItems.push({
          dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-         timestamp: d.getTime(),
+         timestamp: getTimestamp(x) || d.getTime(),
+         orderIdx: ++orderIdx,
          refNo: x.id,
          type: 'MATERIAL',
          description: `Material Issue: ${x.itemName || 'Agricultural Inputs'}`,
@@ -327,13 +339,21 @@ export default function FarmerPortalPage() {
       });
     });
     
-    // Strict Chronological Bank Statement Order: Oldest opening entry first, then sequential debits & credits
-    const naturalOrder: any = { 'PURCHASE': 1, 'MATERIAL': 2, 'PAYMENT': 3 };
+    // Exact Time-Sequence Chronological Sorting
     allItems.sort((a, b) => {
       if (a.timestamp !== b.timestamp) {
         return a.timestamp - b.timestamp;
       }
-      return (naturalOrder[a.type] || 0) - (naturalOrder[b.type] || 0);
+      const getSerial = (ref: string) => {
+        const match = String(ref || '').match(/(\d+)$/);
+        return match ? parseInt(match[1], 10) : 0;
+      };
+      const serialA = getSerial(a.refNo);
+      const serialB = getSerial(b.refNo);
+      if (serialA && serialB && serialA !== serialB) {
+        return serialA - serialB;
+      }
+      return (a.orderIdx || 0) - (b.orderIdx || 0);
     });
     
     let bal = 0;
@@ -362,6 +382,36 @@ export default function FarmerPortalPage() {
       outstanding: netOutstanding
     });
 
+    // FIFO Bill Settlement: Allocate total debits (Cash + Materials) across bills from oldest to newest
+    const sortedPurchasesOldest = [...rawPurchases].sort((a, b) => getTimestamp(a) - getTimestamp(b));
+    let remainingSettlementPool = totalPaid + totalMaterial;
+    const calculatedFifoMap: Record<string, { allocatedPaid: number; allocatedDue: number; status: 'PAID' | 'PARTIAL' | 'UNPAID' }> = {};
+    let activePurchasesSum = 0;
+    let activePaidSum = 0;
+    let activeUnpaidCount = 0;
+
+    sortedPurchasesOldest.forEach((p) => {
+      const pId = p.billNo || p.purchaseNo || p.id;
+      const amt = typeof p.amount === 'number' ? p.amount : parseFloat(String(p.netAmount || p.totalAmount || p.amount || '0').replace(/[^0-9.-]+/g, '')) || 0;
+      const allocatedPaid = Math.min(amt, Math.max(0, remainingSettlementPool));
+      remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaid);
+      const allocatedDue = Math.max(0, amt - allocatedPaid);
+      const status: 'PAID' | 'PARTIAL' | 'UNPAID' = allocatedDue <= 0 ? 'PAID' : (allocatedPaid > 0 ? 'PARTIAL' : 'UNPAID');
+
+      calculatedFifoMap[pId] = { allocatedPaid, allocatedDue, status };
+      if (p.id) calculatedFifoMap[p.id] = { allocatedPaid, allocatedDue, status };
+      if (p.purchaseNo) calculatedFifoMap[p.purchaseNo] = { allocatedPaid, allocatedDue, status };
+      if (p.billNo) calculatedFifoMap[p.billNo] = { allocatedPaid, allocatedDue, status };
+
+      if (status !== 'PAID') {
+        activePurchasesSum += amt;
+        activePaidSum += allocatedPaid;
+        activeUnpaidCount++;
+      }
+    });
+
+    setFifoMap(calculatedFifoMap);
+
     if (netOutstanding <= 0) {
       setActiveTotals({
         purchase: 0,
@@ -371,8 +421,8 @@ export default function FarmerPortalPage() {
       });
     } else {
       setActiveTotals({
-        purchase: totalPurchase,
-        paid: totalPaid,
+        purchase: activePurchasesSum > 0 ? activePurchasesSum : totalPurchase,
+        paid: activePaidSum,
         material: totalMaterial,
         outstanding: netOutstanding
       });
@@ -926,8 +976,14 @@ export default function FarmerPortalPage() {
                   {purchasesList.map((p: any) => {
                     const isFullySettled = lifetimeTotals.outstanding <= 0;
                     const billAmt = Number(String(p.netAmount || p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
-                    const displayDue = isFullySettled ? 0 : Math.min(billAmt, Math.max(0, lifetimeTotals.outstanding));
-                    const displayPaid = isFullySettled ? billAmt : Math.max(0, billAmt - displayDue);
+                    const billKey = p.billNo || p.purchaseNo || p.id;
+                    const billFifo = fifoMap[billKey] || {
+                      allocatedPaid: isFullySettled ? billAmt : 0,
+                      allocatedDue: isFullySettled ? 0 : billAmt,
+                      status: isFullySettled ? 'PAID' : 'UNPAID'
+                    };
+                    const displayPaid = isFullySettled ? billAmt : billFifo.allocatedPaid;
+                    const displayDue = isFullySettled ? 0 : billFifo.allocatedDue;
                     const isFullyPaid = isFullySettled || displayDue <= 0;
                     const isPartial = !isFullySettled && displayPaid > 0 && displayDue > 0;
 

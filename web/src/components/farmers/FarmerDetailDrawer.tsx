@@ -80,8 +80,9 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
   const [purchases, setPurchases] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
-  const [lifetimeTotals, setLifetimeTotals] = useState({ purchase: 0, paid: 0, material: 0, outstanding: 0 });
-  const [activeTotals, setActiveTotals] = useState({ purchase: 0, paid: 0, material: 0, outstanding: 0 });
+  const [fifoMap, setFifoMap] = useState<Record<string, { allocatedPaid: number; allocatedDue: number; status: 'PAID' | 'PARTIAL' | 'UNPAID' }>>({});
+  const [lifetimeTotals, setLifetimeTotals] = useState({ purchase: 0, paid: 0, material: 0, outstanding: 0, billsCount: 0 });
+  const [activeTotals, setActiveTotals] = useState({ purchase: 0, paid: 0, material: 0, outstanding: 0, billsCount: 0 });
   const [realTransactions, setRealTransactions] = useState<any[]>([]);
 
   useEffect(() => {
@@ -123,6 +124,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           return isNaN(t) ? 0 : t;
         };
 
+        let orderIdx = 0;
+
         fp.forEach((x: any) => {
           const itemWeight = parseFloat(String(x.weight || x.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
           const itemRate = parseFloat(String(x.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
@@ -135,6 +138,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           allItems.push({
              dateStr: formatDate(x.date || x.purchaseDate || x.createdAt),
              timestamp: getTimestamp(x),
+             orderIdx: ++orderIdx,
              refNo: x.purchaseNo || x.id,
              type: 'PURCHASE',
              description: x.crop || 'Strawberry (A Grade)',
@@ -152,6 +156,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           allItems.push({
              dateStr: formatDate(x.date || x.paymentDate || x.createdAt),
              timestamp: getTimestamp(x),
+             orderIdx: ++orderIdx,
              refNo: x.paymentNo || x.id,
              type: 'PAYMENT',
              description: `Payment (${x.method || x.paymentMode || 'Cash'})`,
@@ -175,6 +180,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           allItems.push({
              dateStr: formatDate(x.date || x.createdAt),
              timestamp: getTimestamp(x),
+             orderIdx: ++orderIdx,
              refNo: x.id,
              type: 'MATERIAL',
              description: `Material Issue: ${x.itemName}`,
@@ -186,13 +192,21 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           });
         });
         
-        // Strict Chronological Bank Statement Order: Oldest opening entry first, then sequential debits & credits
-        const naturalOrder: any = { 'PURCHASE': 1, 'MATERIAL': 2, 'PAYMENT': 3 };
+        // Exact Time-Sequence Chronological Sorting: Sort by exact event timestamp
         allItems.sort((a, b) => {
           if (a.timestamp !== b.timestamp) {
             return a.timestamp - b.timestamp;
           }
-          return (naturalOrder[a.type] || 0) - (naturalOrder[b.type] || 0);
+          const getSerial = (ref: string) => {
+            const match = String(ref || '').match(/(\d+)$/);
+            return match ? parseInt(match[1], 10) : 0;
+          };
+          const serialA = getSerial(a.refNo);
+          const serialB = getSerial(b.refNo);
+          if (serialA && serialB && serialA !== serialB) {
+            return serialA - serialB;
+          }
+          return (a.orderIdx || 0) - (b.orderIdx || 0);
         });
         
         let bal = 0;
@@ -218,8 +232,44 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           purchase: totalPurchase, 
           paid: totalPaid, 
           material: totalMaterial,
-          outstanding: netOutstanding 
+          outstanding: netOutstanding,
+          billsCount: fp.length
         });
+
+        // FIFO Bill Settlement: Allocate total debits (Cash + Materials) across bills from oldest to newest
+        const sortedPurchasesOldest = [...fp].sort((a, b) => getTimestamp(a) - getTimestamp(b));
+        let remainingSettlementPool = totalPaid + totalMaterial;
+        const calculatedFifoMap: Record<string, { allocatedPaid: number; allocatedDue: number; status: 'PAID' | 'PARTIAL' | 'UNPAID' }> = {};
+        let activePurchasesSum = 0;
+        let activePaidSum = 0;
+        let activeUnpaidCount = 0;
+
+        sortedPurchasesOldest.forEach((p) => {
+          const pId = p.purchaseNo || p.id;
+          const itemWeight = parseFloat(String(p.weight || p.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+          const itemRate = parseFloat(String(p.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+          const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
+          const rawAmt = p.amount ?? p.totalAmount ?? p.netAmount ?? calcVal ?? 0;
+          const parsed = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+          const billAmt = parsed > 0 ? parsed : calcVal;
+
+          const allocatedPaid = Math.min(billAmt, Math.max(0, remainingSettlementPool));
+          remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaid);
+          const allocatedDue = Math.max(0, billAmt - allocatedPaid);
+          const status: 'PAID' | 'PARTIAL' | 'UNPAID' = allocatedDue <= 0 ? 'PAID' : (allocatedPaid > 0 ? 'PARTIAL' : 'UNPAID');
+
+          calculatedFifoMap[pId] = { allocatedPaid, allocatedDue, status };
+          if (p.dbId) calculatedFifoMap[p.dbId] = { allocatedPaid, allocatedDue, status };
+          if (p.id) calculatedFifoMap[p.id] = { allocatedPaid, allocatedDue, status };
+
+          if (status !== 'PAID') {
+            activePurchasesSum += billAmt;
+            activePaidSum += allocatedPaid;
+            activeUnpaidCount++;
+          }
+        });
+
+        setFifoMap(calculatedFifoMap);
 
         // Compute Active (Unpaid / Partial) Financials
         if (netOutstanding <= 0) {
@@ -227,20 +277,16 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
             purchase: 0,
             paid: 0,
             material: 0,
-            outstanding: netOutstanding
+            outstanding: netOutstanding,
+            billsCount: 0
           });
         } else {
-          // If pending due > 0, calculate the active unpaid bills and their applied payments/materials
-          const activePurchasesAmt = fp.reduce((sum, p) => {
-            const billAmt = Number(String(p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
-            return sum + billAmt;
-          }, 0);
-          
           setActiveTotals({
-            purchase: activePurchasesAmt,
-            paid: totalPaid,
+            purchase: activePurchasesSum > 0 ? activePurchasesSum : totalPurchase,
+            paid: activePaidSum,
             material: totalMaterial,
-            outstanding: netOutstanding
+            outstanding: netOutstanding,
+            billsCount: activeUnpaidCount > 0 ? activeUnpaidCount : fp.length
           });
         }
 
@@ -605,9 +651,15 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                   purchases.map((p, idx) => {
                     const isFullySettled = lifetimeTotals.outstanding <= 0;
                     const billTotalAmt = Number(String(p.totalAmount || p.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
-                    const displayDue = isFullySettled ? 0 : Math.min(billTotalAmt, Math.max(0, lifetimeTotals.outstanding));
-                    const displayPaid = isFullySettled ? billTotalAmt : Math.max(0, billTotalAmt - displayDue);
-                    const displayStatus = isFullySettled || displayDue <= 0 ? 'PAID' : (displayPaid > 0 ? 'PARTIAL' : 'UNPAID');
+                    const billKey = p.purchaseNo || p.id || p.dbId;
+                    const billFifo = fifoMap[billKey] || {
+                      allocatedPaid: isFullySettled ? billTotalAmt : 0,
+                      allocatedDue: isFullySettled ? 0 : billTotalAmt,
+                      status: isFullySettled ? 'PAID' : 'UNPAID'
+                    };
+                    const displayPaid = isFullySettled ? billTotalAmt : billFifo.allocatedPaid;
+                    const displayDue = isFullySettled ? 0 : billFifo.allocatedDue;
+                    const displayStatus = isFullySettled ? 'PAID' : billFifo.status;
 
                     return (
                       <div key={idx} className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs hover:border-blue-200 transition-colors">
