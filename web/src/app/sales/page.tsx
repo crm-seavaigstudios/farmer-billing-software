@@ -68,15 +68,21 @@ export default function SalesPage() {
   const openPrintModal = (row: any) => {
     setActiveReceipt({
       type: 'CUSTOMER_SALE',
-      title: 'B2B Sales Invoice & Tax Receipt',
-      receiptNo: row.id,
+      title: 'B2B Sales Invoice & Tax Receipt (कर बीजक)',
+      receiptNo: row.billNo || row.id,
       date: row.date,
       partyName: row.customerName,
       partyPhone: row.phone,
       partyVillageOrAddress: row.address,
       gradeOrItems: row.items,
-      totalAmount: row.amount,
-      paymentMode: row.status,
+      items: row.itemsData || row.itemsList,
+      totalAmount: `₹${Number(row.amount || 0).toLocaleString('en-IN')}`,
+      paidAmount: row.paidAmount ? `₹${Number(row.paidAmount || 0).toLocaleString('en-IN')}` : undefined,
+      balanceAmount: row.dueAmount ? `₹${Number(row.dueAmount || 0).toLocaleString('en-IN')}` : undefined,
+      paymentMode: row.paymentStatus || row.status,
+      vehicleNo: row.vehicleNo,
+      driverName: row.driverName,
+      driverPhone: row.driverPhone,
     });
   };
 

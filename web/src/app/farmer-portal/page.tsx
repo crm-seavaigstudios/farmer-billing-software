@@ -428,8 +428,12 @@ export default function FarmerPortalPage() {
       });
     }
 
-    // Chronological bank statement passbook order (1 to N)
-    setLedger(computed);
+    // Latest-First Passbook Ledger: Latest entries appear at top (Row 1) without scrolling
+    const reversedLedger = [...computed].reverse().map((item, idx) => ({
+      ...item,
+      displaySrNo: idx + 1,
+    }));
+    setLedger(reversedLedger);
   };
 
   const handleLogout = () => {
@@ -797,7 +801,7 @@ export default function FarmerPortalPage() {
                               className={`hover:bg-slate-50 font-medium cursor-pointer transition-colors ${expandedRowId === tx.refNo ? 'bg-slate-50' : ''}`}
                             >
                               <td className="py-2.5 px-2.5 text-center font-bold text-slate-400 text-[10px]">
-                                {tx.srNo || (idx + 1)}
+                                {tx.displaySrNo || (idx + 1)}
                               </td>
                               <td className="py-2.5 px-3 text-slate-600 text-[11px]">
                                 <div className="flex items-center gap-1">

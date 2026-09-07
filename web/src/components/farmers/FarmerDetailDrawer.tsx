@@ -290,8 +290,12 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           });
         }
 
-        // Sequential Bank Passbook Statement (Row 1 oldest opening credit -> Row N latest closing balance)
-        setRealTransactions(computed);
+        // Latest-First Passbook Ledger: Latest entries appear at top (Row 1) without scrolling
+        const reversedList = [...computed].reverse().map((item, idx) => ({
+          ...item,
+          displaySrNo: idx + 1,
+        }));
+        setRealTransactions(reversedList);
       } catch (err) {
         console.error('Error in fetchLedger:', err);
       }
@@ -908,13 +912,13 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                 <div className="overflow-x-auto pb-2">
                   <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="bg-slate-50 text-[10px] text-slate-400 font-extrabold uppercase border-b border-slate-100">
+                    <tr className="bg-slate-50 text-[10px] text-slate-400 font-extrabold uppercase border-b border-slate-200/80">
                       <th className="py-2.5 px-2.5 text-center w-10">#</th>
-                      <th className="py-2.5 px-3">Date</th>
-                      <th className="py-2.5 px-3">Description</th>
-                      <th className="py-2.5 px-3 text-right">Debit</th>
-                      <th className="py-2.5 px-3 text-right">Credit</th>
-                      <th className="py-2.5 px-3 text-right">Balance</th>
+                      <th className="py-2.5 px-3">Date (दिनांक)</th>
+                      <th className="py-2.5 px-3">Description (तपशील)</th>
+                      <th className="py-2.5 px-3 text-right">Debit / नावे (-)</th>
+                      <th className="py-2.5 px-3 text-right">Credit / जमा (+)</th>
+                      <th className="py-2.5 px-3 text-right">Balance / शिल्लक</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -930,7 +934,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                           className={`hover:bg-slate-50 font-medium cursor-pointer transition-colors ${expandedRowId === tx.refNo ? 'bg-slate-50' : ''}`}
                         >
                           <td className="py-2.5 px-2.5 text-center font-bold text-slate-400 text-[10px]">
-                            {tx.srNo || (realTransactions.length - idx)}
+                            {tx.displaySrNo || (idx + 1)}
                           </td>
                           <td className="py-2.5 px-3 text-slate-500 text-[11px]">
                              <div className="flex items-center gap-1">

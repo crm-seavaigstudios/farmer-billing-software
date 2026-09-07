@@ -22,8 +22,10 @@ import {
   ShieldCheck,
   MapPin,
   CheckCircle2,
-  FileText
+  FileText,
+  Printer
 } from "lucide-react";
+import { PrintReceiptModal } from '@/components/common/PrintReceiptModal';
 
 export default function SellerPortalPage() {
   const router = useRouter();
@@ -248,6 +250,8 @@ export default function SellerPortalPage() {
     return { inTransitCount: inTransit, receivedCount: received, totalCount: total };
   }, [dispatches]);
 
+  const [activeReceipt, setActiveReceipt] = useState<any | null>(null);
+
   // Helper function to calculate paid amount for a single bill
   const getBillPaidAmount = (bill: any) => {
     if (bill.paidAmount !== undefined && bill.paidAmount !== null && !isNaN(Number(bill.paidAmount))) {
@@ -257,6 +261,39 @@ export default function SellerPortalPage() {
       return bill.paymentHistory.reduce((sum: number, p: any) => sum + parseFloat(p.amount || 0), 0);
     }
     return 0;
+  };
+
+  const handleOpenPrintInvoice = (bill: any) => {
+    setActiveReceipt({
+      id: bill.id,
+      billNo: bill.billNo || bill.id,
+      date: bill.date || bill.createdAt || new Date().toISOString(),
+      type: 'SELLER_SALE',
+      farmerName: bill.customerName || seller?.name || seller?.phone || 'B2B Trader',
+      farmerPhone: bill.customerPhone || seller?.phone || 'N/A',
+      address: bill.address || seller?.address || 'N/A',
+      gstin: bill.gstin || seller?.gstin || 'N/A',
+      buyerGstin: bill.buyerGstin || bill.gstin || seller?.gstin || 'N/A',
+      vehicleNo: bill.vehicleNo || 'MH-15-EG-4521',
+      driverName: bill.driverName || 'Santosh Gaikwad',
+      driverPhone: bill.driverPhone || '9876543210',
+      items: bill.itemsData || bill.itemsList || [
+        {
+          cropName: bill.items || 'Agricultural Produce',
+          grade: 'A Grade (Export)',
+          packaging: '10 KG Corrugated Box',
+          weightKg: parseFloat(bill.totalWeight || 0),
+          ratePerKg: parseFloat(bill.totalWeight || 0) > 0 ? parseFloat(bill.netAmount || bill.amount || 0) / parseFloat(bill.totalWeight || 1) : 0,
+          totalAmount: parseFloat(bill.netAmount || bill.amount || 0)
+        }
+      ],
+      totalWeight: bill.totalWeight || 0,
+      totalAmount: parseFloat(bill.totalAmount || bill.netAmount || bill.amount || 0),
+      netAmount: parseFloat(bill.netAmount || bill.amount || 0),
+      paidAmount: getBillPaidAmount(bill),
+      dueAmount: Math.max(0, parseFloat(bill.netAmount || bill.totalAmount || bill.amount || 0) - getBillPaidAmount(bill)),
+      paymentStatus: (parseFloat(bill.netAmount || bill.totalAmount || bill.amount || 0) - getBillPaidAmount(bill)) <= 0 ? 'PAID' : 'PARTIAL'
+    });
   };
 
   // KPI Calculations
@@ -580,17 +617,29 @@ export default function SellerPortalPage() {
                           </div>
                         </div>
 
-                        <div className="flex gap-2 pt-1">
+                        <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenPrintInvoice(bill);
+                            }}
+                            className="flex-1 bg-stone-900 hover:bg-stone-800 text-white py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                          >
+                            <Printer className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>🖨️ View Tax Invoice</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedBillForModal(bill);
                             }}
-                            className="flex-1 bg-stone-100 hover:bg-stone-200 py-2.5 rounded-xl text-xs font-bold text-stone-700 flex items-center justify-center gap-1.5 transition-colors"
+                            className="flex-1 bg-stone-100 hover:bg-stone-200 py-2.5 rounded-xl text-xs font-bold text-stone-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                           >
                             <Eye className="w-4 h-4 text-stone-600" />
-                            <span>View Full Bill Manifest</span>
+                            <span>Manifest</span>
                           </button>
                           
                           {bill.deliveryStatus !== 'RECEIVED' && (
@@ -603,7 +652,7 @@ export default function SellerPortalPage() {
                               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-black py-2.5 rounded-xl text-xs shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                             >
                               <CheckCircle className="w-4 h-4" />
-                              <span>MARK AS RECEIVED</span>
+                              <span>RECEIVE</span>
                             </button>
                           )}
                         </div>
@@ -857,11 +906,19 @@ export default function SellerPortalPage() {
                 </div>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleOpenPrintInvoice(selectedBillForModal)}
+                  className="flex-1 py-3 bg-stone-900 hover:bg-stone-800 text-white font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Printer className="w-4 h-4 text-emerald-400" />
+                  <span>Print / Download Tax Invoice (PDF)</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setSelectedBillForModal(null)}
-                  className="w-full py-3 bg-stone-100 hover:bg-stone-200 font-bold rounded-xl text-stone-700 text-xs"
+                  className="flex-1 py-3 bg-stone-100 hover:bg-stone-200 font-bold rounded-xl text-stone-700 text-xs cursor-pointer"
                 >
                   Close Bill Details
                 </button>
@@ -869,6 +926,15 @@ export default function SellerPortalPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Professional Tax Invoice Modal */}
+      {activeReceipt && (
+        <PrintReceiptModal
+          isOpen={!!activeReceipt}
+          onClose={() => setActiveReceipt(null)}
+          data={activeReceipt}
+        />
       )}
     </div>
   );

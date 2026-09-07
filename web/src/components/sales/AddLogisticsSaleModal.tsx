@@ -179,22 +179,39 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
         mode: 'CASH'
       }] : [];
 
-      const newSale = {
-        id: (() => {
-          const d = new Date();
-          const prefix = `${String(d.getDate()).padStart(2,'0')}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getFullYear()).slice(-2)}`;
-          const todayStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-          let count = 1;
-          const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
-          if (cached) {
-            try {
-              const list = JSON.parse(cached);
-              const todays = list.filter((p:any) => p.date === todayStr || p.saleDate === todayStr);
-              count = todays.length + 1;
-            } catch {}
+      const tenantId = getTenantId() || 'dattakrupa';
+      const d = new Date();
+      const ddmmyy = `${String(d.getDate()).padStart(2,'0')}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getFullYear()).slice(-2)}`;
+      
+      const cached = typeof window !== 'undefined' ? localStorage.getItem(`seavaig_sales_cache_${tenantId}`) || localStorage.getItem('seavaig_sales_cache') : null;
+      let totalSalesCount = 1;
+      if (cached) {
+        try {
+          const list = JSON.parse(cached);
+          if (Array.isArray(list)) {
+            totalSalesCount = list.length + 1;
           }
-          return `${prefix}-${count}`;
-        })(),
+        } catch {}
+      }
+
+      const uniqueBillNo = `SB-${ddmmyy}-${String(totalSalesCount).padStart(3, '0')}`;
+      const uniqueId = `sale-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+
+      const formattedLineItems = items.map((i, idx) => ({
+        srNo: idx + 1,
+        cropName: i.cropName,
+        grade: i.grade || 'A_GRADE',
+        category: 'कॅरेट (Crates)',
+        packaging: 'कॅरेट (Crates)',
+        weightKg: Number(i.weightKg) || 0,
+        ratePerKg: Number(i.ratePerKg) || 0,
+        totalAmount: (Number(i.weightKg) || 0) * (Number(i.ratePerKg) || 0),
+        unit: i.unit || 'KG'
+      }));
+
+      const newSale = {
+        id: uniqueId,
+        billNo: uniqueBillNo,
         customerId: targetCust?.id || selectedCustomerId,
         customerName: targetCust?.name || targetCust?.company || 'Reliance Fresh Ltd',
         phone: targetCust?.phone || '9876543210',
@@ -206,18 +223,18 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
         paymentStatus,
         paymentHistory,
         items: items.map((i) => `${i.cropName} (${i.weightKg} KG)`).join(', '),
+        itemsData: formattedLineItems,
         status: 'DISPATCHED',
-        vehicleNo,
-        driverName,
-        driverPhone,
+        deliveryStatus: 'IN_TRANSIT',
+        vehicleNo: vehicleNo || 'MH-15-EG-4521',
+        driverName: driverName || 'Santosh Gaikwad',
+        driverPhone: driverPhone || '9876543210',
         farmerBatches: selectedPurchaseIds,
         date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
         photoUrl: vehiclePhotoUrl,
       };
 
       await apiCreateSale(newSale);
-
-      const tenantId = getTenantId();
 
       // Automated Stock Deduction in Inventory Cache
       const cachedInventory = typeof window !== 'undefined' && tenantId ? localStorage.getItem(`seavaig_inventory_cache_${tenantId}`) : null;

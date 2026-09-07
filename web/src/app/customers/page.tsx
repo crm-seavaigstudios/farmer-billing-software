@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { AddCustomerModal } from '@/components/customers/AddCustomerModal';
+import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 import { useLanguage } from '@/context/LanguageContext';
 import { apiGetCustomers } from '@/lib/api';
 import {
@@ -207,7 +208,11 @@ export default function CustomersPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr 
+                      key={c.id} 
+                      onClick={() => setSelectedCustomer(c)}
+                      className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                    >
                       <td className="py-3 px-3 font-bold text-blue-600">{c.id}</td>
                       <td className="py-3 px-3">
                         <div className="font-extrabold text-slate-900">{c.company}</div>
@@ -217,7 +222,7 @@ export default function CustomersPage() {
                       <td className="py-3 px-3 font-medium text-slate-500">{c.gstin}</td>
                       <td className="py-3 px-3 text-right font-black text-rose-600">{c.outstanding}</td>
                       <td className="py-3 px-3 text-right font-black text-slate-900">{c.totalPurchases}</td>
-                      <td className="py-3 px-3 text-center">
+                      <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => setSelectedCustomer(c)}
                           className="p-1 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-100 cursor-pointer"
@@ -240,55 +245,12 @@ export default function CustomersPage() {
         onAddCustomer={handleAddCustomer}
       />
 
-      {/* Customer Detail Drawer */}
-      {selectedCustomer && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-2xs flex justify-end animate-in fade-in">
-          <div className="bg-white w-full max-w-md h-full shadow-2xl p-6 overflow-y-auto space-y-6 animate-in slide-in-from-right duration-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700">
-                  {selectedCustomer.id}
-                </span>
-                <h2 className="text-lg font-black text-slate-900 mt-1">{selectedCustomer.company}</h2>
-              </div>
-              <button onClick={() => setSelectedCustomer(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-3 text-xs">
-              <div className="flex items-center gap-2 text-slate-700">
-                <Phone className="w-4 h-4 text-blue-600" />
-                <span className="font-bold">{selectedCustomer.phone}</span>
-              </div>
-              <div className="flex items-center gap-2 text-slate-700">
-                <MapPin className="w-4 h-4 text-emerald-600" />
-                <span>{selectedCustomer.address}</span>
-              </div>
-              <div className="flex justify-between border-t border-slate-200 pt-3">
-                <span className="text-slate-400 font-semibold">GSTIN ID:</span>
-                <span className="font-bold text-slate-800">{selectedCustomer.gstin}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400 font-semibold">Approved Credit Limit:</span>
-                <span className="font-bold text-slate-900">{selectedCustomer.creditLimit}</span>
-              </div>
-            </div>
-
-            <div className="border border-rose-100 bg-rose-50/50 rounded-2xl p-4 text-center">
-              <span className="text-xs font-semibold text-rose-500 block uppercase tracking-wider">Current Outstanding Balance</span>
-              <span className="text-2xl font-black text-rose-700">{selectedCustomer.outstanding}</span>
-            </div>
-
-            <button
-              onClick={() => setSelectedCustomer(null)}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-xs"
-            >
-              Close Drawer
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Customer Detail Drawer with Invoices, Latest-First Ledger, Payments & Tax Invoices */}
+      <CustomerDetailDrawer
+        isOpen={!!selectedCustomer}
+        onClose={() => setSelectedCustomer(null)}
+        customer={selectedCustomer}
+      />
     </div>
   );
 }

@@ -36,6 +36,7 @@ export default function SettingsPage() {
     secretPin: tenant.secretPin || '1234',
   });
 
+  const router = typeof window !== 'undefined' ? require('next/navigation').useRouter() : null;
   const [isAdmin, setIsAdmin] = useState(false);
 
   React.useEffect(() => {
@@ -44,6 +45,10 @@ export default function SettingsPage() {
         const stored = localStorage.getItem('active_tenant');
         if (stored) {
           const parsed = JSON.parse(stored);
+          if (parsed.userRole === 'STAFF') {
+            if (router) router.push('/dashboard');
+            return;
+          }
           setIsAdmin(parsed.role === 'SUPERADMIN' || parsed.userRole === 'OWNER' || parsed.id === 'superadmin');
         }
       } catch (e) {}

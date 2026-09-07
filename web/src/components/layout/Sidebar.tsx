@@ -34,6 +34,16 @@ export const Sidebar: React.FC = () => {
   const { tenant } = useTenant();
   const { isMobileSidebarOpen, closeMobileSidebar } = useSidebar();
 
+  const rawAuth = typeof window !== 'undefined' ? localStorage.getItem('active_tenant') : null;
+  let userRole = 'OWNER';
+  if (rawAuth) {
+    try {
+      userRole = JSON.parse(rawAuth).userRole || 'OWNER';
+    } catch {}
+  }
+
+  const isStaff = userRole === 'STAFF';
+
   const navItems = [
     { name: t.dashboard, href: '/dashboard', icon: LayoutDashboard, hasSubmenu: false },
     { name: t.farmers, href: '/farmers', icon: Users, hasSubmenu: true },
@@ -46,9 +56,11 @@ export const Sidebar: React.FC = () => {
     { name: t.customerManagement, href: '/customers', icon: UserCheck, hasSubmenu: true },
     { name: t.expenseManagement, href: '/expenses', icon: DollarSign, hasSubmenu: true },
     { name: t.reportsAnalytics, href: '/reports', icon: BarChart3, hasSubmenu: true },
-    { name: t.userManagement, href: '/users', icon: ShieldCheck, hasSubmenu: true },
-    { name: t.auditLogs, href: '/audit-logs', icon: FileText, hasSubmenu: false },
-    { name: t.settings, href: '/settings', icon: Settings, hasSubmenu: false },
+    ...(!isStaff ? [
+      { name: t.userManagement, href: '/users', icon: ShieldCheck, hasSubmenu: true },
+      { name: t.auditLogs, href: '/audit-logs', icon: FileText, hasSubmenu: false },
+      { name: t.settings, href: '/settings', icon: Settings, hasSubmenu: false },
+    ] : [])
   ];
 
   const displayName = language === 'mr' ? tenant.businessNameMr : tenant.businessName;
