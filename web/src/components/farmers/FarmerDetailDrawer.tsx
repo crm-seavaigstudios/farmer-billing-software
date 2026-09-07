@@ -103,6 +103,24 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
         let totalPaid = 0;
         let totalMaterial = 0;
 
+        const formatDate = (rawDate: any) => {
+          if (!rawDate) return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+          try {
+            const d = new Date(rawDate);
+            if (isNaN(d.getTime())) return String(rawDate);
+            return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+          } catch {
+            return String(rawDate);
+          }
+        };
+
+        const getTimestamp = (x: any) => {
+          const raw = x.createdAt || x.date || x.purchaseDate || x.paymentDate;
+          if (!raw) return 0;
+          const t = new Date(raw).getTime();
+          return isNaN(t) ? 0 : t;
+        };
+
         fp.forEach((x: any) => {
           const itemWeight = parseFloat(String(x.weight || x.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
           const itemRate = parseFloat(String(x.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
@@ -113,12 +131,12 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
 
           totalPurchase += amt;
           allItems.push({
-             dateStr: x.date || x.purchaseDate,
-             timestamp: new Date(x.date || x.purchaseDate || 0).getTime() || 0,
+             dateStr: formatDate(x.date || x.purchaseDate || x.createdAt),
+             timestamp: getTimestamp(x),
              refNo: x.purchaseNo || x.id,
              type: 'PURCHASE',
              description: x.crop || 'Strawberry (A Grade)',
-             weightOrQty: `${x.weight} @ ${x.rate}`,
+             weightOrQty: `${x.weight || itemWeight} @ ${x.rate || itemRate}`,
              debitVal: 0,
              creditVal: amt,
              notes: x.notes,
@@ -130,8 +148,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
           totalPaid += amt;
           allItems.push({
-             dateStr: x.date,
-             timestamp: new Date(x.date || x.paymentDate || 0).getTime() || 0,
+             dateStr: formatDate(x.date || x.paymentDate || x.createdAt),
+             timestamp: getTimestamp(x),
              refNo: x.paymentNo || x.id,
              type: 'PAYMENT',
              description: `Payment (${x.method || x.paymentMode || 'Cash'})`,
@@ -152,14 +170,9 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           const amt = parsedAmt > 0 ? parsedAmt : calcVal;
           totalMaterial += amt;
 
-          const dateVal = x.date || x.createdAt;
-          const dateFormatted = dateVal 
-            ? new Date(dateVal).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-            : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-
           allItems.push({
-             dateStr: dateFormatted,
-             timestamp: dateVal ? new Date(dateVal).getTime() : Date.now(),
+             dateStr: formatDate(x.date || x.createdAt),
+             timestamp: getTimestamp(x),
              refNo: x.id,
              type: 'MATERIAL',
              description: `Material Issue: ${x.itemName}`,
@@ -171,18 +184,20 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           });
         });
         
-        const typeOrder: any = { 'MATERIAL': 1, 'PURCHASE': 2, 'PAYMENT': 3 };
+        // Chronological order from oldest to newest: Purchases (Credit) first on same date, then debits
+        const naturalOrder: any = { 'PURCHASE': 1, 'MATERIAL': 2, 'PAYMENT': 3 };
         allItems.sort((a, b) => {
           if (a.timestamp !== b.timestamp) {
             return a.timestamp - b.timestamp;
           }
-          return typeOrder[a.type] - typeOrder[b.type];
+          return (naturalOrder[a.type] || 0) - (naturalOrder[b.type] || 0);
         });
         
         let bal = 0;
-        const computed = allItems.map(item => {
+        const computed = allItems.map((item, idx) => {
            bal = bal + item.creditVal - item.debitVal;
            return {
+              srNo: idx + 1,
               date: item.dateStr,
               refNo: item.refNo,
               type: item.type,
@@ -201,7 +216,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           material: totalMaterial,
           outstanding: bal 
         });
-        setRealTransactions(computed.reverse()); // Newest first for view
+        // Reverse so the latest transaction is on top for instant visibility without scrolling
+        setRealTransactions(computed.reverse());
       } catch (err) {
         console.error('Error in fetchLedger:', err);
       }
@@ -744,6 +760,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                   <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="bg-slate-50 text-[10px] text-slate-400 font-extrabold uppercase border-b border-slate-100">
+                      <th className="py-2.5 px-2.5 text-center w-10">#</th>
                       <th className="py-2.5 px-3">Date</th>
                       <th className="py-2.5 px-3">Description</th>
                       <th className="py-2.5 px-3 text-right">Debit</th>
@@ -754,7 +771,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                   <tbody className="divide-y divide-slate-100">
                     {realTransactions.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="py-8 text-center text-slate-400 font-bold">No transactions recorded yet.</td>
+                        <td colSpan={6} className="py-8 text-center text-slate-400 font-bold">No transactions recorded yet.</td>
                       </tr>
                     )}
                     {realTransactions.map((tx, idx) => (
@@ -763,6 +780,9 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                           onClick={() => setExpandedRowId(expandedRowId === tx.refNo ? null : tx.refNo)}
                           className={`hover:bg-slate-50 font-medium cursor-pointer transition-colors ${expandedRowId === tx.refNo ? 'bg-slate-50' : ''}`}
                         >
+                          <td className="py-2.5 px-2.5 text-center font-bold text-slate-400 text-[10px]">
+                            {tx.srNo || (realTransactions.length - idx)}
+                          </td>
                           <td className="py-2.5 px-3 text-slate-500 text-[11px]">
                              <div className="flex items-center gap-1">
                                {expandedRowId === tx.refNo ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
@@ -779,7 +799,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                         </tr>
                         {expandedRowId === tx.refNo && (
                           <tr className="bg-slate-50/50">
-                            <td colSpan={5} className="py-3 px-4 border-b border-slate-100">
+                            <td colSpan={6} className="py-3 px-4 border-b border-slate-100">
                               <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm text-xs cursor-default">
                                 {tx.type === 'PURCHASE' && (
                                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

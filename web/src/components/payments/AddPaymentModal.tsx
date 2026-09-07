@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, Receipt } from 'lucide-react';
+import { X, ShieldCheck, Receipt, Calculator, ArrowRight } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiCreatePayment, apiGetFarmers, apiUpdateFarmerBalance, apiUpdatePurchase, getTenantId } from '@/lib/api';
+import {
+  apiCreatePayment,
+  apiGetFarmers,
+  apiUpdateFarmerBalance,
+  apiUpdatePurchase,
+  apiGetPurchases,
+  apiGetPayments,
+  apiGetFarmerMaterials,
+  isFarmerMatch,
+  getTenantId
+} from '@/lib/api';
 
 interface AddPaymentModalProps {
   isOpen: boolean;
@@ -34,26 +44,92 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
     notes: '',
   });
   const [farmerPurchases, setFarmerPurchases] = useState<any[]>([]);
+  const [farmerFinancials, setFarmerFinancials] = useState({
+    totalPurchases: 0,
+    totalPaid: 0,
+    totalMaterials: 0,
+    netDue: 0,
+  });
 
   useEffect(() => {
     if (!formData.farmerId) {
       setFarmerPurchases([]);
+      setFarmerFinancials({ totalPurchases: 0, totalPaid: 0, totalMaterials: 0, netDue: 0 });
       return;
     }
-    async function loadPurchases() {
-      const { apiGetPurchases } = await import('@/lib/api');
-      const allPurchases = await apiGetPurchases();
-      if (allPurchases && Array.isArray(allPurchases)) {
-        const fp = allPurchases.filter(
-          (p: any) =>
-            p.farmerId === formData.farmerId &&
-            p.paymentStatus !== 'PAID'
-        );
-        setFarmerPurchases(fp);
+
+    async function loadFarmerHistory() {
+      try {
+        const foundFarmer = farmersList.find((f) => f.id === formData.farmerId) || { id: formData.farmerId };
+        const [allPurchases, allPayments, allMaterials] = await Promise.all([
+          apiGetPurchases(),
+          apiGetPayments(),
+          apiGetFarmerMaterials(formData.farmerId)
+        ]);
+
+        const fp = Array.isArray(allPurchases) ? allPurchases.filter((p: any) => isFarmerMatch(p, foundFarmer)) : [];
+        const fpay = Array.isArray(allPayments) ? allPayments.filter((p: any) => isFarmerMatch(p, foundFarmer)) : [];
+        const fmat = Array.isArray(allMaterials) ? allMaterials : [];
+
+        // Unpaid or partial purchases
+        const pendingPurchases = fp.filter((p: any) => p.paymentStatus !== 'PAID');
+        setFarmerPurchases(pendingPurchases);
+
+        let totPurchases = 0;
+        let totPaid = 0;
+        let totMaterials = 0;
+
+        fp.forEach((p: any) => {
+          const itemWeight = parseFloat(String(p.weight || p.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+          const itemRate = parseFloat(String(p.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+          const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
+          const rawAmt = p.amount ?? p.totalAmount ?? p.netAmount ?? calcVal ?? 0;
+          const parsed = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+          totPurchases += (parsed > 0 ? parsed : calcVal);
+        });
+
+        fpay.forEach((pay: any) => {
+          const amt = typeof pay.amount === 'number' ? pay.amount : parseFloat(String(pay.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          totPaid += amt;
+        });
+
+        fmat.forEach((m: any) => {
+          const qty = Number(m.quantity || 1);
+          const price = Number(m.unitPrice || 0);
+          const calcVal = qty * price;
+          const rawAmt = m.totalAmount ?? m.totalPrice ?? m.amount ?? calcVal ?? 0;
+          const parsedAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+          totMaterials += (parsedAmt > 0 ? parsedAmt : calcVal);
+        });
+
+        const netDue = totPurchases - totPaid - totMaterials;
+        setFarmerFinancials({
+          totalPurchases: totPurchases,
+          totalPaid: totPaid,
+          totalMaterials: totMaterials,
+          netDue: netDue,
+        });
+
+        // Auto pre-fill amount if not explicitly provided
+        if (initialAmount === undefined) {
+          if (formData.purchaseId) {
+            const currentBill = fp.find((p: any) => p.id === formData.purchaseId || p.purchaseNo === formData.purchaseId);
+            const billDue = currentBill ? (Number(currentBill.dueAmount ?? currentBill.amount) || 0) : 0;
+            const suggested = netDue > 0 ? Math.min(netDue, billDue || netDue) : billDue;
+            if (suggested > 0) {
+              setFormData(prev => ({ ...prev, amount: String(suggested) }));
+            }
+          } else if (netDue > 0) {
+            setFormData(prev => ({ ...prev, amount: String(netDue) }));
+          }
+        }
+      } catch (err) {
+        console.error('Error loading farmer financials in AddPaymentModal:', err);
       }
     }
-    loadPurchases();
-  }, [formData.farmerId]);
+
+    loadFarmerHistory();
+  }, [formData.farmerId, formData.purchaseId, farmersList, initialAmount]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -104,7 +180,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
     e.preventDefault();
     if (loading) return;
     setLoading(true);
-    const numericAmount = Number(formData.amount) || 15000;
+    const numericAmount = Number(formData.amount) || 0;
 
     const payload = {
       farmerId: formData.farmerId,
@@ -223,6 +299,60 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
               </select>
             </div>
           </div>
+
+          {/* Live Farmer Financial Status Card */}
+          {formData.farmerId && (
+            <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                  <Calculator className="w-3.5 h-3.5 text-blue-600" />
+                  {language === 'mr' ? 'शेतकरी चालू हिशोब स्थिती' : 'Farmer Financial Balance'}
+                </span>
+                <span className="font-black text-slate-800">{formData.farmerName}</span>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-white border border-slate-200/60 rounded-xl p-2 shadow-2xs">
+                  <span className="text-[10px] text-slate-400 block font-semibold">खरेदी (Purchases)</span>
+                  <span className="font-black text-slate-900 text-xs">₹{farmerFinancials.totalPurchases.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="bg-white border border-purple-100 rounded-xl p-2 shadow-2xs">
+                  <span className="text-[10px] text-purple-600 block font-semibold">साहित्य नावे (Materials)</span>
+                  <span className="font-black text-purple-700 text-xs">-₹{farmerFinancials.totalMaterials.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="bg-white border border-emerald-100 rounded-xl p-2 shadow-2xs">
+                  <span className="text-[10px] text-emerald-600 block font-semibold">भरणा/उचल (Paid)</span>
+                  <span className="font-black text-emerald-700 text-xs">-₹{farmerFinancials.totalPaid.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1 border-t border-slate-200/80">
+                <div className="text-xs">
+                  <span className="font-bold text-slate-500">
+                    {farmerFinancials.netDue > 0 ? (language === 'mr' ? 'एकूण बाकी देणे (Net Due):' : 'Net Due to Farmer:') : (language === 'mr' ? 'अ‍ॅडव्हान्स शिल्लक:' : 'Advance Balance:')}
+                  </span>
+                  <span className={`ml-1.5 font-black text-xs ${farmerFinancials.netDue > 0 ? 'text-rose-600' : 'text-indigo-600'}`}>
+                    ₹{Math.abs(farmerFinancials.netDue).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                {farmerFinancials.netDue > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const selectedBill = farmerPurchases.find((p: any) => p.id === formData.purchaseId || p.purchaseNo === formData.purchaseId);
+                      const billDue = selectedBill ? (Number(selectedBill.dueAmount ?? selectedBill.amount) || 0) : 0;
+                      const fillVal = formData.purchaseId && billDue > 0 ? Math.min(farmerFinancials.netDue, billDue) : farmerFinancials.netDue;
+                      setFormData(prev => ({ ...prev, amount: String(fillVal) }));
+                    }}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-extrabold rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <span>बाकी भरा (Fill Due)</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Optional Bill-by-Bill Purchase Selector */}
           <div>

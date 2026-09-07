@@ -11,7 +11,7 @@ import { AddFarmerAdvanceModal } from '@/components/farmers/AddFarmerAdvanceModa
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetFarmers, apiGetPurchases, apiGetPayments, getTenantId } from '@/lib/api';
+import { apiGetFarmers, apiGetPurchases, apiGetPayments, isFarmerMatch, getTenantId } from '@/lib/api';
 import {
   Users,
   Search,
@@ -279,7 +279,36 @@ export default function FarmersPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredFarmers.map((f, idx) => (
+                    filteredFarmers.map((f, idx) => {
+                      const farmerPurchases = purchases.filter((p: any) => isFarmerMatch(p, f));
+                      const pendingBills = farmerPurchases.filter((p: any) => {
+                        const isPaid = p.paymentStatus === 'PAID';
+                        const due = Number(p.dueAmount ?? (Number(p.totalAmount ?? p.amount ?? 0) - Number(p.paidAmount ?? 0)));
+                        return !isPaid && due > 0;
+                      });
+
+                      const pendingPurchasesTotal = pendingBills.reduce((sum: number, p: any) => {
+                        const itemWeight = parseFloat(String(p.weight || p.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+                        const itemRate = parseFloat(String(p.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+                        const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
+                        const rawAmt = p.totalAmount ?? p.amount ?? p.netAmount ?? calcVal ?? 0;
+                        const amt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+                        return sum + (amt > 0 ? amt : calcVal);
+                      }, 0);
+
+                      const pendingPaidTotal = pendingBills.reduce((sum: number, p: any) => {
+                        return sum + Number(p.paidAmount ?? 0);
+                      }, 0);
+
+                      const pendingDueTotal = pendingBills.reduce((sum: number, p: any) => {
+                        const due = Number(p.dueAmount ?? (Number(p.totalAmount ?? p.amount ?? 0) - Number(p.paidAmount ?? 0)));
+                        return sum + Math.max(0, due);
+                      }, 0);
+
+                      const advanceBal = Number(f.advanceBalance || 0);
+                      const netRowDue = pendingBills.length > 0 ? pendingDueTotal : (advanceBal > 0 ? -advanceBal : (Number(f.outstandingAmount || 0)));
+
+                      return (
                       <tr 
                         key={idx} 
                         onClick={() => setSelectedDetailFarmerId(f.id)} 
@@ -298,22 +327,17 @@ export default function FarmersPage() {
                         </td>
                         <td className="py-3.5 px-4">
                           {(() => {
-                            const due = Number(f.outstandingAmount || 0);
-                            const adv = Number(f.advanceBalance || 0);
-                            let label = 'COMPLETED';
+                            let label = 'ALL_SETTLED (पूर्ण हिशोब)';
                             let color = 'bg-slate-50 text-slate-700 border-slate-100';
-                            if (adv > 0 || due < 0) {
+                            if (pendingBills.length > 0 && pendingDueTotal > 0) {
+                              label = `PENDING_DUE (${pendingBills.length} बाकी)`;
+                              color = 'bg-rose-50 text-rose-700 border-rose-100';
+                            } else if (advanceBal > 0 || netRowDue < 0) {
                               label = 'ADVANCE (अ‍ॅडव्हान्स जमा)';
                               color = 'bg-indigo-50 text-indigo-700 border-indigo-100';
-                            } else if (due > 0) {
-                              label = 'PENDING_DUE (बाकी थकबाकी)';
-                              color = 'bg-rose-50 text-rose-700 border-rose-100';
-                            } else if (f.totalPurchase > 0 && due === 0) {
+                            } else if (farmerPurchases.length > 0 && pendingBills.length === 0) {
                               label = 'FULL_PAID (पूर्ण भरणा)';
                               color = 'bg-emerald-50 text-emerald-700 border-emerald-100';
-                            } else {
-                              label = 'COMPLETED (पूर्ण हिशोब)';
-                              color = 'bg-slate-50 text-slate-700 border-slate-100';
                             }
                             return (
                               <div className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${color} block w-fit`}>
@@ -322,15 +346,21 @@ export default function FarmersPage() {
                             );
                           })()}
                         </td>
-                        <td className="py-3.5 px-4 font-bold text-slate-900">₹{(f.totalPurchase || 0).toLocaleString('en-IN')}</td>
-                        <td className="py-3.5 px-4 font-extrabold text-emerald-600">₹{(f.totalPaid || 0).toLocaleString('en-IN')}</td>
+                        <td className="py-3.5 px-4 font-bold text-slate-900">
+                          ₹{pendingPurchasesTotal.toLocaleString('en-IN')}
+                          {pendingBills.length > 0 && (
+                            <span className="text-[10px] text-slate-400 block font-normal">
+                              ({pendingBills.length} pending {pendingBills.length === 1 ? 'bill' : 'bills'})
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 font-extrabold text-emerald-600">
+                          ₹{pendingPaidTotal.toLocaleString('en-IN')}
+                        </td>
                         <td className="py-3.5 px-4 font-extrabold text-amber-600">
-                          {(() => {
-                            const dueVal = f.outstandingAmount || 0;
-                            return dueVal < 0 
-                              ? `-₹${Math.abs(dueVal).toLocaleString('en-IN')}` 
-                              : `₹${dueVal.toLocaleString('en-IN')}`;
-                          })()}
+                          {netRowDue < 0 
+                            ? `-₹${Math.abs(netRowDue).toLocaleString('en-IN')}` 
+                            : `₹${netRowDue.toLocaleString('en-IN')}`}
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -355,7 +385,8 @@ export default function FarmersPage() {
                           </div>
                         </td>
                       </tr>
-                    ))
+                    );
+                  })
                   )}
                 </tbody>
               </table>

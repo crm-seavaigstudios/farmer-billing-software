@@ -440,18 +440,31 @@ export const apiGetMaterialItems = async () => {
   return getLocalCache(`seavaig_global_materials_cache_${tenantId}`, []);
 };
 
-export const apiAddMaterialItem = async (name: string) => {
+export const apiAddMaterialItem = async (name: string, unit: string = 'QTY', price: number = 0) => {
   const tenantId = getTenantId();
   if (!tenantId) throw new Error('No tenant');
   
-  const newItem = { id: `mat-${Date.now()}`, tenantId, name };
+  const newItem = {
+    id: `mat-${Date.now()}`,
+    tenantId,
+    name,
+    unit: unit || 'QTY',
+    price: Number(price || 0),
+    createdAt: new Date().toISOString(),
+  };
+
   try {
     await supabase.from('MaterialItem').insert([newItem]).throwOnError();
-  } catch {}
+  } catch (e) {
+    console.error('Error adding MaterialItem in Supabase:', e);
+  }
   
   const current = await apiGetMaterialItems();
-  const updated = [newItem, ...current];
+  const updated = [newItem, ...current.filter((m: any) => m.id !== newItem.id)];
   setLocalCache(`seavaig_global_materials_cache_${tenantId}`, updated);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('material_items_changed'));
+  }
   return newItem;
 };
 

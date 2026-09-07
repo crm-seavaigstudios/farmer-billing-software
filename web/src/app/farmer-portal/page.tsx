@@ -284,9 +284,14 @@ export default function FarmerPortalPage() {
     });
 
     rawMaterials.forEach((x: any) => {
-      const d = new Date(x.createdAt || 0);
+      const d = parseCustomDate(x.date || x.createdAt);
       if(!isDateInRange(d)) return;
-      const amt = typeof x.totalAmount === 'number' ? x.totalAmount : parseFloat(String(x.totalAmount || '0').replace(/[^0-9.-]+/g, '')) || 0;
+      const qty = Number(x.quantity || 1);
+      const price = Number(x.unitPrice || 0);
+      const calcVal = qty * price;
+      const rawAmt = x.totalAmount ?? x.totalPrice ?? x.amount ?? calcVal ?? 0;
+      const parsedAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+      const amt = parsedAmt > 0 ? parsedAmt : calcVal;
       totalMaterial += amt;
       allItems.push({
          dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
@@ -294,26 +299,28 @@ export default function FarmerPortalPage() {
          refNo: x.id,
          type: 'MATERIAL',
          description: `Material Issue: ${x.itemName || 'Agricultural Inputs'}`,
-         weightOrQty: `${x.quantity || 1} ${x.unit || 'Qty'}`,
+         weightOrQty: `${qty} ${x.unit || 'Qty'} @ ₹${price}`,
          debitVal: amt,
          creditVal: 0,
          notes: x.notes,
-         raw: x
+         raw: { ...x, quantity: qty, unitPrice: price, totalAmount: amt, totalPrice: amt }
       });
     });
     
-    const typeOrder: any = { 'MATERIAL': 1, 'PURCHASE': 2, 'PAYMENT': 3 };
+    // Chronological order from oldest to newest: Purchases (Credit) first on same date, then debits
+    const naturalOrder: any = { 'PURCHASE': 1, 'MATERIAL': 2, 'PAYMENT': 3 };
     allItems.sort((a, b) => {
       if (a.timestamp !== b.timestamp) {
         return a.timestamp - b.timestamp;
       }
-      return typeOrder[a.type] - typeOrder[b.type];
+      return (naturalOrder[a.type] || 0) - (naturalOrder[b.type] || 0);
     });
     
     let bal = 0;
-    const computed = allItems.map(item => {
+    const computed = allItems.map((item, idx) => {
        bal = bal + item.creditVal - item.debitVal;
        return {
+          srNo: idx + 1,
           date: item.dateStr,
           refNo: item.refNo,
           type: item.type,
@@ -332,6 +339,7 @@ export default function FarmerPortalPage() {
       material: totalMaterial,
       outstanding: bal
     });
+    // Reverse so latest transaction is on top
     setLedger(computed.reverse());
   };
 
@@ -808,6 +816,7 @@ export default function FarmerPortalPage() {
                 <table className="w-full text-left text-xs min-w-[600px]">
                   <thead>
                     <tr className="bg-slate-50 text-[10px] text-slate-400 font-extrabold uppercase border-b border-slate-100">
+                      <th className="py-2.5 px-2.5 text-center w-10">#</th>
                       <th className="py-2.5 px-3">Date</th>
                       <th className="py-2.5 px-3">Description</th>
                       <th className="py-2.5 px-3 text-right">Debit</th>
@@ -818,7 +827,7 @@ export default function FarmerPortalPage() {
                   <tbody className="divide-y divide-slate-100">
                     {ledger.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-8 text-center text-slate-400 font-bold">No transactions recorded yet.</td>
+                        <td colSpan={6} className="py-8 text-center text-slate-400 font-bold">No transactions recorded yet.</td>
                       </tr>
                     ) : (
                       ledger.map((tx, idx) => (
@@ -827,6 +836,9 @@ export default function FarmerPortalPage() {
                             onClick={() => setExpandedRowId(expandedRowId === tx.refNo ? null : tx.refNo)}
                             className={`hover:bg-slate-50 font-medium cursor-pointer transition-colors ${expandedRowId === tx.refNo ? 'bg-slate-50' : ''}`}
                           >
+                            <td className="py-2.5 px-2.5 text-center font-bold text-slate-400 text-[10px]">
+                              {tx.srNo || (ledger.length - idx)}
+                            </td>
                             <td className="py-2.5 px-3 text-slate-500 text-[11px] whitespace-nowrap">
                                <div className="flex items-center gap-1">
                                  {expandedRowId === tx.refNo ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
@@ -837,13 +849,13 @@ export default function FarmerPortalPage() {
                               <span className="font-bold">{tx.description}</span>
                               <span className="text-[10px] text-slate-400 block">{tx.refNo}</span>
                             </td>
-                            <td className="py-2.5 px-3 text-right font-bold text-slate-700">{tx.debit}</td>
+                            <td className="py-2.5 px-3 text-right font-bold text-rose-600">{tx.debit}</td>
                             <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{tx.credit}</td>
                             <td className="py-2.5 px-3 text-right font-black text-slate-900">{tx.balance}</td>
                           </tr>
                           {expandedRowId === tx.refNo && (
                             <tr className="bg-slate-50/50">
-                              <td colSpan={5} className="py-3 px-4 border-b border-slate-100">
+                              <td colSpan={6} className="py-3 px-4 border-b border-slate-100">
                                 <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm text-xs cursor-default">
                                   {tx.type === 'PURCHASE' && (
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -862,11 +874,21 @@ export default function FarmerPortalPage() {
                                   )}
                                   {tx.type === 'MATERIAL' && (
                                     <div className="space-y-2">
-                                      <div className="font-bold text-slate-800 border-b border-slate-100 pb-2 mb-2">Itemized Materials</div>
-                                      <div className="flex justify-between items-center">
-                                         <span className="text-slate-600">{tx.raw.itemName || 'Material Item'}</span>
-                                         <span className="font-bold">{tx.raw.quantity} {tx.raw.unit || 'Qty'}</span>
+                                      <div className="font-bold text-slate-800 border-b border-slate-100 pb-2 mb-2 flex items-center justify-between">
+                                        <span>साहित्य पुरवठा तपशील (Material Issue Details)</span>
+                                        <span className="text-xs font-black text-rose-600">-₹{Number(tx.raw.totalAmount || tx.raw.totalPrice || (tx.raw.quantity * tx.raw.unitPrice) || 0).toLocaleString('en-IN')}</span>
                                       </div>
+                                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                        <div><span className="text-slate-400 block mb-1">साहित्य / Item</span><span className="font-bold text-slate-800">{tx.raw.itemName || 'Material Item'}</span></div>
+                                        <div><span className="text-slate-400 block mb-1">प्रमाण / Quantity</span><span className="font-bold text-slate-800">{tx.raw.quantity} {tx.raw.unit || 'Qty'}</span></div>
+                                        <div><span className="text-slate-400 block mb-1">दर / Unit Price</span><span className="font-bold text-slate-800">₹{Number(tx.raw.unitPrice || 0).toLocaleString('en-IN')}</span></div>
+                                        <div><span className="text-slate-400 block mb-1">एकूण नावे / Total Debit</span><span className="font-black text-rose-600">₹{Number(tx.raw.totalAmount || tx.raw.totalPrice || (tx.raw.quantity * tx.raw.unitPrice) || 0).toLocaleString('en-IN')}</span></div>
+                                      </div>
+                                      {tx.raw.notes && (
+                                        <div className="mt-2 text-slate-500 pt-1 border-t border-slate-50">
+                                          <span className="font-semibold text-slate-400">टीप (Notes):</span> {tx.raw.notes}
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
