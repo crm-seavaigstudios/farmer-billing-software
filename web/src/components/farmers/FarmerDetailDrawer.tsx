@@ -117,11 +117,39 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           }
         };
 
-        const getTimestamp = (x: any) => {
-          const raw = x.createdAt || x.date || x.purchaseDate || x.paymentDate;
-          if (!raw) return 0;
-          const t = new Date(raw).getTime();
-          return isNaN(t) ? 0 : t;
+        const getPreciseTimestamp = (x: any) => {
+          // 1. Check createdAt (Full ISO timestamp)
+          if (x.createdAt) {
+            const t = new Date(x.createdAt).getTime();
+            if (!isNaN(t) && t > 1000000000000) return t;
+          }
+          // 2. Extract numeric millisecond timestamp from ID (e.g. pur-1788795032219, pay-1788797876152)
+          const idStr = String(x.id || x._id || '');
+          const idMatch = idStr.match(/(1[6-9]\d{11})/);
+          if (idMatch) {
+            const t = parseInt(idMatch[1], 10);
+            if (!isNaN(t) && t > 1000000000000) return t;
+          }
+          // 3. Check date / purchaseDate / paymentDate
+          const rawDate = x.date || x.purchaseDate || x.paymentDate;
+          if (rawDate) {
+            if (typeof rawDate === 'string') {
+              if (rawDate.includes('/') || (rawDate.includes('-') && rawDate.split('-')[0].length <= 2)) {
+                const separator = rawDate.includes('/') ? '/' : '-';
+                const parts = rawDate.split(separator);
+                if (parts.length === 3) {
+                  const day = parseInt(parts[0], 10);
+                  const month = parseInt(parts[1], 10) - 1;
+                  const year = parseInt(parts[2].length === 2 ? `20${parts[2]}` : parts[2], 10);
+                  const d = new Date(year, month, day);
+                  if (!isNaN(d.getTime())) return d.getTime();
+                }
+              }
+            }
+            const t = new Date(rawDate).getTime();
+            if (!isNaN(t) && t > 0) return t;
+          }
+          return 0;
         };
 
         let orderIdx = 0;
@@ -137,7 +165,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           totalPurchase += amt;
           allItems.push({
              dateStr: formatDate(x.date || x.purchaseDate || x.createdAt),
-             timestamp: getTimestamp(x),
+             timestamp: getPreciseTimestamp(x),
              orderIdx: ++orderIdx,
              refNo: x.purchaseNo || x.id,
              type: 'PURCHASE',
@@ -155,7 +183,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           totalPaid += amt;
           allItems.push({
              dateStr: formatDate(x.date || x.paymentDate || x.createdAt),
-             timestamp: getTimestamp(x),
+             timestamp: getPreciseTimestamp(x),
              orderIdx: ++orderIdx,
              refNo: x.paymentNo || x.id,
              type: 'PAYMENT',
@@ -179,7 +207,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
 
           allItems.push({
              dateStr: formatDate(x.date || x.createdAt),
-             timestamp: getTimestamp(x),
+             timestamp: getPreciseTimestamp(x),
              orderIdx: ++orderIdx,
              refNo: x.id,
              type: 'MATERIAL',
@@ -196,15 +224,6 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
         allItems.sort((a, b) => {
           if (a.timestamp !== b.timestamp) {
             return a.timestamp - b.timestamp;
-          }
-          const getSerial = (ref: string) => {
-            const match = String(ref || '').match(/(\d+)$/);
-            return match ? parseInt(match[1], 10) : 0;
-          };
-          const serialA = getSerial(a.refNo);
-          const serialB = getSerial(b.refNo);
-          if (serialA && serialB && serialA !== serialB) {
-            return serialA - serialB;
           }
           return (a.orderIdx || 0) - (b.orderIdx || 0);
         });
@@ -237,7 +256,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
         });
 
         // FIFO Bill Settlement: Allocate total debits (Cash + Materials) across bills from oldest to newest
-        const sortedPurchasesOldest = [...fp].sort((a, b) => getTimestamp(a) - getTimestamp(b));
+        const sortedPurchasesOldest = [...fp].sort((a, b) => getPreciseTimestamp(a) - getPreciseTimestamp(b));
         let remainingSettlementPool = totalPaid + totalMaterial;
         const calculatedFifoMap: Record<string, { allocatedPaid: number; allocatedDue: number; status: 'PAID' | 'PARTIAL' | 'UNPAID' }> = {};
         let activePurchasesSum = 0;

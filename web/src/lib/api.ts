@@ -1673,7 +1673,7 @@ export const apiCreateSale = async (saleData: any) => {
   const newId = saleData.id || `sale-${tenantShort}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   
   // Non-schema columns to strip before sending to Supabase Sale table
-  const invalidCols = ['driverSignatureUrl', 'deliveryStatus', 'paymentHistory', 'notes', 'rate', 'price', 'cropName', 'weight'];
+  const invalidCols = ['driverSignatureUrl', 'deliveryStatus', 'paymentHistory', 'notes', 'rate', 'price', 'cropName', 'weight', 'itemsData', 'itemsList', 'customerGstin', 'buyerGstin', 'lineItems'];
   const dbSaleData: any = {};
   for (const [k, v] of Object.entries(saleData)) {
     if (!invalidCols.includes(k)) {
