@@ -274,7 +274,7 @@ export default function FarmerPortalPage() {
         if (!isNaN(t) && t > 1000000000000) return t;
       }
       // 2. Extract numeric millisecond timestamp from ID (e.g. pur-1788795032219, pay-1788797876152)
-      const idStr = String(x.id || x._id || '');
+      const idStr = String(x.rawId || x.dbId || x.id || x._id || '');
       const idMatch = idStr.match(/(1[6-9]\d{11})/);
       if (idMatch) {
         const t = parseInt(idMatch[1], 10);

@@ -207,49 +207,114 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
 
   // Determine line items list with intelligent fallback parsing
   const getParsedLineItems = (): SaleItemDetail[] => {
-    if (data.items && Array.isArray(data.items) && data.items.length > 0) {
-      return data.items.map((it, idx) => ({
-        srNo: it.srNo || idx + 1,
-        cropName: it.cropName || it.name || 'Agricultural Produce',
-        grade: it.grade || 'A_GRADE',
-        packaging: it.packaging || it.category || 'कॅरेट (Crates)',
-        weightKg: it.weightKg || it.weight || '-',
-        ratePerKg: it.ratePerKg || it.rate || '-',
-        totalAmount: it.totalAmount || (Number(it.weightKg || 0) * Number(it.ratePerKg || 0)) || '-'
-      }));
-    }
+    const rawTot = data.netAmount ?? data.totalAmount ?? data.amount ?? 0;
+    const billTotalAmt = typeof rawTot === 'number' ? rawTot : (parseFloat(String(rawTot).replace(/[^0-9.-]+/g, '')) || 0);
 
-    // Fallback parsing from comma string: e.g. "Strawberry (A Grade) (450 KG), Strawberry (B Grade) (200 KG)"
-    const rawString = data.gradeOrItems || '';
-    if (rawString && rawString.includes(',')) {
-      const parts = rawString.split(',').map(s => s.trim()).filter(Boolean);
-      return parts.map((part, idx) => {
-        // Extract weight like "(450 KG)"
-        const matchWeight = part.match(/\((\d+(?:\.\d+)?)\s*KG\)/i);
-        const weight = matchWeight ? matchWeight[1] : '-';
-        // Clean crop name
-        const cleanName = part.replace(/\(\d+(?:\.\d+)?\s*KG\)/gi, '').trim();
+    // 1. Direct structured itemsData array
+    if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+      return data.items.map((it, idx) => {
+        const u = it.unit || 'KG';
+        const w = parseFloat(String(it.weightKg || it.weight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+        const r = parseFloat(String(it.ratePerKg || it.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+        const tot = typeof it.totalAmount === 'number' ? it.totalAmount : (w > 0 && r > 0 ? w * r : (parseFloat(String(it.totalAmount || '0').replace(/[^0-9.-]+/g, '')) || 0));
 
         return {
-          srNo: idx + 1,
-          cropName: cleanName || part,
-          grade: cleanName.includes('B Grade') ? 'B_GRADE' : 'A_GRADE',
-          packaging: 'कॅरेट (Crates)',
-          weightKg: weight !== '-' ? `${weight} KG` : '-',
-          ratePerKg: '-',
-          totalAmount: '-'
+          srNo: it.srNo || idx + 1,
+          cropName: it.cropName || it.name || 'Agricultural Produce',
+          grade: it.grade || 'A_GRADE',
+          packaging: it.packaging || it.category || (u === 'BOX' ? 'Boxes (बॉक्स)' : (u === 'CRATE' ? 'Crates (कॅरेट)' : `${u}`)),
+          weightKg: w > 0 ? `${w} ${u}` : (it.weightKg || it.weight || '-'),
+          ratePerKg: r > 0 ? `₹${r}/${u}` : (it.ratePerKg ? `₹${it.ratePerKg}` : '-'),
+          totalAmount: tot > 0 ? `₹${tot.toLocaleString('en-IN')}` : '-'
         };
       });
     }
 
+    const rawString = String(data.gradeOrItems || '');
+
+    // 2. Rich structured format: "Crop - 200 KG @ ₹200/KG = ₹40000 | Crop - 50 Boxes @ ₹500/Box = ₹25000"
+    if (rawString.includes('|')) {
+      const parts = rawString.split('|').map(s => s.trim()).filter(Boolean);
+      return parts.map((part, idx) => {
+        // e.g. "Strawberry (B Grade) - 200 KG @ ₹200/KG = ₹40000"
+        const atParts = part.split('@');
+        const cropAndWeight = atParts[0] || '';
+        const rateAndAmount = atParts[1] || '';
+
+        const nameWeightParts = cropAndWeight.split('-');
+        const cropName = nameWeightParts[0]?.trim() || 'Produce';
+        const weightWithUnit = nameWeightParts[1]?.trim() || '-';
+
+        let rateStr = '-';
+        let amtStr = '-';
+
+        if (rateAndAmount) {
+          const eqParts = rateAndAmount.split('=');
+          rateStr = eqParts[0]?.trim() || '-';
+          if (!rateStr.startsWith('₹') && rateStr !== '-') rateStr = `₹${rateStr}`;
+          const rawAmt = eqParts[1]?.replace(/[^0-9.-]+/g, '') || '';
+          if (rawAmt) amtStr = `₹${parseFloat(rawAmt).toLocaleString('en-IN')}`;
+        }
+
+        return {
+          srNo: idx + 1,
+          cropName,
+          grade: cropName.includes('B Grade') ? 'B_GRADE' : 'A_GRADE',
+          packaging: weightWithUnit.includes('BOX') ? 'Boxes (बॉक्स)' : (weightWithUnit.includes('CRATE') ? 'Crates (कॅरेट)' : 'कॅरेट'),
+          weightKg: weightWithUnit,
+          ratePerKg: rateStr,
+          totalAmount: amtStr
+        };
+      });
+    }
+
+    // 3. Legacy comma-separated format: "Strawberry (B Grade) (200 KG), Strawberry (B Grade) (250 KG), Strawberry (B Grade) (270 KG)"
+    if (rawString.includes(',')) {
+      const parts = rawString.split(',').map(s => s.trim()).filter(Boolean);
+      const parsedItems = parts.map((part, idx) => {
+        const matchWeight = part.match(/\((\d+(?:\.\d+)?)\s*([A-Za-z]+)?\)/i);
+        const weightNum = matchWeight ? parseFloat(matchWeight[1]) : 0;
+        const unit = matchWeight?.[2] || 'KG';
+        const cleanName = part.replace(/\(\d+(?:\.\d+)?\s*[A-Za-z]*\)/gi, '').trim();
+
+        return {
+          srNo: idx + 1,
+          cropName: cleanName || part,
+          weightNum,
+          unit,
+          grade: cleanName.includes('B Grade') ? 'B_GRADE' : 'A_GRADE',
+          packaging: unit === 'BOX' ? 'Boxes (बॉक्स)' : (unit === 'CRATE' ? 'Crates (कॅरेट)' : 'कॅरेट'),
+        };
+      });
+
+      const totalParsedWeight = parsedItems.reduce((acc, it) => acc + (it.weightNum || 0), 0);
+      const autoCalculatedRate = (totalParsedWeight > 0 && billTotalAmt > 0) ? (billTotalAmt / totalParsedWeight) : 0;
+
+      return parsedItems.map((it) => {
+        const lineAmt = it.weightNum > 0 && autoCalculatedRate > 0 ? (it.weightNum * autoCalculatedRate) : 0;
+        return {
+          srNo: it.srNo,
+          cropName: it.cropName,
+          grade: it.grade,
+          packaging: it.packaging,
+          weightKg: it.weightNum > 0 ? `${it.weightNum} ${it.unit}` : '-',
+          ratePerKg: autoCalculatedRate > 0 ? `₹${Math.round(autoCalculatedRate)}/${it.unit}` : '-',
+          totalAmount: lineAmt > 0 ? `₹${Math.round(lineAmt).toLocaleString('en-IN')}` : '-'
+        };
+      });
+    }
+
+    // 4. Single item fallback
+    const singleWeight = data.totalWeight || data.weightOrQty || '-';
+    const singleRate = data.ratePerKg ? `₹${data.ratePerKg}` : '-';
     return [{
       srNo: 1,
-      cropName: data.gradeOrItems || 'कृषी उत्पन्न (Produce)',
+      cropName: data.gradeOrItems || 'कृषी उत्पन्न (Agricultural Produce)',
       grade: data.category || 'A_GRADE',
       packaging: 'कॅरेट (Crates)',
-      weightKg: data.totalWeight || data.weightOrQty || '-',
-      ratePerKg: data.ratePerKg || '-',
-      totalAmount: data.netAmount || data.totalAmount || data.amount || '-'
+      weightKg: singleWeight !== '-' ? `${singleWeight} KG` : '-',
+      ratePerKg: singleRate,
+      totalAmount: billTotalAmt > 0 ? `₹${billTotalAmt.toLocaleString('en-IN')}` : '-'
     }];
   };
 

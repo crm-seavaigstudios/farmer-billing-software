@@ -666,7 +666,9 @@ export const apiGetPurchases = async () => {
 
         return {
           id: p.purchaseNo || p.id,
+          rawId: p.id,
           dbId: p.id,
+          createdAt: p.createdAt || (p.purchaseDate ? new Date(p.purchaseDate).toISOString() : new Date().toISOString()),
           purchaseNo: p.purchaseNo || p.id,
           farmerId: p.farmerId || '',
           farmerName: p.farmerName || farmer?.name || 'Farmer',
@@ -890,6 +892,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
   const unitStr = item?.unit || 'KG';
   const purchaseObj = {
     id: billNo,
+    rawId: globalId,
     dbId: globalId,
     tenantId,
     purchaseNo: billNo,
@@ -905,6 +908,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     dueAmount: Number(purchaseData.dueAmount !== undefined ? purchaseData.dueAmount : purAmt),
     paymentStatus: purchaseData.paymentStatus || (purAmt > 0 && Number(purchaseData.paidAmount || 0) >= purAmt ? 'PAID' : 'UNPAID'),
     date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    createdAt: new Date().toISOString(),
     storageLocation: purchaseData.storageLocation || '',
     items: purchaseData.items || []
   };

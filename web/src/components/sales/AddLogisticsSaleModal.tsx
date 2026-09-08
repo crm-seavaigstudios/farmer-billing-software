@@ -197,17 +197,32 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
       const uniqueBillNo = `SB-${ddmmyy}-${String(totalSalesCount).padStart(3, '0')}`;
       const uniqueId = `sale-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
-      const formattedLineItems = items.map((i, idx) => ({
-        srNo: idx + 1,
-        cropName: i.cropName,
-        grade: i.grade || 'A_GRADE',
-        category: 'कॅरेट (Crates)',
-        packaging: 'कॅरेट (Crates)',
-        weightKg: Number(i.weightKg) || 0,
-        ratePerKg: Number(i.ratePerKg) || 0,
-        totalAmount: (Number(i.weightKg) || 0) * (Number(i.ratePerKg) || 0),
-        unit: i.unit || 'KG'
-      }));
+      const formattedLineItems = items.map((i, idx) => {
+        const u = i.unit || 'KG';
+        const w = Number(i.weightKg) || 0;
+        const r = Number(i.ratePerKg) || 0;
+        const tot = w * r;
+        return {
+          srNo: idx + 1,
+          cropName: i.cropName,
+          grade: i.grade || 'A_GRADE',
+          category: u === 'BOX' || u === 'CRATE' ? `${u} (पॅकिंग)` : 'वजन / परिमाण',
+          packaging: u === 'BOX' ? 'Boxes (बॉक्स)' : (u === 'CRATE' ? 'Crates (कॅरेट)' : `${u}`),
+          weightKg: `${w} ${u}`,
+          ratePerKg: r,
+          totalAmount: tot,
+          unit: u
+        };
+      });
+
+      // Rich formatted summary: "Crop - 200 KG @ ₹200/KG = ₹40,000 | Crop - 50 Boxes @ ₹500/Box = ₹25,000"
+      const richItemsSummary = items.map((i) => {
+        const u = i.unit || 'KG';
+        const w = Number(i.weightKg) || 0;
+        const r = Number(i.ratePerKg) || 0;
+        const tot = w * r;
+        return `${i.cropName} - ${w} ${u} @ ₹${r}/${u} = ₹${tot}`;
+      }).join(' | ');
 
       const newSale = {
         id: uniqueId,
@@ -222,7 +237,7 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
         dueAmount,
         paymentStatus,
         paymentHistory,
-        items: items.map((i) => `${i.cropName} (${i.weightKg} KG)`).join(', '),
+        items: richItemsSummary,
         itemsData: formattedLineItems,
         status: 'DISPATCHED',
         deliveryStatus: 'IN_TRANSIT',
@@ -501,8 +516,28 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
                     className="w-full p-1.5 bg-white border border-slate-200 rounded-lg font-bold"
                   />
                 </div>
-                <div className="col-span-3">
-                  <label className="text-[10px] font-semibold text-slate-400 block">Weight (KG)</label>
+                <div className="col-span-2">
+                  <label className="text-[10px] font-semibold text-slate-400 block">Unit Type</label>
+                  <select
+                    value={item.unit || 'KG'}
+                    onChange={(e) => {
+                      const updated = [...items];
+                      updated[idx].unit = e.target.value;
+                      setItems(updated);
+                    }}
+                    className="w-full p-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-800"
+                  >
+                    <option value="KG">KG (किलो)</option>
+                    <option value="BOX">BOX (बॉक्स)</option>
+                    <option value="CRATE">CRATE (कॅरेट)</option>
+                    <option value="PCS">PCS (नग)</option>
+                    <option value="TON">TON (टन)</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-[10px] font-semibold text-slate-400 block">
+                    {item.unit === 'BOX' || item.unit === 'CRATE' || item.unit === 'PCS' ? 'Quantity (नग/बॉक्स)' : 'Weight (वजन)'}
+                  </label>
                   <input
                     type="number"
                     value={item.weightKg}
@@ -514,8 +549,8 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
                     className="w-full p-1.5 bg-white border border-slate-200 rounded-lg font-bold"
                   />
                 </div>
-                <div className="col-span-3">
-                  <label className="text-[10px] font-semibold text-slate-400 block">Rate / KG (₹)</label>
+                <div className="col-span-2">
+                  <label className="text-[10px] font-semibold text-slate-400 block">Rate / {item.unit || 'KG'} (₹)</label>
                   <input
                     type="number"
                     value={item.ratePerKg}
@@ -527,8 +562,11 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
                     className="w-full p-1.5 bg-white border border-slate-200 rounded-lg font-bold"
                   />
                 </div>
-                <div className="col-span-2 text-right pt-4">
-                  <button type="button" onClick={() => removeItem(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg">
+                <div className="col-span-1 text-right font-black text-slate-900 pt-3">
+                  ₹{(Number(item.weightKg) * Number(item.ratePerKg)).toLocaleString('en-IN')}
+                </div>
+                <div className="col-span-1 text-right pt-3">
+                  <button type="button" onClick={() => removeItem(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
