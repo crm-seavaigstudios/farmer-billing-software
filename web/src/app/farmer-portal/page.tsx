@@ -21,6 +21,7 @@ import {
   Building2,
   Receipt,
   CheckCircle,
+  CheckCircle2,
   Clock,
   Eye,
   TrendingUp
@@ -1232,21 +1233,37 @@ export default function FarmerPortalPage() {
 
             {/* Modal Content / Printable Area */}
             <div className="p-6 overflow-y-auto space-y-4 text-xs font-sans">
+              {/* Header branding */}
+              <div className="border-b-2 border-slate-900 pb-3.5 flex justify-between items-start">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center border border-emerald-200 flex-shrink-0 overflow-hidden shadow-xs p-1">
+                    {tenant?.logoUrl ? (
+                      <img src={tenant.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                    ) : (
+                      <Building2 className="w-8 h-8 text-emerald-700" />
+                    )}
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900 uppercase leading-snug">{tenant?.businessNameMr || tenant?.businessName || tenant?.companyName || 'Agro Agency'}</h2>
+                    <p className="text-[11px] text-slate-600 font-semibold mt-0.5">{tenant?.addressMr || tenant?.address || 'महाराष्ट्र, भारत'}</p>
+                    <p className="text-[11px] text-slate-500 font-semibold mt-0.5">📞 {tenant?.phone || tenant?.ownerPhone || '—'} {tenant?.gstin ? `| GSTIN: ${tenant.gstin}` : ''}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="px-3 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-black text-xs border border-emerald-200 block mb-1">
+                    {selectedPurchaseForReceipt.billNo || selectedPurchaseForReceipt.purchaseNo || selectedPurchaseForReceipt.id}
+                  </span>
+                  <p className="text-[10px] text-slate-400 font-bold">
+                    Date: {selectedPurchaseForReceipt.date || selectedPurchaseForReceipt.purchaseDate || new Date(selectedPurchaseForReceipt.createdAt || Date.now()).toLocaleDateString('en-IN')}
+                  </p>
+                </div>
+              </div>
+
               {/* Meta info box */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 grid grid-cols-2 gap-3">
                 <div>
-                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">पावती क्र. / Bill No</span>
-                  <span className="font-black text-slate-800 text-sm">{selectedPurchaseForReceipt.billNo || selectedPurchaseForReceipt.purchaseNo || selectedPurchaseForReceipt.id}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">तारीख / Date</span>
-                  <span className="font-bold text-slate-800">
-                    {selectedPurchaseForReceipt.date || selectedPurchaseForReceipt.purchaseDate || new Date(selectedPurchaseForReceipt.createdAt || Date.now()).toLocaleDateString('en-IN')}
-                  </span>
-                </div>
-                <div>
                   <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">शेतकरी / Farmer</span>
-                  <span className="font-black text-slate-900">{farmer.name}</span>
+                  <span className="font-black text-slate-900 text-sm">{farmer.name}</span>
                 </div>
                 <div>
                   <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">मोबाईल / Phone</span>
@@ -1257,7 +1274,7 @@ export default function FarmerPortalPage() {
               {/* Items Table */}
               <div className="border border-slate-200 rounded-2xl overflow-hidden">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                  <thead className="bg-slate-900 text-[10px] font-black uppercase tracking-wider text-white">
                     <tr>
                       <th className="py-2.5 px-3">पिक / Crop & Grade</th>
                       <th className="py-2.5 px-3 text-right">वजन / Weight</th>
@@ -1268,8 +1285,8 @@ export default function FarmerPortalPage() {
                   <tbody className="divide-y divide-slate-100">
                     {selectedPurchaseForReceipt.items && selectedPurchaseForReceipt.items.length > 0 ? (
                       selectedPurchaseForReceipt.items.map((it: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="py-2.5 px-3 font-extrabold text-slate-800">
+                        <tr key={idx} className="hover:bg-slate-50 font-bold">
+                          <td className="py-2.5 px-3 font-extrabold text-slate-900">
                             {it.cropName || it.crop || selectedPurchaseForReceipt.crop || 'Strawberry'}
                             {it.grade && <span className="ml-1 text-[10px] text-slate-400 font-bold">({it.grade})</span>}
                           </td>
@@ -1281,8 +1298,8 @@ export default function FarmerPortalPage() {
                         </tr>
                       ))
                     ) : (
-                      <tr>
-                        <td className="py-2.5 px-3 font-extrabold text-slate-800">
+                      <tr className="font-bold">
+                        <td className="py-2.5 px-3 font-extrabold text-slate-900">
                           {selectedPurchaseForReceipt.crop || 'Strawberry'}
                           {selectedPurchaseForReceipt.grade && <span className="ml-1 text-[10px] text-slate-400 font-bold">({selectedPurchaseForReceipt.grade})</span>}
                         </td>
@@ -1317,6 +1334,40 @@ export default function FarmerPortalPage() {
                   <span>शिल्लक बाकी (Balance Due):</span>
                   <span>₹{Number(String(selectedPurchaseForReceipt.dueAmount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}</span>
                 </div>
+              </div>
+
+              {/* Signatures */}
+              <div className="pt-6 border-t border-slate-200 flex justify-end items-end text-center">
+                <div className="min-w-[170px]">
+                  {tenant?.signatureUrl ? (
+                    <div className="flex flex-col items-center justify-center mb-1">
+                      <img 
+                        src={tenant.signatureUrl} 
+                        alt="Digital Signature" 
+                        className="h-12 max-w-[160px] object-contain mx-auto mb-1" 
+                      />
+                      <div className="text-[9px] font-black text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center justify-center gap-1 mb-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600 inline" />
+                        <span>संगणकीकृत अधिकृत स्वाक्षरी</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-9 flex items-center justify-center text-slate-400 text-[10px] mb-1">
+                      <div className="w-36 border-b border-slate-400 mt-6" />
+                    </div>
+                  )}
+                  <div className="text-slate-900 font-black text-[11px]">
+                    {tenant?.businessNameMr || tenant?.businessName || tenant?.companyName || 'Agro Agency'}
+                  </div>
+                  <span className="text-[10px] font-extrabold text-slate-900 block mt-0.5">अधिकृत स्वाक्षरी व शिक्का</span>
+                  <span className="text-[8px] text-slate-400 block">(Authorized Signatory)</span>
+                </div>
+              </div>
+
+              {/* Print Footer */}
+              <div className="pt-3 text-[9px] text-slate-400 flex justify-between items-center border-t border-slate-100 font-medium">
+                <span>संगणकीकृत खरेदी पावती • Official Purchase Receipt</span>
+                <span className="font-bold text-slate-500">पृष्ठ क्र. (Page 1)</span>
               </div>
             </div>
 

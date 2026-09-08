@@ -16,6 +16,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { supabase } from '@/lib/supabase';
 
 export interface SaleItemDetail {
   srNo?: number;
@@ -96,14 +97,28 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
   const [tenant, setTenant] = useState<any>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const activeTenant = localStorage.getItem('active_tenant');
-      if (activeTenant) {
-        try {
-          setTenant(JSON.parse(activeTenant));
-        } catch {}
+    const fetchTenantDetails = async () => {
+      if (typeof window !== 'undefined') {
+        const activeTenant = localStorage.getItem('active_tenant');
+        let currentTenant: any = null;
+        if (activeTenant) {
+          try {
+            currentTenant = JSON.parse(activeTenant);
+            setTenant(currentTenant);
+          } catch {}
+        }
+        const tenantId = currentTenant?.tenantId || currentTenant?.id;
+        if (tenantId) {
+          try {
+            const { data: tData } = await supabase.from('Tenant').select('*').eq('id', tenantId).maybeSingle();
+            if (tData) {
+              setTenant((prev: any) => ({ ...prev, ...tData }));
+            }
+          } catch {}
+        }
       }
-    }
+    };
+    fetchTenantDetails();
   }, []);
 
   if (!isOpen || !data) return null;
@@ -126,6 +141,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
           filename: `Invoice-${invoiceNo}.pdf`,
           image: { type: 'jpeg', quality: 0.98 },
           html2canvas: { scale: 2, useCORS: true },
+          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
           jsPDF: { unit: 'in', format: printFormat === 'A5_MANDI' ? 'a5' : (printFormat === 'POS_80MM' ? [3.15, 8.5] : 'a4'), orientation: 'portrait' }
         };
 
@@ -390,23 +406,23 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
             className={`bg-white border border-slate-200 shadow-sm rounded-2xl text-slate-900 mx-auto transition-all ${getFormatClassName()}`}
           >
             {/* Header & Agency Brand */}
-            <div className="flex items-center gap-3.5 pb-3.5 border-b-2 border-slate-900">
-              <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center border border-emerald-200 flex-shrink-0 overflow-hidden">
+            <div className="flex items-center gap-4 pb-4 border-b-2 border-slate-900">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 bg-emerald-50 rounded-2xl flex items-center justify-center border border-emerald-200 flex-shrink-0 overflow-hidden shadow-xs p-1.5">
                 {tenant?.logoUrl ? (
-                  <img src={tenant.logoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                  <img src={tenant.logoUrl} alt="Logo" className="w-full h-full object-contain" />
                 ) : (
-                  <Building2 className="w-6 h-6 text-emerald-700" />
+                  <Building2 className="w-10 h-10 text-emerald-700" />
                 )}
               </div>
               <div className="flex-1 min-w-0 text-left">
-                <h2 className="font-black text-slate-900 uppercase tracking-tight text-base sm:text-lg leading-snug">
-                  {tenant?.businessNameMr || tenant?.businessName || 'दत्तकृपा फळे व भाजीपाला सप्लायर्स आणि ट्रान्सपोर्ट'}
+                <h2 className="font-black text-slate-900 uppercase tracking-tight text-base sm:text-xl leading-snug">
+                  {tenant?.businessNameMr || tenant?.businessName || tenant?.companyName || 'दत्तकृपा फळे व भाजीपाला सप्लायर्स आणि ट्रान्सपोर्ट'}
                 </h2>
-                <p className="text-[11px] font-bold text-slate-600 mt-0.5">
-                  {tenant?.address || 'महाराष्ट्र, भारत (Maharashtra, India)'}
+                <p className="text-xs font-bold text-slate-600 mt-0.5">
+                  {tenant?.addressMr || tenant?.address || 'महाराष्ट्र, भारत (Maharashtra, India)'}
                 </p>
-                <div className="flex flex-wrap items-center gap-2.5 text-[10px] text-slate-500 font-semibold mt-0.5">
-                  <span>📞 {tenant?.phone || '7588423116'}</span>
+                <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-slate-500 font-semibold mt-1">
+                  <span>📞 {tenant?.phone || tenant?.ownerPhone || '7588423116'}</span>
                   <span>•</span>
                   <span>GSTIN: {tenant?.gstin || '27AAAAA0000A1Z5'}</span>
                 </div>
@@ -538,23 +554,39 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
               </div>
             </div>
 
-            {/* Authorized Signatures & Receiver Stamp */}
-            <div className="pt-4 border-t border-dashed border-slate-300 flex justify-between items-end text-xs">
-              <div className="text-center">
-                <div className="h-9 flex items-center justify-center text-slate-400 text-[9px] mb-1">
-                  [ स्वाक्षरी / शिक्का ]
+            {/* Authorized Signature & Stamp */}
+            <div className="pt-4 border-t border-dashed border-slate-300 flex justify-end items-end text-xs">
+              <div className="text-center min-w-[170px]">
+                {tenant?.signatureUrl ? (
+                  <div className="flex flex-col items-center justify-center mb-1">
+                    <img 
+                      src={tenant.signatureUrl} 
+                      alt="Digital Signature" 
+                      className="h-12 max-w-[160px] object-contain mx-auto mb-1" 
+                    />
+                    <div className="text-[9px] font-black text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/80 flex items-center justify-center gap-1 mb-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600 inline" />
+                      <span>संगणकीकृत अधिकृत स्वाक्षरी</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-9 flex items-center justify-center text-slate-400 text-[10px] mb-1">
+                    <div className="w-36 border-b border-slate-400 mt-6" />
+                  </div>
+                )}
+                
+                <div className="text-slate-900 font-black text-[11px]">
+                  {tenant?.businessNameMr || tenant?.businessName || tenant?.companyName || 'दत्तकृपा ॲग्रो'}
                 </div>
-                <span className="text-[9px] font-extrabold text-slate-600 block">खरेदीदाराची सही / शिक्का</span>
-                <span className="text-[8px] text-slate-400 block">(Receiver's Signature)</span>
-              </div>
-
-              <div className="text-center">
-                <div className="h-9 flex items-center justify-center text-blue-700 font-black text-[10px] mb-1">
-                  {tenant?.businessName || 'Dattakrupa Agro'}
-                </div>
-                <span className="text-[9px] font-extrabold text-slate-900 block">अधिकृत स्वाक्षरी व शिक्का</span>
+                <span className="text-[10px] font-extrabold text-slate-900 block mt-0.5">अधिकृत स्वाक्षरी व शिक्का</span>
                 <span className="text-[8px] text-slate-400 block">(Authorized Signatory)</span>
               </div>
+            </div>
+
+            {/* Multi-Page Footer & Timestamp */}
+            <div className="pt-3 text-[9px] text-slate-400 flex justify-between items-center border-t border-slate-100 mt-3 font-medium">
+              <span>संगणकीकृत कर बीजक • Valid Tax Invoice</span>
+              <span className="font-bold text-slate-500">पृष्ठ क्र. (Page 1)</span>
             </div>
 
           </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { X, Printer, MessageCircle, ShieldCheck } from 'lucide-react';
+import { X, Printer, MessageCircle, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useTenant } from '@/context/TenantContext';
 
@@ -109,27 +109,27 @@ export const PrintStatementModal: React.FC<PrintStatementModalProps> = ({
         <div className="p-6 bg-slate-100/60 overflow-y-auto max-h-[70vh]">
           <div id="receipt-print-area" className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 font-sans">
             {/* Header branding */}
-            <div className="flex justify-between items-start border-b border-slate-200 pb-4">
-              <div className="flex items-start gap-3">
+            <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4">
+              <div className="flex items-start gap-4">
                 {tenant.logoUrl ? (
-                  <img src={tenant.logoUrl} alt="Logo" className="w-14 h-14 rounded-xl object-cover border border-slate-200" />
+                  <img src={tenant.logoUrl} alt="Logo" className="w-20 h-20 rounded-2xl object-contain border border-slate-200 shadow-xs p-1" />
                 ) : (
-                  <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-xl">
+                  <div className="w-20 h-20 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black text-2xl shadow-xs">
                     {businessName.charAt(0)}
                   </div>
                 )}
                 <div>
-                  <h2 className="text-lg font-black tracking-tight text-slate-900">{businessName}</h2>
-                  <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">{tenant.tagline}</p>
-                  <p className="text-[10px] text-slate-500 mt-1">{businessAddress} • GSTIN: {tenant.gstin}</p>
-                  <p className="text-[10px] text-slate-500">Ph: {tenant.phone}</p>
+                  <h2 className="text-xl font-black tracking-tight text-slate-900">{tenant.businessNameMr || businessName}</h2>
+                  <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{tenant.tagline || 'Agricultural Procurement System'}</p>
+                  <p className="text-[11px] text-slate-600 mt-1 font-medium">{businessAddress} • GSTIN: {tenant.gstin || '27AAAAA0000A1Z5'}</p>
+                  <p className="text-[11px] text-slate-600 font-medium">📞 {tenant.phone || (tenant as any)?.ownerPhone || '7588423116'}</p>
                 </div>
               </div>
               <div className="text-right">
-                <span className="px-3 py-1 rounded-md text-xs font-extrabold bg-blue-50 text-blue-700 border border-blue-100 block mb-1">
+                <span className="px-3 py-1 rounded-lg text-xs font-extrabold bg-blue-50 text-blue-700 border border-blue-100 block mb-1">
                   OFFICIAL ACCOUNT STATEMENT
                 </span>
-                <span className="text-xs font-bold text-slate-700 block">Date: {new Date().toISOString().slice(0, 10)}</span>
+                <span className="text-xs font-bold text-slate-700 block">Date: {new Date().toLocaleDateString('en-IN')}</span>
               </div>
             </div>
 
@@ -175,11 +175,11 @@ export const PrintStatementModal: React.FC<PrintStatementModalProps> = ({
               <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Itemized Account Ledger Transactions</h4>
               <table className="w-full text-left text-xs border-collapse border border-slate-200">
                 <thead>
-                  <tr className="bg-slate-100 text-[10px] text-slate-600 font-extrabold uppercase border-b border-slate-200">
+                  <tr className="bg-slate-900 text-white text-[10px] font-black uppercase">
                     <th className="py-2 px-3">Date</th>
                     <th className="py-2 px-3">Voucher Ref</th>
                     <th className="py-2 px-3">Description</th>
-                    <th className="py-2 px-3 text-right">Debit (+ خ)</th>
+                    <th className="py-2 px-3 text-right">Debit (+ नावे)</th>
                     <th className="py-2 px-3 text-right">Credit (- जमा)</th>
                     <th className="py-2 px-3 text-right">Balance</th>
                   </tr>
@@ -203,18 +203,37 @@ export const PrintStatementModal: React.FC<PrintStatementModalProps> = ({
             </div>
 
             {/* Signature Area */}
-            <div className="pt-8 flex justify-between items-end text-[10px] text-slate-400 font-semibold border-t border-slate-100">
-              <div className="text-left">
-                {tenant.signatureUrl && (
-                  <img src={tenant.signatureUrl} alt="Signature" className="h-10 object-contain mb-1" />
+            <div className="pt-6 flex justify-end items-end text-xs border-t border-slate-200">
+              <div className="text-center min-w-[170px]">
+                {tenant.signatureUrl ? (
+                  <div className="flex flex-col items-center justify-center mb-1">
+                    <img 
+                      src={tenant.signatureUrl} 
+                      alt="Digital Signature" 
+                      className="h-12 max-w-[160px] object-contain mx-auto mb-1" 
+                    />
+                    <div className="text-[9px] font-black text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/80 flex items-center justify-center gap-1 mb-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600 inline" />
+                      <span>संगणकीकृत अधिकृत स्वाक्षरी</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-9 flex items-center justify-center text-slate-400 text-[10px] mb-1">
+                    <div className="w-36 border-b border-slate-400 mt-6" />
+                  </div>
                 )}
-                <p>Authorized Signatory</p>
-                <div className="w-28 h-px bg-slate-300 mt-2" />
+                <div className="text-slate-900 font-black text-[11px]">
+                  {tenant.businessNameMr || businessName}
+                </div>
+                <span className="text-[10px] font-extrabold text-slate-900 block mt-0.5">अधिकृत स्वाक्षरी व शिक्का</span>
+                <span className="text-[8px] text-slate-400 block">(Authorized Signatory)</span>
               </div>
-              <div className="text-right">
-                <p>{businessName} Official Stamp</p>
-                <div className="w-28 h-px bg-slate-300 mt-8" />
-              </div>
+            </div>
+
+            {/* Print Footer */}
+            <div className="pt-3 text-[9px] text-slate-400 flex justify-between items-center border-t border-slate-100 font-medium">
+              <span>संगणकीकृत खाते उतारा • Official Statement</span>
+              <span className="font-bold text-slate-500">पृष्ठ क्र. (Page 1)</span>
             </div>
           </div>
         </div>
