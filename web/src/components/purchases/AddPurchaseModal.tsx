@@ -375,7 +375,13 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
               <label className="text-xs font-bold text-slate-700 block mb-1">Measurement Unit *</label>
               <select
                 value={unit}
-                onChange={(e) => setUnit(e.target.value as any)}
+                onChange={(e) => {
+                  const u = e.target.value as any;
+                  setUnit(u);
+                  if (u === 'UNIT' && !isCustomCategoryActive) {
+                    setPackagingCategory('नग / Qty (Nag / Qty)');
+                  }
+                }}
                 className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-extrabold text-blue-700"
               >
                 <option value="KG">PER KG (प्रति किलो)</option>
@@ -408,9 +414,16 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
               ) : (
                 <select
                   value={packagingCategory}
-                  onChange={(e) => setPackagingCategory(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPackagingCategory(val);
+                    if (val.includes('नग') || val.includes('Qty') || val.includes('Nag')) {
+                      setUnit('UNIT');
+                    }
+                  }}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold"
                 >
+                  <option value="नग / Qty (Nag / Qty)">नग / Qty (Nag / Qty)</option>
                   <option value="कॅरेट (Carret / Crate)">कॅरेट (Carret / Crate)</option>
                   <option value="बॉक्स (Box)">बॉक्स (Box)</option>
                   <option value="१० नग बंडल (Bundle 10)">१० नग बंडल (Bundle of 10)</option>

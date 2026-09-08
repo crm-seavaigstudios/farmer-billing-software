@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetInventory, apiGetPurchases, apiGetSales, apiGetAllFarmerMaterials, apiGetTraderPurchases, apiGetLocations, apiAddLocation, getTenantId } from '@/lib/api';
+import { apiGetInventory, apiGetPurchases, apiGetSales, apiGetAllFarmerMaterials, apiGetTraderPurchases, apiGetLocations, apiAddLocation, apiGetMaterialItems, getTenantId } from '@/lib/api';
 import {
   Package,
   Thermometer,
@@ -39,6 +39,7 @@ export default function InventoryPage() {
 
   const [materialPurchases, setMaterialPurchases] = useState<any[]>([]);
   const [materialIssues, setMaterialIssues] = useState<any[]>([]);
+  const [materialCatalog, setMaterialCatalog] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
 
   const defaultBatches: any[] = [];
@@ -63,16 +64,21 @@ export default function InventoryPage() {
     }
 
     async function loadData() {
-      const [allPurchases, allSales, traderPurchases, farmerIssues, locs] = await Promise.all([
+      const [allPurchases, allSales, traderPurchases, farmerIssues, locs, catalog] = await Promise.all([
         apiGetPurchases(),
         apiGetSales(),
         apiGetTraderPurchases(),
         apiGetAllFarmerMaterials(),
         apiGetLocations(),
+        apiGetMaterialItems()
       ]);
 
       if (locs) {
         setLocations(locs);
+      }
+
+      if (catalog && Array.isArray(catalog)) {
+        setMaterialCatalog(catalog);
       }
 
       if (traderPurchases && Array.isArray(traderPurchases)) {
@@ -85,15 +91,37 @@ export default function InventoryPage() {
       const stockMap: { [key: string]: { weight: number, quantity: number, valuation: number, rate: number, unit: string, room: string } } = {};
       
       allPurchases.forEach((p: any) => {
-        const crop = p.crop || 'Strawberry';
+        const crop = p.crop || (p.items && p.items[0] && p.items[0].cropName) || 'Strawberry';
         const room = p.storageLocation || 'Main Cold Room';
         const key = `${crop}|${room}`;
         
-        const wtStr = String(p.weight || '0').replace(/[^0-9.-]+/g, '');
+        const wtStr = String(p.weight || p.totalWeight || '0').replace(/[^0-9.-]+/g, '');
         const numericVal = parseFloat(wtStr) || 0;
-        const amt = typeof p.amount === 'number' ? p.amount : parseFloat(String(p.amount).replace(/[^0-9.-]+/g, '')) || 0;
+        const amt = typeof p.amount === 'number' ? p.amount : parseFloat(String(p.amount || p.totalAmount).replace(/[^0-9.-]+/g, '')) || 0;
         const rateVal = numericVal > 0 ? amt / numericVal : 350;
-        const isKg = String(p.weight || '').toUpperCase().includes('KG');
+
+        const rawUnit = String(p.unit || (p.items && p.items[0] && p.items[0].unit) || '').toUpperCase();
+        const rawPkg = String(p.packagingCategory || p.category || (p.items && p.items[0] && p.items[0].packagingCategory) || '').toUpperCase();
+        const rawWeightStr = String(p.weight || '').toUpperCase();
+
+        const isQtyBased = 
+          rawUnit === 'UNIT' || 
+          rawUnit === 'QTY' || 
+          rawUnit === 'NAG' || 
+          rawPkg.includes('NAG') || 
+          rawPkg.includes('QTY') || 
+          rawPkg.includes('UNIT') ||
+          String(p.packagingCategory || '').includes('नग') ||
+          String(p.category || '').includes('नग') ||
+          rawPkg.includes('CRATE') || 
+          rawPkg.includes('BOX') || 
+          rawPkg.includes('BUNDLE') || 
+          rawWeightStr.includes('NAG') || 
+          rawWeightStr.includes('QTY') || 
+          rawWeightStr.includes('UNIT') ||
+          String(p.weight || '').includes('नग');
+
+        const isKg = !isQtyBased && (rawUnit === 'KG' || rawUnit === 'QUINTAL' || rawUnit === 'TON' || rawWeightStr.includes('KG'));
 
         if (!stockMap[key]) {
           stockMap[key] = { weight: 0, quantity: 0, valuation: 0, rate: rateVal, unit: isKg ? 'KG' : 'QTY', room };
@@ -108,18 +136,28 @@ export default function InventoryPage() {
       });
 
       allSales.forEach((s: any) => {
+        const isSaleQty = 
+          String(s.unit || s.packaging || s.items || '').toUpperCase().includes('NAG') || 
+          String(s.unit || s.packaging || s.items || '').toUpperCase().includes('QTY') || 
+          String(s.unit || s.packaging || s.items || '').toUpperCase().includes('UNIT') || 
+          String(s.unit || s.packaging || s.items || '').includes('नग');
+
         if (s.farmerBatches && Array.isArray(s.farmerBatches) && s.farmerBatches.length > 0) {
           const numBatches = s.farmerBatches.length;
           const wtPerBatch = (Number(s.totalWeight) || 0) / numBatches;
           s.farmerBatches.forEach((pid: string) => {
             const relatedPurchase = allPurchases.find((p: any) => p.id === pid);
             if (relatedPurchase) {
-              const crop = relatedPurchase.crop || 'Strawberry';
+              const crop = relatedPurchase.crop || (relatedPurchase.items && relatedPurchase.items[0] && relatedPurchase.items[0].cropName) || 'Strawberry';
               const room = relatedPurchase.storageLocation || 'Main Cold Room';
               const key = `${crop}|${room}`;
               if (stockMap[key]) {
-                stockMap[key].weight = Math.max(0, stockMap[key].weight - wtPerBatch);
-                stockMap[key].valuation = stockMap[key].weight * stockMap[key].rate;
+                if (isSaleQty) {
+                  stockMap[key].quantity = Math.max(0, stockMap[key].quantity - wtPerBatch);
+                } else {
+                  stockMap[key].weight = Math.max(0, stockMap[key].weight - wtPerBatch);
+                }
+                stockMap[key].valuation = (stockMap[key].weight + stockMap[key].quantity) * stockMap[key].rate;
               }
             }
           });
@@ -132,22 +170,35 @@ export default function InventoryPage() {
           if (!stockMap[crop]) crop = 'Strawberry';
           const wt = Number(s.totalWeight || 0);
           if (stockMap[crop]) {
-            stockMap[crop].weight = Math.max(0, stockMap[crop].weight - wt);
-            stockMap[crop].valuation = stockMap[crop].weight * stockMap[crop].rate;
+            if (isSaleQty) {
+              stockMap[crop].quantity = Math.max(0, stockMap[crop].quantity - wt);
+            } else {
+              stockMap[crop].weight = Math.max(0, stockMap[crop].weight - wt);
+            }
+            stockMap[crop].valuation = (stockMap[crop].weight + stockMap[crop].quantity) * stockMap[crop].rate;
           }
         }
       });
 
       const formatted = Object.keys(stockMap).map((key, i) => {
         const item = stockMap[key as any];
-        const isKg = item.unit === 'KG';
         const cropName = key.split('|')[0];
         const roomName = (item as any).room || 'Main Cold Room';
+        
+        let displayWeight = '';
+        if (item.weight > 0 && item.quantity > 0) {
+          displayWeight = `${item.weight.toLocaleString('en-IN')} KG + ${item.quantity.toLocaleString('en-IN')} Qty (नग)`;
+        } else if (item.weight > 0) {
+          displayWeight = `${item.weight.toLocaleString('en-IN')} KG`;
+        } else {
+          displayWeight = `${item.quantity.toLocaleString('en-IN')} Qty (नग)`;
+        }
+
         return {
           id: `STK-2026-${1000 + i}`,
           room: roomName,
           grade: cropName,
-          weight: isKg ? `${item.weight.toLocaleString('en-IN')} KG` : `${item.quantity.toLocaleString('en-IN')} QTY`,
+          weight: displayWeight,
           rawWeight: item.weight,
           rawQuantity: item.quantity,
           temp: '2.4°C',
@@ -238,29 +289,92 @@ export default function InventoryPage() {
     return matchSearch && matchGrade && matchRoom;
   });
 
-  const materialSummaryItems = [
-    {
-      item: 'Packaging Crates (कॅरेट)',
-      category: 'PACKAGING',
-      purchasedQty: materialPurchases.filter(m => m.itemName?.includes('Crates') || m.itemName?.includes('कॅरेट') || m.itemName?.includes('Crate')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
-      issuedQty: materialIssues.filter(m => m.itemName?.includes('Crates') || m.itemName?.includes('कॅरेट') || m.materialName?.includes('Crates') || m.materialName?.includes('कॅरेट') || m.materialName?.includes('Crate')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
-      unit: 'QTY'
-    },
-    {
-      item: 'Fertilizers & Nutrients',
-      category: 'INPUTS',
-      purchasedQty: materialPurchases.filter(m => m.itemName?.includes('Fertilizer') || m.itemName?.includes('खत')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
-      issuedQty: materialIssues.filter(m => m.itemName?.includes('Fertilizer') || m.itemName?.includes('खत') || m.materialName?.includes('Fertilizer') || m.materialName?.includes('खत')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
-      unit: 'Bags'
-    },
-    {
-      item: 'Drip Irrigation Pipes',
-      category: 'HARDWARE',
-      purchasedQty: materialPurchases.filter(m => m.itemName?.includes('Pipe') || m.itemName?.includes('नळी')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
-      issuedQty: materialIssues.filter(m => m.itemName?.includes('Pipe') || m.itemName?.includes('नळी') || m.materialName?.includes('Pipe') || m.materialName?.includes('नळी')).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
-      unit: 'Bundles'
+  // Dynamic Input Materials Aggregation: Extracts ALL materials from Trader Purchases, Farmer Issues, and Catalog
+  const materialSummaryItems = React.useMemo(() => {
+    const itemMap = new Map<string, {
+      item: string;
+      category: string;
+      purchasedQty: number;
+      issuedQty: number;
+      unit: string;
+    }>();
+
+    // 1. Ingest all registered catalog items
+    materialCatalog.forEach((cat: any) => {
+      const name = cat.name || cat.itemName;
+      if (!name) return;
+      const key = name.trim().toLowerCase();
+      if (!itemMap.has(key)) {
+        itemMap.set(key, {
+          item: name.trim(),
+          category: cat.category || 'INPUTS',
+          purchasedQty: 0,
+          issuedQty: 0,
+          unit: cat.unit || 'QTY'
+        });
+      }
+    });
+
+    // 2. Aggregate all inward purchases from Traders (TraderPurchase)
+    materialPurchases.forEach((p: any) => {
+      const rawName = p.itemName || p.item || p.name || 'General Material';
+      const name = rawName.trim();
+      const key = name.toLowerCase();
+      const qty = parseFloat(String(p.quantity || p.qty || '0').replace(/[^0-9.-]+/g, '')) || 0;
+      const unit = p.unit || (name.toLowerCase().includes('crate') ? 'QTY' : (name.toLowerCase().includes('bag') ? 'Bags' : (name.toLowerCase().includes('kg') ? 'KG' : 'QTY')));
+      const cat = p.category || (name.toLowerCase().includes('crate') || name.toLowerCase().includes('box') || name.toLowerCase().includes('paper') ? 'PACKAGING' : (name.toLowerCase().includes('seed') || name.toLowerCase().includes('fertilizer') ? 'INPUTS' : (name.toLowerCase().includes('pipe') ? 'HARDWARE' : 'GENERAL')));
+
+      if (!itemMap.has(key)) {
+        itemMap.set(key, {
+          item: name,
+          category: cat,
+          purchasedQty: 0,
+          issuedQty: 0,
+          unit
+        });
+      }
+
+      const rec = itemMap.get(key)!;
+      rec.purchasedQty += qty;
+      if (p.unit && rec.unit === 'QTY') rec.unit = p.unit;
+    });
+
+    // 3. Aggregate all outward issues to Farmers (FarmerMaterialPurchase)
+    materialIssues.forEach((issue: any) => {
+      const rawName = issue.itemName || issue.materialName || issue.name || 'General Material';
+      const name = rawName.trim();
+      const key = name.toLowerCase();
+      const qty = parseFloat(String(issue.quantity || issue.qty || '0').replace(/[^0-9.-]+/g, '')) || 0;
+      const unit = issue.unit || 'QTY';
+      const cat = issue.category || (name.toLowerCase().includes('crate') || name.toLowerCase().includes('box') || name.toLowerCase().includes('paper') ? 'PACKAGING' : (name.toLowerCase().includes('seed') || name.toLowerCase().includes('fertilizer') ? 'INPUTS' : 'GENERAL'));
+
+      if (!itemMap.has(key)) {
+        itemMap.set(key, {
+          item: name,
+          category: cat,
+          purchasedQty: 0,
+          issuedQty: 0,
+          unit
+        });
+      }
+
+      const rec = itemMap.get(key)!;
+      rec.issuedQty += qty;
+    });
+
+    // 4. If list is completely empty, provide standard defaults
+    if (itemMap.size === 0) {
+      return [
+        { item: 'Packaging Crates (कॅरेट)', category: 'PACKAGING', purchasedQty: 0, issuedQty: 0, unit: 'QTY' },
+        { item: 'Packing Paper & Punnets (कागद / डबे)', category: 'PACKAGING', purchasedQty: 0, issuedQty: 0, unit: 'Boxes' },
+        { item: 'Seeds & Saplings (बियाणे / रोपे)', category: 'INPUTS', purchasedQty: 0, issuedQty: 0, unit: 'Packs' },
+        { item: 'Fertilizers & Nutrients (खते)', category: 'INPUTS', purchasedQty: 0, issuedQty: 0, unit: 'Bags' },
+        { item: 'Drip Irrigation Pipes (नळी)', category: 'HARDWARE', purchasedQty: 0, issuedQty: 0, unit: 'Bundles' }
+      ];
     }
-  ];
+
+    return Array.from(itemMap.values());
+  }, [materialCatalog, materialPurchases, materialIssues]);
 
   const filteredMaterials = materialSummaryItems.filter(m => 
     m.item.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -348,7 +462,7 @@ export default function InventoryPage() {
               <div>
                 <span className="text-[11px] font-semibold text-slate-500 block mb-0.5">Stock by Weight (KG)</span>
                 <h3 className="text-2xl font-black text-slate-900">{totalStockKgSum.toLocaleString('en-IN')} KG</h3>
-                <span className="text-[10px] font-bold text-blue-600">Total KG Stock</span>
+                <span className="text-[10px] font-bold text-blue-600">Total KG Stock (वजन साठा)</span>
               </div>
             </div>
 
@@ -357,9 +471,9 @@ export default function InventoryPage() {
                 <Package className="w-6 h-6" />
               </div>
               <div>
-                <span className="text-[11px] font-semibold text-slate-500 block mb-0.5">Stock by Units / Qty</span>
-                <h3 className="text-2xl font-black text-slate-900">{totalStockQtySum.toLocaleString('en-IN')} Units</h3>
-                <span className="text-[10px] font-bold text-emerald-600">Total Nag / Crates</span>
+                <span className="text-[11px] font-semibold text-slate-500 block mb-0.5">Stock by Units / Qty (नग)</span>
+                <h3 className="text-2xl font-black text-slate-900">{totalStockQtySum.toLocaleString('en-IN')} Qty (नग)</h3>
+                <span className="text-[10px] font-bold text-emerald-600">Total Nag / Units Stock (नग / संख्या)</span>
               </div>
             </div>
 

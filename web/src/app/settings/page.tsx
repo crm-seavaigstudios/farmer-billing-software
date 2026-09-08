@@ -13,13 +13,23 @@ import {
   CheckCircle,
   ChevronRight,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Trash2,
+  Lock,
+  KeyRound,
+  Eye,
+  EyeOff,
+  ShieldCheck
 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { t, language } = useLanguage();
   const { tenant, updateTenant } = useTenant();
   const [saved, setSaved] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
 
   const [formData, setFormData] = useState({
     businessName: tenant.businessName,
@@ -34,6 +44,7 @@ export default function SettingsPage() {
     gstin: tenant.gstin,
     tagline: tenant.tagline,
     secretPin: tenant.secretPin || '1234',
+    password: (tenant as any)?.password || '',
   });
 
   const router = typeof window !== 'undefined' ? require('next/navigation').useRouter() : null;
@@ -57,7 +68,24 @@ export default function SettingsPage() {
 
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    updateTenant(formData);
+    setPasswordError('');
+
+    const updatePayload: any = { ...formData };
+
+    if (newPassword) {
+      if (newPassword.length < 4) {
+        setPasswordError(language === 'mr' ? 'पासवर्ड किमान ४ अक्षरांचा असावा.' : 'Password must be at least 4 characters long.');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setPasswordError(language === 'mr' ? 'नवीन पासवर्ड आणि कन्फर्म पासवर्ड जुळत नाहीत.' : 'New password and confirm password do not match.');
+        return;
+      }
+      updatePayload.password = newPassword;
+      setFormData(prev => ({ ...prev, password: newPassword }));
+    }
+
+    updateTenant(updatePayload);
     
     // Update local storage
     if (typeof window !== 'undefined') {
@@ -65,17 +93,20 @@ export default function SettingsPage() {
         const stored = localStorage.getItem('active_tenant');
         if (stored) {
           const parsed = JSON.parse(stored);
-          Object.assign(parsed, formData);
+          Object.assign(parsed, updatePayload);
           localStorage.setItem('active_tenant', JSON.stringify(parsed));
         }
       } catch (e) {}
     }
 
     // Push to database
-    if (tenant?.tenantId) {
-      await apiUpdateTenant(tenant.tenantId, formData);
+    const tId = tenant?.tenantId || (tenant as any)?.id;
+    if (tId) {
+      await apiUpdateTenant(tId, updatePayload);
     }
 
+    setNewPassword('');
+    setConfirmPassword('');
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
@@ -100,6 +131,14 @@ export default function SettingsPage() {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleRemoveLogo = () => {
+    setFormData((prev) => ({ ...prev, logoUrl: '' }));
+  };
+
+  const handleRemoveSignature = () => {
+    setFormData((prev) => ({ ...prev, signatureUrl: '' }));
   };
 
   return (
@@ -169,17 +208,30 @@ export default function SettingsPage() {
                   <span className="text-xs font-bold text-slate-800 block mb-2">Company Logo (कंपनीचा लोगो)</span>
                   <div className="flex items-center gap-4">
                     {formData.logoUrl ? (
-                      <img src={formData.logoUrl} alt="Company Logo" className="w-16 h-16 rounded-xl object-cover border border-slate-200" />
+                      <img src={formData.logoUrl} alt="Company Logo" className="w-16 h-16 rounded-xl object-contain border border-slate-200 bg-white p-1" />
                     ) : (
                       <div className="w-16 h-16 rounded-xl bg-slate-200 flex items-center justify-center text-slate-400">
                         <ImageIcon className="w-6 h-6" />
                       </div>
                     )}
-                    <label className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer flex items-center gap-1.5">
-                      <Upload className="w-3.5 h-3.5 text-blue-600" />
-                      <span>{formData.logoUrl ? 'Change Logo' : 'Upload Logo'}</span>
-                      <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer flex items-center gap-1.5 transition-colors">
+                        <Upload className="w-3.5 h-3.5 text-blue-600" />
+                        <span>{formData.logoUrl ? 'Change Logo' : 'Upload Logo'}</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                      </label>
+                      {formData.logoUrl && (
+                        <button
+                          type="button"
+                          onClick={handleRemoveLogo}
+                          className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer flex items-center gap-1.5 transition-colors"
+                          title="Remove Logo"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>{language === 'mr' ? 'काढून टाका' : 'Remove'}</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -188,17 +240,30 @@ export default function SettingsPage() {
                   <span className="text-xs font-bold text-slate-800 block mb-2">Authorized Signature (अधिकृत सही / शिक्का)</span>
                   <div className="flex items-center gap-4">
                     {formData.signatureUrl ? (
-                      <img src={formData.signatureUrl} alt="Signature" className="h-14 object-contain border border-slate-200 p-1 bg-white rounded-xl" />
+                      <img src={formData.signatureUrl} alt="Signature" className="h-14 max-w-[120px] object-contain border border-slate-200 p-1 bg-white rounded-xl" />
                     ) : (
                       <div className="w-16 h-16 rounded-xl bg-slate-200 flex items-center justify-center text-slate-400">
                         <ImageIcon className="w-6 h-6" />
                       </div>
                     )}
-                    <label className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer flex items-center gap-1.5">
-                      <Upload className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{formData.signatureUrl ? 'Change Signature' : 'Upload Signature'}</span>
-                      <input type="file" accept="image/*" className="hidden" onChange={handleSignatureUpload} />
-                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer flex items-center gap-1.5 transition-colors">
+                        <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{formData.signatureUrl ? 'Change Signature' : 'Upload Signature'}</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={handleSignatureUpload} />
+                      </label>
+                      {formData.signatureUrl && (
+                        <button
+                          type="button"
+                          onClick={handleRemoveSignature}
+                          className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer flex items-center gap-1.5 transition-colors"
+                          title="Remove Signature"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>{language === 'mr' ? 'काढून टाका' : 'Remove'}</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -309,6 +374,82 @@ export default function SettingsPage() {
                     onChange={(e) => setFormData({ ...formData, addressMr: e.target.value })}
                     className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   />
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px bg-slate-100" />
+
+            {/* Section 3: Account Security & Login Password */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-emerald-600" />
+                  {language === 'mr' ? 'खाते सुरक्षा आणि लॉगिन पासवर्ड बदला (Owner Password)' : 'Account Security & Change Login Password'}
+                </h3>
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                  <span>Owner Account Protected</span>
+                </span>
+              </div>
+
+              {passwordError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold animate-in fade-in flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>{passwordError}</span>
+                </div>
+              )}
+
+              <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      {language === 'mr' ? 'नवीन लॉगिन पासवर्ड (New Password)' : 'New Login Password'}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={newPassword}
+                        onChange={(e) => {
+                          setNewPassword(e.target.value);
+                          setPasswordError('');
+                        }}
+                        placeholder={language === 'mr' ? 'नवीन पासवर्ड प्रविष्ट करा' : 'Enter new login password'}
+                        className="w-full pl-3.5 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-semibold block mt-1">
+                      {language === 'mr' ? 'पासवर्ड किमान ४ अक्षरांचा असावा (उदा. Hari@123)' : 'Minimum 4 characters or digits'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      {language === 'mr' ? 'पासवर्डची पुष्टी करा (Confirm Password)' : 'Confirm New Password'}
+                    </label>
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        setPasswordError('');
+                      }}
+                      placeholder={language === 'mr' ? 'पुन्हा तोच पासवर्ड टाका' : 'Re-enter new password'}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                    {confirmPassword && newPassword === confirmPassword && (
+                      <span className="text-[10px] text-emerald-600 font-bold block mt-1 flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" /> {language === 'mr' ? 'पासवर्ड जुळला!' : 'Passwords match!'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
