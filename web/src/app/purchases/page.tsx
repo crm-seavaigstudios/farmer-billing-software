@@ -374,10 +374,16 @@ export default function PurchasesPage() {
   };
 
   const openPrintModal = (row: any) => {
+    const tot = typeof row.amount === 'number' ? row.amount : parseFloat(String(row.amount).replace(/[^0-9.-]+/g, '')) || 0;
+    const due = typeof row.dueAmount === 'number' ? row.dueAmount : parseFloat(String(row.dueAmount || '0').replace(/[^0-9.-]+/g, '')) || 0;
+    const paid = row.paidAmount !== undefined 
+      ? (typeof row.paidAmount === 'number' ? row.paidAmount : parseFloat(String(row.paidAmount).replace(/[^0-9.-]+/g, '')) || 0)
+      : Math.max(0, tot - due);
+
     setActiveReceipt({
       type: 'FARMER_PURCHASE',
       title: 'Farmer Harvest Purchase Receipt (पावती)',
-      receiptNo: row.id,
+      receiptNo: row.id || row.purchaseNo,
       date: row.date,
       partyName: row.farmerName,
       partyPhone: row.phone || '',
@@ -385,8 +391,10 @@ export default function PurchasesPage() {
       gradeOrItems: row.crop,
       weightOrQty: row.weight,
       ratePerKg: row.rate,
-      totalAmount: row.amount,
-      balanceAmount: row.dueAmount || '₹0',
+      totalAmount: tot,
+      paidAmount: paid,
+      dueAmount: due,
+      balanceAmount: due,
       category: row.category,
     });
   };

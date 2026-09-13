@@ -56,6 +56,7 @@ export type ReceiptData = {
   paymentMode?: string;
   paymentStatus?: string;
   category?: string;
+  unit?: string;
   cropVariety?: string;
   vehicleNo?: string;
   driverName?: string;
@@ -321,14 +322,27 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
     }
 
     // 4. Single item fallback
-    const singleWeight = data.totalWeight || data.weightOrQty || '-';
-    const singleRate = data.ratePerKg ? `₹${data.ratePerKg}` : '-';
+    const rawSingleWeight = data.totalWeight || data.weightOrQty || '-';
+    let singleWeight = rawSingleWeight;
+    if (rawSingleWeight !== '-') {
+      const swStr = String(rawSingleWeight);
+      singleWeight = swStr.toUpperCase().includes('KG') || swStr.toUpperCase().includes('QTY') || swStr.toUpperCase().includes('NAG') || swStr.toUpperCase().includes('BOX') || swStr.toUpperCase().includes('CRATE')
+        ? swStr 
+        : `${swStr} ${data.unit || 'KG'}`;
+    }
+
+    let singleRate = '-';
+    if (data.ratePerKg) {
+      const rStr = String(data.ratePerKg);
+      singleRate = rStr.startsWith('₹') ? rStr : `₹${rStr}`;
+    }
+
     return [{
       srNo: 1,
       cropName: data.gradeOrItems || 'कृषी उत्पन्न (Agricultural Produce)',
       grade: data.category || 'A_GRADE',
       packaging: 'कॅरेट (Crates)',
-      weightKg: singleWeight !== '-' ? `${singleWeight} KG` : '-',
+      weightKg: singleWeight,
       ratePerKg: singleRate,
       totalAmount: billTotalAmt > 0 ? `₹${billTotalAmt.toLocaleString('en-IN')}` : '-'
     }];
@@ -345,11 +359,13 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
   const rawTotAmt = data.netAmount ?? data.totalAmount ?? data.amount ?? 0;
   const numTotAmt = typeof rawTotAmt === 'number' ? rawTotAmt : (parseFloat(String(rawTotAmt).replace(/[^0-9.-]+/g, '')) || 0);
   
-  const rawPaidAmt = data.paidAmount ?? 0;
-  const numPaidAmt = typeof rawPaidAmt === 'number' ? rawPaidAmt : (parseFloat(String(rawPaidAmt).replace(/[^0-9.-]+/g, '')) || 0);
-
-  const rawDueAmt = data.dueAmount ?? data.balanceAmount ?? Math.max(0, numTotAmt - numPaidAmt);
+  const rawDueAmt = data.dueAmount ?? data.balanceAmount ?? 0;
   const numDueAmt = typeof rawDueAmt === 'number' ? rawDueAmt : (parseFloat(String(rawDueAmt).replace(/[^0-9.-]+/g, '')) || 0);
+
+  const rawPaidAmt = data.paidAmount !== undefined 
+    ? data.paidAmount 
+    : Math.max(0, numTotAmt - numDueAmt);
+  const numPaidAmt = typeof rawPaidAmt === 'number' ? rawPaidAmt : (parseFloat(String(rawPaidAmt).replace(/[^0-9.-]+/g, '')) || 0);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 font-sans animate-in fade-in duration-150 overflow-y-auto">
@@ -527,8 +543,14 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {lineItems.map((item, idx) => {
-                    const weightVal = typeof item.weightKg === 'number' ? `${item.weightKg} ${item.unit || 'KG'}` : (item.weightKg || '-');
-                    const rateVal = typeof item.ratePerKg === 'number' ? `₹${item.ratePerKg}` : (item.ratePerKg !== '-' && item.ratePerKg ? `₹${item.ratePerKg}` : '-');
+                    const weightVal = typeof item.weightKg === 'number' 
+                      ? `${item.weightKg} ${item.unit || 'KG'}` 
+                      : (item.weightKg ? (String(item.weightKg).toUpperCase().includes('KG') || String(item.weightKg).toUpperCase().includes('QTY') || String(item.weightKg).toUpperCase().includes('NAG') ? item.weightKg : `${item.weightKg} ${item.unit || 'KG'}`) : '-');
+
+                    const rateVal = typeof item.ratePerKg === 'number' 
+                      ? `₹${item.ratePerKg}` 
+                      : (item.ratePerKg !== '-' && item.ratePerKg ? (String(item.ratePerKg).startsWith('₹') ? item.ratePerKg : `₹${item.ratePerKg}`) : '-');
+
                     const amtVal = typeof item.totalAmount === 'number' ? `₹${item.totalAmount.toLocaleString('en-IN')}` : (item.totalAmount !== '-' && item.totalAmount ? (String(item.totalAmount).startsWith('₹') ? item.totalAmount : `₹${item.totalAmount}`) : '-');
 
                     return (
@@ -571,7 +593,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
 
               {numPaidAmt > 0 && (
                 <div className="flex justify-between text-emerald-700 font-bold text-xs pt-1">
-                  <span>अ‍ॅडव्हान्स / दिलेला भरणा (Amount Paid):</span>
+                  <span>जमा रक्कम / वजावट (Paid / Deductions):</span>
                   <span>- ₹{numPaidAmt.toLocaleString('en-IN')}</span>
                 </div>
               )}
