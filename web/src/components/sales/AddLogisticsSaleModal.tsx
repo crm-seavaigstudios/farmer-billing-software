@@ -181,7 +181,10 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
 
       const tenantId = getTenantId() || 'dattakrupa';
       const d = new Date();
-      const ddmmyy = `${String(d.getDate()).padStart(2,'0')}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getFullYear()).slice(-2)}`;
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yy = String(d.getFullYear()).slice(-2);
+      const dateFormatted = `${dd}/${mm}/${yy}`;
       
       const cached = typeof window !== 'undefined' ? localStorage.getItem(`seavaig_sales_cache_${tenantId}`) || localStorage.getItem('seavaig_sales_cache') : null;
       let totalSalesCount = 1;
@@ -194,8 +197,8 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
         } catch {}
       }
 
-      const uniqueBillNo = `SB-${ddmmyy}-${String(totalSalesCount).padStart(3, '0')}`;
-      const uniqueId = `sale-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const uniqueBillNo = `sale-${dateFormatted}-${totalSalesCount}`;
+      const uniqueId = uniqueBillNo;
 
       const formattedLineItems = items.map((i, idx) => {
         const u = i.unit || 'KG';
@@ -224,13 +227,18 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
         return `${i.cropName} - ${w} ${u} @ ₹${r}/${u} = ₹${tot}`;
       }).join(' | ');
 
+      const custId = targetCust?.id || selectedCustomerId || `cust-${Date.now()}`;
+      const custName = targetCust?.name || targetCust?.company || 'B2B Buyer';
+      const custPhone = targetCust?.phone || '';
+      const custAddress = targetCust?.address || '';
+
       const newSale = {
         id: uniqueId,
         billNo: uniqueBillNo,
-        customerId: targetCust?.id || selectedCustomerId,
-        customerName: targetCust?.name || targetCust?.company || 'Reliance Fresh Ltd',
-        phone: targetCust?.phone || '9876543210',
-        address: targetCust?.address || 'Mumbai Central Hub',
+        customerId: custId,
+        customerName: custName,
+        phone: custPhone,
+        address: custAddress,
         amount: totalBillAmount,
         totalWeight: totalBillWeight,
         paidAmount,

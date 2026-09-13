@@ -6,7 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { AddPaymentModal } from '@/components/payments/AddPaymentModal';
 import { PrintReceiptModal, ReceiptData } from '@/components/common/PrintReceiptModal';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetPayments, getTenantId } from '@/lib/api';
+import { apiGetPayments, apiGetFarmers, isFarmerMatch, getTenantId } from '@/lib/api';
 import {
   CreditCard,
   CheckCircle,
@@ -26,6 +26,7 @@ const initialPayments: any[] = [];
 export default function PaymentsPage() {
   const { t, language } = useLanguage();
   const [payments, setPayments] = useState(initialPayments);
+  const [farmers, setFarmers] = useState<any[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<any | null>(null);
@@ -43,7 +44,13 @@ export default function PaymentsPage() {
     }
 
     async function loadData() {
-      const dbPayments = await apiGetPayments();
+      const [dbPayments, dbFarmers] = await Promise.all([
+        apiGetPayments(),
+        apiGetFarmers()
+      ]);
+      if (dbFarmers && Array.isArray(dbFarmers)) {
+        setFarmers(dbFarmers);
+      }
       if (dbPayments && Array.isArray(dbPayments) && dbPayments.length > 0) {
         setPayments(dbPayments);
         if (typeof window !== 'undefined') {
@@ -65,18 +72,25 @@ export default function PaymentsPage() {
   };
 
   const openPrintModal = (row: any) => {
+    const matchedFarmer = farmers.find(f => isFarmerMatch(row, f) || f.id === row.farmerId);
+    const dueNum = matchedFarmer 
+      ? Number(matchedFarmer.outstandingAmount || 0)
+      : (row.remainingBalance !== undefined ? Number(row.remainingBalance) : 0);
+
+    const remainingDueStr = dueNum > 0 ? `₹${dueNum.toLocaleString('en-IN')}` : '₹0';
+
     setActiveReceipt({
       type: 'FARMER_PAYMENT',
-      title: 'Farmer Payout Voucher Receipt',
+      title: 'Farmer Payment Voucher (पेमेंट पावती)',
       receiptNo: row.id,
       date: row.date,
-      partyName: row.farmerName,
-      partyPhone: row.phone || '9823456789',
-      partyVillageOrAddress: row.village || 'Nandgaon',
-      gradeOrItems: `Payout Disbursement (${row.method})`,
+      partyName: row.farmerName || matchedFarmer?.name || 'Farmer',
+      partyPhone: row.phone || matchedFarmer?.phone || '',
+      partyVillageOrAddress: row.village || matchedFarmer?.village || '',
+      gradeOrItems: `Payout Disbursement (${row.method || 'CASH'})`,
       totalAmount: row.amount,
-      balanceAmount: '₹3,500',
-      paymentMode: row.method,
+      balanceAmount: remainingDueStr,
+      paymentMode: row.method || 'CASH',
     });
   };
 

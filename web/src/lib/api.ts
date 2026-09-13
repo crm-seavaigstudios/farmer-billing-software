@@ -1655,26 +1655,32 @@ export const apiCreateSale = async (saleData: any) => {
   const tenantShort = getTenantShort(tenantId);
   
   const today = new Date();
-  const ddmmyy = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
+  const dd = String(today.getDate()).padStart(2, '0');
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const yy = String(today.getFullYear()).slice(2);
+  const dateFormatted = `${dd}/${mm}/${yy}`;
+  const ddmmyy = `${dd}${mm}${yy}`;
   
   const { data: latestData } = await supabase
     .from('Sale')
-    .select('billNo')
-    .like('billNo', `SB-${ddmmyy}-${tenantShort}-%`)
+    .select('billNo, id')
+    .eq('tenantId', tenantId)
     .order('createdAt', { ascending: false })
-    .limit(20);
+    .limit(50);
 
   let serial = 1;
   if (latestData && latestData.length > 0) {
     const existingSerials = latestData.map((d: any) => {
-      const parts = (d.billNo || '').split('-');
+      const b = String(d.billNo || d.id || '');
+      const parts = b.split('-');
       const num = parseInt(parts[parts.length - 1], 10);
       return isNaN(num) ? 0 : num;
     });
     serial = Math.max(...existingSerials, 0) + 1;
   }
-  const serialBillNo = saleData.billNo || `SB-${ddmmyy}-${tenantShort}-${String(serial).padStart(3, '0')}`;
-  const newId = saleData.id || `sale-${tenantShort}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  
+  const serialBillNo = saleData.billNo || `sale-${dateFormatted}-${serial}`;
+  const newId = serialBillNo;
   
   // Non-schema columns to strip before sending to Supabase Sale table
   const invalidCols = ['driverSignatureUrl', 'deliveryStatus', 'paymentHistory', 'notes', 'rate', 'price', 'cropName', 'weight', 'itemsData', 'itemsList', 'customerGstin', 'buyerGstin', 'lineItems'];
@@ -1683,6 +1689,31 @@ export const apiCreateSale = async (saleData: any) => {
     if (!invalidCols.includes(k)) {
       dbSaleData[k] = v;
     }
+  }
+
+  const targetCustomerId = dbSaleData.customerId || `cust-${tenantShort}-${Date.now()}`;
+  dbSaleData.customerId = targetCustomerId;
+
+  // Auto-upsert Customer in Supabase to ensure Foreign Key constraint is 100% satisfied
+  try {
+    const { data: existingCust } = await supabase
+      .from('Customer')
+      .select('id')
+      .eq('id', targetCustomerId)
+      .maybeSingle();
+
+    if (!existingCust) {
+      await supabase.from('Customer').upsert([{
+        id: targetCustomerId,
+        tenantId,
+        name: dbSaleData.customerName || saleData.customerName || 'B2B Customer',
+        phone: dbSaleData.phone || saleData.phone || '',
+        address: dbSaleData.address || saleData.address || '',
+        status: 'ACTIVE'
+      }], { onConflict: 'id' });
+    }
+  } catch (custErr) {
+    console.warn('Customer auto-create check:', custErr);
   }
 
   try {
@@ -1697,9 +1728,9 @@ export const apiCreateSale = async (saleData: any) => {
   }
 
   const current = getLocalCache(`seavaig_sales_cache_${tenantId}`, []);
-  const updated = [{ ...saleData, id: newId, billNo: serialBillNo, tenantId }, ...current];
+  const updated = [{ ...saleData, id: newId, billNo: serialBillNo, customerId: targetCustomerId, tenantId }, ...current];
   setLocalCache(`seavaig_sales_cache_${tenantId}`, updated);
-  return { ...saleData, id: newId, billNo: serialBillNo, tenantId };
+  return { ...saleData, id: newId, billNo: serialBillNo, customerId: targetCustomerId, tenantId };
 };
 
 export const apiUpdateSalePayment = async (

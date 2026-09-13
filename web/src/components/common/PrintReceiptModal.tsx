@@ -433,7 +433,11 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
             <div className="py-2 px-3 my-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
               <div>
                 <span className="font-black text-blue-700 uppercase tracking-wider block text-[11px]">
-                  TAX INVOICE / B2B SALES BILL (कर बीजक)
+                  {data.type === 'FARMER_PAYMENT' 
+                    ? 'PAYMENT VOUCHER / RECEIPT (पेमेंट पावती)'
+                    : (data.type === 'B2B_SALE' || data.type === 'SALE' 
+                        ? 'TAX INVOICE / SALES BILL (कर बीजक)' 
+                        : (data.title || 'TAX INVOICE (कर बीजक)'))}
                 </span>
                 <span className="font-extrabold text-slate-900 text-sm">
                   #{invoiceNo}
@@ -445,43 +449,67 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
               </div>
             </div>
 
-            {/* Buyer & Logistics Manifest Banner */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3 text-xs">
-              {/* Buyer Box */}
+            {/* Buyer & Details Banner */}
+            <div className={`grid ${(data.type === 'B2B_SALE' || data.type === 'SALE') ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'} gap-3 mb-3 text-xs`}>
+              {/* Buyer / Recipient Box */}
               <div className="bg-slate-50/90 p-3 rounded-xl border border-slate-200 space-y-1 text-left">
                 <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">
-                  खरेदीदार / व्यापारी तपशील (Billed To):
+                  {data.type === 'FARMER_PAYMENT' ? 'शेतकरी तपशील (Paid To / Farmer):' : 'खरेदीदार / व्यापारी तपशील (Billed To):'}
                 </span>
                 <p className="font-black text-slate-900 text-sm">{buyerName}</p>
-                <p className="font-semibold text-slate-600 text-[11px]">{buyerAddress}</p>
-                <p className="text-[10px] text-slate-500 font-medium">मोबाईल: {buyerPhone}</p>
+                {buyerAddress && buyerAddress !== 'N/A' && (
+                  <p className="font-semibold text-slate-600 text-[11px]">{buyerAddress}</p>
+                )}
+                {buyerPhone && buyerPhone !== 'N/A' && (
+                  <p className="text-[10px] text-slate-500 font-medium">मोबाईल: {buyerPhone}</p>
+                )}
                 {buyerGstin && buyerGstin !== 'N/A' && (
                   <p className="text-[10px] text-slate-700 font-bold">GSTIN: {buyerGstin}</p>
                 )}
               </div>
 
-              {/* Logistics Manifest Box */}
-              <div className="bg-slate-50/90 p-3 rounded-xl border border-slate-200 space-y-1 text-left">
-                <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">
-                  वाहतूक व गाडी तपशील (Logistics Manifest):
-                </span>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 text-[10px]">गाडी क्रमांक (Vehicle No):</span>
-                  <span className="font-black text-blue-700">{data.vehicleNo || 'MH-15-EG-4521'}</span>
+              {/* Conditional: Logistics Manifest for Sales OR Payment Info for Non-Sales */}
+              {(data.type === 'B2B_SALE' || data.type === 'SALE') ? (
+                <div className="bg-slate-50/90 p-3 rounded-xl border border-slate-200 space-y-1 text-left">
+                  <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">
+                    वाहतूक व गाडी तपशील (Logistics Manifest):
+                  </span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 text-[10px]">गाडी क्रमांक (Vehicle No):</span>
+                    <span className="font-black text-blue-700">{data.vehicleNo || 'MH-15-EG-4521'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 text-[10px]">चालक (Driver):</span>
+                    <span className="font-bold text-slate-800">{data.driverName || 'Santosh Gaikwad'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 text-[10px]">चालक संपर्क:</span>
+                    <span className="font-semibold text-slate-700">{data.driverPhone || '9876543210'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 text-[10px]">पोहोच ठिकाण (Dest):</span>
+                    <span className="font-bold text-slate-800">{buyerAddress}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 text-[10px]">चालक (Driver):</span>
-                  <span className="font-bold text-slate-800">{data.driverName || 'Santosh Gaikwad'}</span>
+              ) : (
+                <div className="bg-slate-50/90 p-3 rounded-xl border border-slate-200 space-y-1.5 text-left">
+                  <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">
+                    व्यवहार तपशील (Payment & Transaction Details):
+                  </span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 text-[10px]">पेमेंट प्रकार (Payment Mode):</span>
+                    <span className="font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 text-[11px]">{data.paymentMode || 'CASH'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 text-[10px]">पावती क्रमांक (Receipt Ref):</span>
+                    <span className="font-bold text-slate-800">{invoiceNo}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 text-[10px]">स्थिती (Status):</span>
+                    <span className="font-extrabold text-blue-700">COMPLETED (यशस्वी)</span>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 text-[10px]">चालक संपर्क:</span>
-                  <span className="font-semibold text-slate-700">{data.driverPhone || '9876543210'}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 text-[10px]">पोहोच ठिकाण (Dest):</span>
-                  <span className="font-bold text-slate-800">{buyerAddress}</span>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Produce Itemized Table */}

@@ -66,10 +66,12 @@ export default function SalesPage() {
   };
 
   const openPrintModal = (row: any) => {
+    const formattedBillNo = row.billNo || row.saleNo || row.id;
     setActiveReceipt({
-      type: 'CUSTOMER_SALE',
-      title: 'B2B Sales Invoice & Tax Receipt (कर बीजक)',
-      receiptNo: row.billNo || row.id,
+      type: 'B2B_SALE',
+      title: 'Tax Invoice / Sales Bill (कर बीजक)',
+      receiptNo: formattedBillNo,
+      billNo: formattedBillNo,
       date: row.date,
       partyName: row.customerName,
       partyPhone: row.phone,
@@ -248,7 +250,7 @@ export default function SalesPage() {
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map((row) => (
                     <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-3 font-bold text-blue-600">{row.id}</td>
+                      <td className="py-3 px-3 font-bold text-blue-600">{row.billNo || row.saleNo || row.id}</td>
                       <td className="py-3 px-3 font-bold text-slate-900">{row.customerName}</td>
                       <td className="py-3 px-3">
                         <div className="text-slate-600 font-medium">{row.items}</div>
