@@ -10,6 +10,8 @@ import { PrintReceiptModal, ReceiptData } from '@/components/common/PrintReceipt
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
+import { useTenant } from '@/context/TenantContext';
+import { sharePurchaseOnWhatsApp } from '@/lib/whatsapp';
 import { 
   apiGetPurchases, 
   apiUpdatePurchase, 
@@ -67,11 +69,13 @@ import {
   Inbox,
   Edit3,
   Clock,
-  History
+  History,
+  MessageCircle
 } from 'lucide-react';
 
 export default function PurchasesPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { tenant } = useTenant();
   const [purchases, setPurchases] = useState<any[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -632,6 +636,14 @@ export default function PurchasesPage() {
                               title="Edit Purchase Bill"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              onClick={() => sharePurchaseOnWhatsApp(row, language === 'mr' ? tenant.businessNameMr || tenant.businessName : tenant.businessName)}
+                              className="p-1.5 text-emerald-600 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
+                              title="Share Purchase Bill on WhatsApp"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
                             </button>
 
                             <button

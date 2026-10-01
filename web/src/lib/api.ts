@@ -92,11 +92,13 @@ export const isFarmerMatch = (transaction: any, farmer: any): boolean => {
   const fId = String(farmer.id || '').trim().toLowerCase();
   const fPhone = String(farmer.phone || '').replace(/[^0-9]/g, '');
   const fCode = String(farmer.farmerIdCode || farmer.code || '').trim().toLowerCase();
+  const fUnique = String(farmer.farmerUniqueCode || farmer.farmerCode || '').trim().toLowerCase();
   const fName = String(farmer.name || '').trim().toLowerCase();
 
   const pFarmerId = String(transaction.farmerId || transaction.id || '').trim().toLowerCase();
   const pPhone = String(transaction.phone || '').replace(/[^0-9]/g, '');
   const pCode = String(transaction.farmerIdCode || transaction.code || '').trim().toLowerCase();
+  const pUnique = String(transaction.farmerUniqueCode || transaction.farmerCode || '').trim().toLowerCase();
   const pName = String(transaction.farmerName || transaction.name || '').trim().toLowerCase();
 
   // 1. Direct ID match
@@ -105,7 +107,9 @@ export const isFarmerMatch = (transaction: any, farmer: any): boolean => {
   if (fPhone && (pFarmerId === fPhone || (pPhone && pPhone === fPhone))) return true;
   // 3. Farmer ID code match (e.g. FAR-01)
   if (fCode && (pFarmerId === fCode || pCode === fCode)) return true;
-  // 4. Name match (case-insensitive and trimmed)
+  // 4. Farmer Unique ID code match (e.g. BK-101)
+  if (fUnique && (pFarmerId === fUnique || pUnique === fUnique || pCode === fUnique)) return true;
+  // 5. Name match (case-insensitive and trimmed)
   if (fName && (pName === fName || pFarmerId === fName)) return true;
 
   return false;
@@ -173,19 +177,26 @@ export const apiGetFarmers = async () => {
 
         let cropVariety = '';
         let acreage = '';
+        let farmerUniqueCode = f.farmerUniqueCode || f.farmerCode || '';
         if (f.avatarUrl && typeof f.avatarUrl === 'string' && f.avatarUrl.startsWith('{')) {
           try {
             const meta = JSON.parse(f.avatarUrl);
             cropVariety = meta.cropVariety || '';
             acreage = meta.acreage || '';
+            if (!farmerUniqueCode && meta.farmerUniqueCode) {
+              farmerUniqueCode = meta.farmerUniqueCode;
+            }
           } catch {}
         }
         if (f.cropVariety) cropVariety = f.cropVariety;
         if (f.acreage) acreage = f.acreage;
+        if (f.farmerUniqueCode) farmerUniqueCode = f.farmerUniqueCode;
 
         return {
           id: f.id,
           farmerIdCode: f.farmerIdCode || `FAR-${f.id.toString().slice(0, 5)}`,
+          farmerUniqueCode: farmerUniqueCode || '',
+          farmerCode: farmerUniqueCode || '',
           name: f.name,
           phone: f.phone,
           village: f.village || '',
@@ -220,22 +231,28 @@ export const apiGetFarmerDetails = async (id: string) => {
     if (data) {
       let cropVariety = '';
       let acreage = '';
+      let farmerUniqueCode = data.farmerUniqueCode || data.farmerCode || '';
       if (data.avatarUrl && typeof data.avatarUrl === 'string' && data.avatarUrl.startsWith('{')) {
         try {
           const meta = JSON.parse(data.avatarUrl);
           cropVariety = meta.cropVariety || '';
           acreage = meta.acreage || '';
+          if (!farmerUniqueCode && meta.farmerUniqueCode) {
+            farmerUniqueCode = meta.farmerUniqueCode;
+          }
         } catch {}
       }
       return {
         ...data,
+        farmerUniqueCode: data.farmerUniqueCode || farmerUniqueCode || '',
+        farmerCode: data.farmerCode || farmerUniqueCode || '',
         cropVariety: data.cropVariety || cropVariety,
         acreage: data.acreage || acreage,
       };
     }
   } catch {}
   const list = getLocalCache(`seavaig_farmers_cache_${getTenantId()}`, []);
-  return list.find((f: any) => f.id === id || f.farmerIdCode === id) || null;
+  return list.find((f: any) => f.id === id || f.farmerIdCode === id || f.farmerUniqueCode === id) || null;
 };
 
 export const apiCreateFarmer = async (farmerData: any) => {
@@ -246,16 +263,19 @@ export const apiCreateFarmer = async (farmerData: any) => {
   const nextNum = current.length + 1;
   const autoCode = `FAR-${String(nextNum).padStart(2, '0')}`;
   const newId = `far-${Date.now()}`;
+  const manualCode = farmerData.farmerUniqueCode || farmerData.farmerCode || '';
   
   const cropMeta = JSON.stringify({
     cropVariety: farmerData.cropVariety || '',
     acreage: farmerData.acreage || '',
+    farmerUniqueCode: manualCode,
   });
 
   const farmerObj = {
     id: newId,
     tenantId: tenantId,
-    farmerIdCode: farmerData.farmerIdCode || autoCode,
+    farmerIdCode: autoCode,
+    farmerCode: manualCode,
     name: farmerData.name,
     phone: farmerData.phone,
     password: farmerData.phone, // Default password for APK
@@ -277,12 +297,19 @@ export const apiCreateFarmer = async (farmerData: any) => {
 
   try {
     await supabase.from('Farmer').insert([farmerObj]).throwOnError();
-  } catch (e) { console.error(e); throw e; }
+  } catch (e) {
+    console.error('Farmer insert fallback error:', e);
+    const fallbackObj: any = { ...farmerObj };
+    delete fallbackObj.farmerCode;
+    await supabase.from('Farmer').insert([fallbackObj]).throwOnError();
+  }
 
   // Update isolated cache
   const mappedObj = {
     ...farmerObj,
-    farmerIdCode: farmerObj.farmerIdCode,
+    farmerIdCode: autoCode,
+    farmerUniqueCode: manualCode,
+    farmerCode: manualCode,
     cropVariety: farmerData.cropVariety || '',
     acreage: farmerData.acreage || '',
     aadhaar: farmerObj.aadhaarNumber || '',
@@ -299,14 +326,17 @@ export const apiUpdateFarmer = async (farmerData: any) => {
   const tenantId = getTenantId();
   if (!tenantId) return farmerData;
 
+  const manualCode = farmerData.farmerUniqueCode || farmerData.farmerCode || '';
   const cropMeta = JSON.stringify({
     cropVariety: farmerData.cropVariety || '',
     acreage: farmerData.acreage || '',
+    farmerUniqueCode: manualCode,
   });
 
   const updatePayload: any = {
     name: farmerData.name,
     phone: farmerData.phone,
+    farmerCode: manualCode,
     village: farmerData.village || '',
     taluka: farmerData.taluka || '',
     district: farmerData.district || '',
@@ -322,7 +352,10 @@ export const apiUpdateFarmer = async (farmerData: any) => {
   try {
     await supabase.from('Farmer').update(updatePayload).eq('id', farmerData.id).throwOnError();
   } catch (e) {
-    console.error('Error in apiUpdateFarmer Supabase update:', e);
+    console.error('Error in apiUpdateFarmer Supabase update, attempting fallback:', e);
+    const fallbackPayload = { ...updatePayload };
+    delete fallbackPayload.farmerCode;
+    await supabase.from('Farmer').update(fallbackPayload).eq('id', farmerData.id).catch(() => {});
   }
 
   const current = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
@@ -331,6 +364,8 @@ export const apiUpdateFarmer = async (farmerData: any) => {
       return {
         ...f,
         ...farmerData,
+        farmerUniqueCode: manualCode,
+        farmerCode: manualCode,
         cropVariety: farmerData.cropVariety || '',
         acreage: farmerData.acreage || '',
       };
@@ -2470,3 +2505,112 @@ export const apiImportCustomerFromNetwork = async (custData: any) => {
     status: 'ACTIVE',
   });
 };
+
+// ----------------------------------------------------
+// AGENCY NOTES & DIGITAL DIARY API
+// ----------------------------------------------------
+export interface AgencyNote {
+  id: string;
+  title: string;
+  category: 'GENERAL' | 'FARMER' | 'LOGISTICS' | 'ACCOUNTS' | 'IMPORTANT';
+  content: string;
+  items?: { id: string; text: string; done: boolean }[];
+  bullets?: string[];
+  tableData?: { headers: string[]; rows: string[][] };
+  isPinned?: boolean;
+  color?: string;
+  tenantId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const apiGetNotes = async (): Promise<AgencyNote[]> => {
+  const tenantId = getTenantId() || 'default';
+  try {
+    const { data, error } = await supabase
+      .from('AgencyNotes')
+      .select('*')
+      .eq('tenantId', tenantId)
+      .order('createdAt', { ascending: false });
+    if (!error && data && data.length > 0) {
+      setLocalCache(`seavaig_notes_cache_${tenantId}`, data);
+      return data;
+    }
+  } catch {}
+  return getLocalCache(`seavaig_notes_cache_${tenantId}`, [
+    {
+      id: 'default-welcome-note',
+      title: 'महत्वाच्या नोंदी व डायरी (Welcome Note)',
+      category: 'GENERAL',
+      content: 'येथे तुम्ही तुमच्या व्यवसायाशी संबंधित सर्व दैनंदिन नोंदी, चेकलिस्ट आणि तक्ते सुरक्षितपणे जतन करू शकता.',
+      items: [
+        { id: 'item-1', text: 'शेतकऱ्यांचे हिशोब तपासा', done: true },
+        { id: 'item-2', text: 'गाडी भाडे व मालक पेमेंट पूर्ण करा', done: false },
+        { id: 'item-3', text: 'मार्केटचे आजचे भाव अपडेट करा', done: false },
+      ],
+      bullets: [
+        'नवीन शेतकऱ्यांना लेजर बुक कोड द्या (उदा. BK-01)',
+        'सायंकाळी सर्व वजन पावत्यांचा मेळ घाला',
+      ],
+      tableData: {
+        headers: ['तपशील (Item)', 'संख्या / वजन', 'दर (Rate)', 'एकूण (Total)'],
+        rows: [
+          ['टोमॅटो क्रेट्स', '100 Crates', '₹450', '₹45,000'],
+          ['गाडी भाडे (Advance)', '1 Trip', '₹3,500', '₹3,500'],
+        ]
+      },
+      isPinned: true,
+      color: '#ffffff',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+  ]);
+};
+
+export const apiSaveNote = async (note: Partial<AgencyNote>): Promise<AgencyNote> => {
+  const tenantId = getTenantId() || 'default';
+  const current = getLocalCache(`seavaig_notes_cache_${tenantId}`, []);
+  
+  const now = new Date().toISOString();
+  const noteId = note.id || `note-${Date.now()}`;
+  const fullNote: AgencyNote = {
+    id: noteId,
+    title: note.title || 'नवीन नोंद (Untitled Note)',
+    category: note.category || 'GENERAL',
+    content: note.content || '',
+    items: note.items || [],
+    bullets: note.bullets || [],
+    tableData: note.tableData || { headers: ['तपशील (Item)', 'संख्या / वजन', 'दर (Rate)', 'एकूण (Total)'], rows: [['', '', '', '']] },
+    isPinned: note.isPinned ?? false,
+    color: note.color || '#ffffff',
+    tenantId: tenantId,
+    createdAt: note.createdAt || now,
+    updatedAt: now,
+  };
+
+  try {
+    await supabase.from('AgencyNotes').upsert(fullNote, { onConflict: 'id' }).catch(() => {});
+  } catch {}
+
+  const exists = current.findIndex((n: any) => n.id === noteId);
+  let updated;
+  if (exists >= 0) {
+    updated = current.map((n: any) => (n.id === noteId ? fullNote : n));
+  } else {
+    updated = [fullNote, ...current];
+  }
+  setLocalCache(`seavaig_notes_cache_${tenantId}`, updated);
+  return fullNote;
+};
+
+export const apiDeleteNote = async (id: string): Promise<boolean> => {
+  const tenantId = getTenantId() || 'default';
+  try {
+    await supabase.from('AgencyNotes').delete().eq('id', id).catch(() => {});
+  } catch {}
+  const current = getLocalCache(`seavaig_notes_cache_${tenantId}`, []);
+  const updated = current.filter((n: any) => n.id !== id);
+  setLocalCache(`seavaig_notes_cache_${tenantId}`, updated);
+  return true;
+};
+

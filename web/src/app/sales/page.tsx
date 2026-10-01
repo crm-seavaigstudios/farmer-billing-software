@@ -7,6 +7,8 @@ import { PrintReceiptModal, ReceiptData } from '@/components/common/PrintReceipt
 import { AddLogisticsSaleModal } from '@/components/sales/AddLogisticsSaleModal';
 import { UpdateSalePaymentModal } from '@/components/sales/UpdateSalePaymentModal';
 import { useLanguage } from '@/context/LanguageContext';
+import { useTenant } from '@/context/TenantContext';
+import { shareSaleOnWhatsApp } from '@/lib/whatsapp';
 import { apiGetSales } from '@/lib/api';
 import {
   Tag,
@@ -26,7 +28,8 @@ import {
 } from 'lucide-react';
 
 export default function SalesPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { tenant } = useTenant();
   const [sales, setSales] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null);
@@ -303,8 +306,8 @@ export default function SalesPage() {
                             <span>Payment</span>
                           </button>
                           <button
-                            onClick={() => openPrintModal(row)}
-                            className="p-1 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50"
+                            onClick={() => shareSaleOnWhatsApp(row, language === 'mr' ? tenant.businessNameMr || tenant.businessName : tenant.businessName)}
+                            className="p-1 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 cursor-pointer"
                             title="Share Invoice on WhatsApp"
                           >
                             <MessageCircle className="w-3.5 h-3.5" />

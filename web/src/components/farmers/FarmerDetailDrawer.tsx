@@ -23,8 +23,10 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { useTenant } from '@/context/TenantContext';
 import { PrintStatementModal, StatementData } from '@/components/common/PrintStatementModal';
 import { apiGetPurchases, apiGetPayments, apiGetFarmerMaterials, isFarmerMatch, apiGetFarmers, apiGetFarmerDetails } from '@/lib/api';
+import { shareFarmerLedgerOnWhatsApp } from '@/lib/whatsapp';
 import { useEffect } from 'react';
 
 export interface FarmerDetailDrawerProps {
@@ -45,6 +47,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
   onOpenAdvanceModal,
 }) => {
   const { language } = useLanguage();
+  const { tenant } = useTenant();
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'PURCHASES' | 'PAYMENTS' | 'ADVANCES' | 'MATERIALS' | 'LEDGER'>('LEDGER');
   const [kpiViewMode, setKpiViewMode] = useState<'ACTIVE' | 'LIFETIME'>('ACTIVE');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -368,11 +371,16 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
               {farmer?.name ? farmer.name.charAt(0) : 'F'}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-lg font-black text-slate-900">{farmer?.name || 'Farmer Profile'}</h2>
-                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-100">
-                  {farmer?.farmerIdCode || farmer?.id || ''}
+                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
+                  ID: {farmer?.farmerIdCode || farmer?.id || ''}
                 </span>
+                {(farmer?.farmerUniqueCode || farmer?.farmerCode) && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
+                    लेजर: {farmer?.farmerUniqueCode || farmer?.farmerCode}
+                  </span>
+                )}
               </div>
               <p className="text-xs font-semibold text-slate-400 mt-0.5 flex items-center gap-2">
                 <span>📍 {farmer?.village || 'Village'}</span>
@@ -1023,18 +1031,26 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
 
         {/* Footer Actions */}
         <div className="p-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setIsPrintModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 cursor-pointer"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Print Ledger</span>
             </button>
+            <button
+              onClick={() => shareFarmerLedgerOnWhatsApp(farmer, language === 'mr' ? tenant.businessNameMr || tenant.businessName : tenant.businessName)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
+              title="Share Statement on WhatsApp"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span>WhatsApp</span>
+            </button>
             {onOpenMaterialModal && (
               <button
                 onClick={() => onOpenMaterialModal(farmer.id)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 cursor-pointer"
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1 cursor-pointer"
               >
                 + Material
               </button>

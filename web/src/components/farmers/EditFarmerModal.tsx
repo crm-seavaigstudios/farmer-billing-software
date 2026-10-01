@@ -19,6 +19,7 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
+    farmerUniqueCode: '',
     village: '',
     taluka: '',
     district: '',
@@ -37,6 +38,7 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
       setFormData({
         name: farmer.name || '',
         phone: farmer.phone || '',
+        farmerUniqueCode: farmer.farmerUniqueCode || farmer.farmerCode || '',
         village: farmer.village || '',
         taluka: farmer.taluka || '',
         district: farmer.district || '',
@@ -60,6 +62,8 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
       ...farmer,
       name: formData.name,
       phone: formData.phone,
+      farmerUniqueCode: formData.farmerUniqueCode,
+      farmerCode: formData.farmerUniqueCode,
       village: formData.village,
       taluka: formData.taluka,
       district: formData.district,
@@ -104,6 +108,33 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
               <UserCheck className="w-3.5 h-3.5 text-blue-600" />
               Personal & Contact Details
             </h3>
+
+            {/* Dual Farmer Codes: Auto System ID + Editable Ledger ID */}
+            <div className="grid grid-cols-2 gap-3 p-3 bg-blue-50/60 border border-blue-100 rounded-2xl">
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                  1. Farmer ID Code (सिस्टम कोड)
+                </label>
+                <div className="px-3 py-2 bg-white/80 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 cursor-not-allowed">
+                  {farmer?.farmerIdCode || 'FAR-01'}
+                </div>
+                <span className="text-[10px] text-slate-400 mt-0.5 block font-medium">Automatic system generated</span>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-extrabold text-blue-900 block mb-1">
+                  2. Farmer Unique ID (लेजर कोड)
+                </label>
+                <input
+                  type="text"
+                  placeholder="उदा. BK-12 / Book 2 - 45"
+                  value={formData.farmerUniqueCode}
+                  onChange={(e) => setFormData({ ...formData, farmerUniqueCode: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-blue-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                />
+                <span className="text-[10px] text-blue-600/80 mt-0.5 block font-medium">Agency physical ledger book code</span>
+              </div>
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>

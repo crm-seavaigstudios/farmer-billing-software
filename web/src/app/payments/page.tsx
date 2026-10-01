@@ -6,6 +6,8 @@ import { Header } from '@/components/layout/Header';
 import { AddPaymentModal } from '@/components/payments/AddPaymentModal';
 import { PrintReceiptModal, ReceiptData } from '@/components/common/PrintReceiptModal';
 import { useLanguage } from '@/context/LanguageContext';
+import { useTenant } from '@/context/TenantContext';
+import { sharePaymentOnWhatsApp } from '@/lib/whatsapp';
 import { apiGetPayments, apiGetFarmers, isFarmerMatch, getTenantId } from '@/lib/api';
 import {
   CreditCard,
@@ -25,6 +27,7 @@ const initialPayments: any[] = [];
 
 export default function PaymentsPage() {
   const { t, language } = useLanguage();
+  const { tenant } = useTenant();
   const [payments, setPayments] = useState(initialPayments);
   const [farmers, setFarmers] = useState<any[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -244,7 +247,7 @@ export default function PaymentsPage() {
                             <Eye className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => openPrintModal(row)}
+                            onClick={() => sharePaymentOnWhatsApp(row, language === 'mr' ? tenant.businessNameMr || tenant.businessName : tenant.businessName)}
                             className="p-1 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 cursor-pointer"
                             title="Share Payout Voucher on WhatsApp"
                           >

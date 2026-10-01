@@ -183,6 +183,7 @@ export default function FarmersPage() {
     (f) =>
       (f.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (f.farmerIdCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (f.farmerUniqueCode || f.farmerCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (f.phone || '').includes(searchQuery) ||
       (f.village || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -263,7 +264,8 @@ export default function FarmersPage() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-extrabold tracking-wider border-b border-slate-200">
                   <tr>
-                    <th className="py-3.5 px-4">Farmer Code</th>
+                    <th className="py-3.5 px-4">Farmer ID (सिस्टम)</th>
+                    <th className="py-3.5 px-4">Unique Code (लेजर)</th>
                     <th className="py-3.5 px-4">Farmer Name</th>
                     <th className="py-3.5 px-4">Location</th>
                     <th className="py-3.5 px-4">Grade</th>
@@ -277,7 +279,7 @@ export default function FarmersPage() {
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                   {filteredFarmers.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-12 text-center">
+                      <td colSpan={10} className="py-12 text-center">
                         <Inbox className="w-10 h-10 text-slate-400 mx-auto mb-2" />
                         <p className="text-sm font-bold text-slate-800">No Farmers Registered Yet</p>
                         <p className="text-xs text-slate-500 mt-1">Click "Register New Farmer" above to add your first supplier.</p>
@@ -319,7 +321,16 @@ export default function FarmersPage() {
                         onClick={() => setSelectedDetailFarmerId(f.id)} 
                         className="hover:bg-blue-50/40 cursor-pointer transition-colors"
                       >
-                        <td className="py-3.5 px-4 font-black text-blue-600">{f.farmerIdCode || f.id}</td>
+                        <td className="py-3.5 px-4 font-black text-slate-500">{f.farmerIdCode || f.id}</td>
+                        <td className="py-3.5 px-4">
+                          {f.farmerUniqueCode || f.farmerCode ? (
+                            <span className="px-2.5 py-1 bg-blue-50 border border-blue-200/80 rounded-lg text-xs font-black text-blue-700 inline-block shadow-2xs">
+                              {f.farmerUniqueCode || f.farmerCode}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 font-normal">—</span>
+                          )}
+                        </td>
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-900">{f.name}</div>
                           <div className="text-[10px] text-slate-500">{f.phone}</div>

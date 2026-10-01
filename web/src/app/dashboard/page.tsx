@@ -12,6 +12,7 @@ import { RecentPaymentsTable } from '@/components/dashboard/RecentPaymentsTable'
 import { RecentActivitiesFeed } from '@/components/dashboard/RecentActivitiesFeed';
 import { QuickActionsWidget } from '@/components/dashboard/QuickActionsWidget';
 import { DailyRatePINWidget } from '@/components/common/DailyRatePINModal';
+import { ProfitLossAnalyzer } from '@/components/dashboard/ProfitLossAnalyzer';
 import { apiGetDashboardStats, apiGetFarmers, apiGetPurchases, getTenantId, TimelineFilter, getTimelineDateRange } from '@/lib/api';
 
 import {
@@ -204,6 +205,9 @@ export default function DashboardPage() {
             />
           </div>
 
+          {/* Real-time Profit & Loss Margin Analyzer */}
+          <ProfitLossAnalyzer />
+
           {/* PIN Lock Quick Rate Widget & Quick Actions */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
@@ -228,7 +232,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <TopCropsWidget />
             <div className="xl:col-span-2 space-y-6">
-              <RecentPurchasesTable />
+              <RecentPurchasesTable activeTimeline={activeTimeline} />
               <RecentPaymentsTable />
             </div>
           </div>

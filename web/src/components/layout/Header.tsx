@@ -42,19 +42,23 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const handleLogout = () => {
-    // Clear tenant session and all isolated caches
-    sessionStorage.removeItem('active_tenant');
-    const keysToRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('seavaig_')) {
-        keysToRemove.push(key);
+    try {
+      localStorage.removeItem('active_tenant');
+      sessionStorage.removeItem('active_tenant');
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('seavaig_') || key === 'active_tenant')) {
+          keysToRemove.push(key);
+        }
       }
-    }
-    keysToRemove.forEach(k => localStorage.removeItem(k));
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch {}
     
-    // Redirect to login
-    router.push('/login');
+    // Hard reset history stack so browser back button cannot restore previous session
+    if (typeof window !== 'undefined') {
+      window.location.replace('/login');
+    }
   };
 
   const displayName = language === 'mr' ? tenant.businessNameMr : tenant.businessName;

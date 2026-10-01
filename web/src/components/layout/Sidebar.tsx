@@ -25,6 +25,7 @@ import {
   ArrowRight,
   Clock,
   Truck,
+  StickyNote,
   X
 } from 'lucide-react';
 
@@ -55,6 +56,7 @@ export const Sidebar: React.FC = () => {
     { name: t.inventoryManagement, href: '/inventory', icon: Package, hasSubmenu: true },
     { name: t.customerManagement, href: '/customers', icon: UserCheck, hasSubmenu: true },
     { name: t.expenseManagement, href: '/expenses', icon: DollarSign, hasSubmenu: true },
+    { name: language === 'mr' ? 'नोंदी व डायरी' : 'Agency Notes', href: '/notes', icon: StickyNote, hasSubmenu: false },
     { name: t.reportsAnalytics, href: '/reports', icon: BarChart3, hasSubmenu: true },
     ...(!isStaff ? [
       { name: t.userManagement, href: '/users', icon: ShieldCheck, hasSubmenu: true },

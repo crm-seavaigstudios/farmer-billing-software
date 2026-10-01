@@ -44,7 +44,6 @@ export default function SettingsPage() {
     gstin: tenant.gstin,
     tagline: tenant.tagline,
     secretPin: tenant.secretPin || '1234',
-    password: (tenant as any)?.password || '',
   });
 
   const router = typeof window !== 'undefined' ? require('next/navigation').useRouter() : null;
@@ -72,6 +71,7 @@ export default function SettingsPage() {
 
     const updatePayload: any = { ...formData };
 
+    // Explicitly handle password only when the owner typed a new password
     if (newPassword) {
       if (newPassword.length < 4) {
         setPasswordError(language === 'mr' ? 'पासवर्ड किमान ४ अक्षरांचा असावा.' : 'Password must be at least 4 characters long.');
@@ -82,7 +82,9 @@ export default function SettingsPage() {
         return;
       }
       updatePayload.password = newPassword;
-      setFormData(prev => ({ ...prev, password: newPassword }));
+    } else {
+      // Do NOT send or overwrite password in DB if owner didn't change it!
+      delete updatePayload.password;
     }
 
     updateTenant(updatePayload);
