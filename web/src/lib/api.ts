@@ -355,7 +355,9 @@ export const apiUpdateFarmer = async (farmerData: any) => {
     console.error('Error in apiUpdateFarmer Supabase update, attempting fallback:', e);
     const fallbackPayload = { ...updatePayload };
     delete fallbackPayload.farmerCode;
-    await supabase.from('Farmer').update(fallbackPayload).eq('id', farmerData.id).catch(() => {});
+    try {
+      await supabase.from('Farmer').update(fallbackPayload).eq('id', farmerData.id);
+    } catch {}
   }
 
   const current = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
@@ -2589,7 +2591,7 @@ export const apiSaveNote = async (note: Partial<AgencyNote>): Promise<AgencyNote
   };
 
   try {
-    await supabase.from('AgencyNotes').upsert(fullNote, { onConflict: 'id' }).catch(() => {});
+    await supabase.from('AgencyNotes').upsert(fullNote, { onConflict: 'id' });
   } catch {}
 
   const exists = current.findIndex((n: any) => n.id === noteId);
@@ -2606,7 +2608,7 @@ export const apiSaveNote = async (note: Partial<AgencyNote>): Promise<AgencyNote
 export const apiDeleteNote = async (id: string): Promise<boolean> => {
   const tenantId = getTenantId() || 'default';
   try {
-    await supabase.from('AgencyNotes').delete().eq('id', id).catch(() => {});
+    await supabase.from('AgencyNotes').delete().eq('id', id);
   } catch {}
   const current = getLocalCache(`seavaig_notes_cache_${tenantId}`, []);
   const updated = current.filter((n: any) => n.id !== id);
