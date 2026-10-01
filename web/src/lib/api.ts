@@ -271,11 +271,10 @@ export const apiCreateFarmer = async (farmerData: any) => {
     farmerUniqueCode: manualCode,
   });
 
-  const farmerObj = {
+  const farmerObj: any = {
     id: newId,
     tenantId: tenantId,
     farmerIdCode: autoCode,
-    farmerCode: manualCode,
     name: farmerData.name,
     phone: farmerData.phone,
     password: farmerData.phone, // Default password for APK
@@ -296,12 +295,9 @@ export const apiCreateFarmer = async (farmerData: any) => {
   };
 
   try {
-    await supabase.from('Farmer').insert([farmerObj]).throwOnError();
+    await supabase.from('Farmer').insert([farmerObj]);
   } catch (e) {
-    console.error('Farmer insert fallback error:', e);
-    const fallbackObj: any = { ...farmerObj };
-    delete fallbackObj.farmerCode;
-    await supabase.from('Farmer').insert([fallbackObj]).throwOnError();
+    console.error('Farmer insert error:', e);
   }
 
   // Update isolated cache
@@ -336,7 +332,6 @@ export const apiUpdateFarmer = async (farmerData: any) => {
   const updatePayload: any = {
     name: farmerData.name,
     phone: farmerData.phone,
-    farmerCode: manualCode,
     village: farmerData.village || '',
     taluka: farmerData.taluka || '',
     district: farmerData.district || '',
@@ -350,14 +345,9 @@ export const apiUpdateFarmer = async (farmerData: any) => {
   };
 
   try {
-    await supabase.from('Farmer').update(updatePayload).eq('id', farmerData.id).throwOnError();
+    await supabase.from('Farmer').update(updatePayload).eq('id', farmerData.id);
   } catch (e) {
-    console.error('Error in apiUpdateFarmer Supabase update, attempting fallback:', e);
-    const fallbackPayload = { ...updatePayload };
-    delete fallbackPayload.farmerCode;
-    try {
-      await supabase.from('Farmer').update(fallbackPayload).eq('id', farmerData.id);
-    } catch {}
+    console.error('Error in apiUpdateFarmer Supabase update:', e);
   }
 
   const current = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);

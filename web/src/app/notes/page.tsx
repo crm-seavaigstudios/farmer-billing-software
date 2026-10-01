@@ -24,25 +24,30 @@ import {
   ChevronDown,
   Check,
   PlusCircle,
-  X
+  X,
+  Maximize2,
+  Minimize2,
+  Share2,
+  Layers,
+  CheckCircle2
 } from 'lucide-react';
 
 const CATEGORIES = [
   { id: 'ALL', labelEn: 'All Notes', labelMr: 'सर्व नोंदी' },
-  { id: 'GENERAL', labelEn: 'General', labelMr: 'सामान्य' },
+  { id: 'GENERAL', labelEn: 'General Diary', labelMr: 'दैनंदिन डायरी' },
   { id: 'FARMER', labelEn: 'Farmer Follow-up', labelMr: 'शेतकरी फॉलोअप' },
   { id: 'LOGISTICS', labelEn: 'Logistics & Transport', labelMr: 'वाहतूक व गाड्या' },
   { id: 'ACCOUNTS', labelEn: 'Accounts & Payments', labelMr: 'हिशोब व पेमेंट' },
-  { id: 'IMPORTANT', labelEn: 'Urgent & Important', labelMr: 'महत्वाचे' },
+  { id: 'IMPORTANT', labelEn: 'Urgent & Important', labelMr: 'अति महत्वाचे' },
 ];
 
 const COLORS = [
-  { name: 'White', bg: 'bg-white', border: 'border-slate-200', hex: '#ffffff' },
-  { name: 'Amber', bg: 'bg-amber-50', border: 'border-amber-200', hex: '#fef3c7' },
-  { name: 'Emerald', bg: 'bg-emerald-50', border: 'border-emerald-200', hex: '#ecfdf5' },
-  { name: 'Blue', bg: 'bg-blue-50', border: 'border-blue-200', hex: '#eff6ff' },
-  { name: 'Purple', bg: 'bg-purple-50', border: 'border-purple-200', hex: '#faf5ff' },
-  { name: 'Rose', bg: 'bg-rose-50', border: 'border-rose-200', hex: '#fff1f2' },
+  { name: 'White', bg: 'bg-white', border: 'border-slate-200', hex: '#ffffff', cardBg: '#ffffff' },
+  { name: 'Amber', bg: 'bg-amber-50', border: 'border-amber-300', hex: '#fef3c7', cardBg: '#fffbeb' },
+  { name: 'Emerald', bg: 'bg-emerald-50', border: 'border-emerald-300', hex: '#d1fae5', cardBg: '#ecfdf5' },
+  { name: 'Blue', bg: 'bg-blue-50', border: 'border-blue-300', hex: '#dbeafe', cardBg: '#eff6ff' },
+  { name: 'Purple', bg: 'bg-purple-50', border: 'border-purple-300', hex: '#f3e8ff', cardBg: '#faf5ff' },
+  { name: 'Rose', bg: 'bg-rose-50', border: 'border-rose-300', hex: '#ffe4e6', cardBg: '#fff1f2' },
 ];
 
 export default function NotesPage() {
@@ -50,11 +55,12 @@ export default function NotesPage() {
   const [notes, setNotes] = useState<AgencyNote[]>([]);
   const [activeCategory, setActiveCategory] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedNote, setSelectedNote] = useState<AgencyNote | null>(null);
+  const [editingNote, setEditingNote] = useState<AgencyNote | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
 
-  // New item inputs
+  // New item inputs inside editor
   const [newCheckText, setNewCheckText] = useState('');
   const [newBulletText, setNewBulletText] = useState('');
 
@@ -62,9 +68,6 @@ export default function NotesPage() {
     async function loadNotes() {
       const data = await apiGetNotes();
       setNotes(data);
-      if (data.length > 0 && !selectedNote) {
-        setSelectedNote(data[0]);
-      }
     }
     loadNotes();
   }, []);
@@ -76,23 +79,23 @@ export default function NotesPage() {
       if (!searchQuery.trim()) return true;
 
       const q = searchQuery.toLowerCase();
-      const inTitle = n.title.toLowerCase().includes(q);
+      const inTitle = n.title?.toLowerCase().includes(q);
       const inContent = n.content?.toLowerCase().includes(q);
       const inItems = n.items?.some((it) => it.text.toLowerCase().includes(q));
       const inBullets = n.bullets?.some((b) => b.toLowerCase().includes(q));
       const inTable = n.tableData?.rows?.some((r) => r.some((c) => c.toLowerCase().includes(q)));
 
       return inTitle || inContent || inItems || inBullets || inTable;
-    }).sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
     });
   }, [notes, activeCategory, searchQuery]);
 
+  const pinnedNotes = useMemo(() => filteredNotes.filter((n) => n.isPinned), [filteredNotes]);
+  const otherNotes = useMemo(() => filteredNotes.filter((n) => !n.isPinned), [filteredNotes]);
+
   const handleCreateNewNote = async () => {
-    const newNote: Partial<AgencyNote> = {
-      title: language === 'mr' ? 'नवीन नोंद' : 'Untitled Note',
+    const newNote: AgencyNote = {
+      id: `note-${Date.now()}`,
+      title: '',
       category: activeCategory === 'ALL' ? 'GENERAL' : (activeCategory as any),
       content: '',
       items: [],
@@ -103,20 +106,39 @@ export default function NotesPage() {
       },
       isPinned: false,
       color: '#ffffff',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
-    const saved = await apiSaveNote(newNote);
-    setNotes([saved, ...notes]);
-    setSelectedNote(saved);
+    setEditingNote(newNote);
+    setIsEditorOpen(true);
   };
 
-  const handleSaveCurrentNote = async (updatedNoteToSave?: AgencyNote) => {
-    const noteToSave = updatedNoteToSave || selectedNote;
-    if (!noteToSave) return;
+  const handleOpenNote = (note: AgencyNote) => {
+    setEditingNote({ ...note });
+    setIsEditorOpen(true);
+  };
+
+  const handleSaveNote = async (noteToSave?: AgencyNote) => {
+    const target = noteToSave || editingNote;
+    if (!target) return;
     setIsSaving(true);
     try {
-      const saved = await apiSaveNote(noteToSave);
-      setNotes((prev) => prev.map((n) => (n.id === saved.id ? saved : n)));
-      setSelectedNote(saved);
+      const finalNote = {
+        ...target,
+        title: target.title.trim() || (language === 'mr' ? 'नवीन नोंद' : 'Untitled Note'),
+        updatedAt: new Date().toISOString()
+      };
+      const saved = await apiSaveNote(finalNote);
+      setNotes((prev) => {
+        const idx = prev.findIndex((n) => n.id === saved.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = saved;
+          return next;
+        }
+        return [saved, ...prev];
+      });
+      setEditingNote(saved);
       setShowSavedToast(true);
       setTimeout(() => setShowSavedToast(false), 2000);
     } catch (err) {
@@ -126,13 +148,14 @@ export default function NotesPage() {
     }
   };
 
-  const handleDeleteNote = async (id: string) => {
-    if (!confirm(language === 'mr' ? 'ही नोंद हटवायची आहे का?' : 'Are you sure you want to delete this note?')) return;
+  const handleDeleteNote = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm(language === 'mr' ? 'ही नोंद कायमची हटवायची आहे का?' : 'Are you sure you want to delete this note?')) return;
     await apiDeleteNote(id);
-    const updated = notes.filter((n) => n.id !== id);
-    setNotes(updated);
-    if (selectedNote?.id === id) {
-      setSelectedNote(updated.length > 0 ? updated[0] : null);
+    setNotes((prev) => prev.filter((n) => n.id !== id));
+    if (editingNote?.id === id) {
+      setIsEditorOpen(false);
+      setEditingNote(null);
     }
   };
 
@@ -141,139 +164,239 @@ export default function NotesPage() {
     const updated = { ...note, isPinned: !note.isPinned };
     const saved = await apiSaveNote(updated);
     setNotes((prev) => prev.map((n) => (n.id === saved.id ? saved : n)));
-    if (selectedNote?.id === note.id) setSelectedNote(saved);
+    if (editingNote?.id === note.id) setEditingNote(saved);
   };
 
   // Checklist Actions
   const addCheckItem = () => {
-    if (!newCheckText.trim() || !selectedNote) return;
+    if (!newCheckText.trim() || !editingNote) return;
     const newItem = { id: `item-${Date.now()}`, text: newCheckText.trim(), done: false };
-    const updatedItems = [...(selectedNote.items || []), newItem];
-    const updated = { ...selectedNote, items: updatedItems };
-    setSelectedNote(updated);
+    const updated = { ...editingNote, items: [...(editingNote.items || []), newItem] };
+    setEditingNote(updated);
     setNewCheckText('');
-    handleSaveCurrentNote(updated);
+    handleSaveNote(updated);
   };
 
   const toggleCheckItem = (itemId: string) => {
-    if (!selectedNote) return;
-    const updatedItems = (selectedNote.items || []).map((it) =>
-      it.id === itemId ? { ...it, done: !it.done } : it
-    );
-    const updated = { ...selectedNote, items: updatedItems };
-    setSelectedNote(updated);
-    handleSaveCurrentNote(updated);
+    if (!editingNote) return;
+    const updated = {
+      ...editingNote,
+      items: (editingNote.items || []).map((it) => (it.id === itemId ? { ...it, done: !it.done } : it))
+    };
+    setEditingNote(updated);
+    handleSaveNote(updated);
   };
 
   const removeCheckItem = (itemId: string) => {
-    if (!selectedNote) return;
-    const updatedItems = (selectedNote.items || []).filter((it) => it.id !== itemId);
-    const updated = { ...selectedNote, items: updatedItems };
-    setSelectedNote(updated);
-    handleSaveCurrentNote(updated);
+    if (!editingNote) return;
+    const updated = {
+      ...editingNote,
+      items: (editingNote.items || []).filter((it) => it.id !== itemId)
+    };
+    setEditingNote(updated);
+    handleSaveNote(updated);
   };
 
   // Bullet Actions
   const addBullet = () => {
-    if (!newBulletText.trim() || !selectedNote) return;
-    const updatedBullets = [...(selectedNote.bullets || []), newBulletText.trim()];
-    const updated = { ...selectedNote, bullets: updatedBullets };
-    setSelectedNote(updated);
+    if (!newBulletText.trim() || !editingNote) return;
+    const updated = { ...editingNote, bullets: [...(editingNote.bullets || []), newBulletText.trim()] };
+    setEditingNote(updated);
     setNewBulletText('');
-    handleSaveCurrentNote(updated);
+    handleSaveNote(updated);
   };
 
   const removeBullet = (index: number) => {
-    if (!selectedNote) return;
-    const updatedBullets = (selectedNote.bullets || []).filter((_, i) => i !== index);
-    const updated = { ...selectedNote, bullets: updatedBullets };
-    setSelectedNote(updated);
-    handleSaveCurrentNote(updated);
+    if (!editingNote) return;
+    const updated = {
+      ...editingNote,
+      bullets: (editingNote.bullets || []).filter((_, i) => i !== index)
+    };
+    setEditingNote(updated);
+    handleSaveNote(updated);
   };
 
   // Table Actions
   const addTableRow = () => {
-    if (!selectedNote) return;
-    const numCols = selectedNote.tableData?.headers?.length || 4;
-    const newRow = Array(numCols).fill('');
-    const currentTable = selectedNote.tableData || { headers: ['Item', 'Qty', 'Rate', 'Total'], rows: [] };
+    if (!editingNote) return;
+    const currentTable = editingNote.tableData || { headers: ['Item', 'Qty', 'Rate', 'Total'], rows: [] };
+    const numCols = currentTable.headers?.length || 4;
     const updated = {
-      ...selectedNote,
+      ...editingNote,
       tableData: {
         ...currentTable,
-        rows: [...currentTable.rows, newRow]
+        rows: [...currentTable.rows, Array(numCols).fill('')]
       }
     };
-    setSelectedNote(updated);
-    handleSaveCurrentNote(updated);
+    setEditingNote(updated);
+    handleSaveNote(updated);
   };
 
   const removeTableRow = (rowIndex: number) => {
-    if (!selectedNote || !selectedNote.tableData) return;
-    const updatedRows = selectedNote.tableData.rows.filter((_, idx) => idx !== rowIndex);
+    if (!editingNote || !editingNote.tableData) return;
     const updated = {
-      ...selectedNote,
+      ...editingNote,
       tableData: {
-        ...selectedNote.tableData,
-        rows: updatedRows
+        ...editingNote.tableData,
+        rows: editingNote.tableData.rows.filter((_, idx) => idx !== rowIndex)
       }
     };
-    setSelectedNote(updated);
-    handleSaveCurrentNote(updated);
+    setEditingNote(updated);
+    handleSaveNote(updated);
   };
 
   const updateTableCell = (rowIndex: number, colIndex: number, value: string) => {
-    if (!selectedNote || !selectedNote.tableData) return;
-    const updatedRows = selectedNote.tableData.rows.map((row, rIdx) => {
+    if (!editingNote || !editingNote.tableData) return;
+    const updatedRows = editingNote.tableData.rows.map((row, rIdx) => {
       if (rIdx !== rowIndex) return row;
       const newRow = [...row];
       newRow[colIndex] = value;
       return newRow;
     });
     const updated = {
-      ...selectedNote,
+      ...editingNote,
       tableData: {
-        ...selectedNote.tableData,
+        ...editingNote.tableData,
         rows: updatedRows
       }
     };
-    setSelectedNote(updated);
+    setEditingNote(updated);
   };
 
   const updateTableHeader = (colIndex: number, value: string) => {
-    if (!selectedNote || !selectedNote.tableData) return;
-    const updatedHeaders = [...selectedNote.tableData.headers];
+    if (!editingNote || !editingNote.tableData) return;
+    const updatedHeaders = [...editingNote.tableData.headers];
     updatedHeaders[colIndex] = value;
     const updated = {
-      ...selectedNote,
+      ...editingNote,
       tableData: {
-        ...selectedNote.tableData,
+        ...editingNote.tableData,
         headers: updatedHeaders
       }
     };
-    setSelectedNote(updated);
+    setEditingNote(updated);
   };
 
   const addTableColumn = () => {
-    if (!selectedNote) return;
-    const currentTable = selectedNote.tableData || { headers: ['Item', 'Qty', 'Rate', 'Total'], rows: [] };
+    if (!editingNote) return;
+    const currentTable = editingNote.tableData || { headers: ['Item', 'Qty', 'Rate', 'Total'], rows: [] };
     const updated = {
-      ...selectedNote,
+      ...editingNote,
       tableData: {
         headers: [...currentTable.headers, `स्तंभ ${currentTable.headers.length + 1}`],
         rows: currentTable.rows.map((row) => [...row, ''])
       }
     };
-    setSelectedNote(updated);
-    handleSaveCurrentNote(updated);
+    setEditingNote(updated);
+    handleSaveNote(updated);
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const renderNoteCard = (note: AgencyNote) => {
+    const completedTasks = note.items?.filter((i) => i.done).length || 0;
+    const totalTasks = note.items?.length || 0;
+    const bulletsCount = note.bullets?.length || 0;
+    const tableRowsCount = note.tableData?.rows?.filter((r) => r.some((c) => c.trim() !== '')).length || 0;
 
-  const completedChecksCount = selectedNote?.items?.filter((it) => it.done).length || 0;
-  const totalChecksCount = selectedNote?.items?.length || 0;
+    return (
+      <div
+        key={note.id}
+        onClick={() => handleOpenNote(note)}
+        style={{ backgroundColor: note.color || '#ffffff' }}
+        className="group relative rounded-2xl border border-slate-200/90 p-5 shadow-xs hover:shadow-md hover:border-slate-400 transition-all cursor-pointer flex flex-col justify-between"
+      >
+        <div>
+          {/* Header & Pin */}
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <h3 className="text-sm font-black text-slate-900 line-clamp-1">
+              {note.title || (language === 'mr' ? 'नवीन नोंद' : 'Untitled Note')}
+            </h3>
+            <button
+              onClick={(e) => togglePin(e, note)}
+              className={`p-1.5 rounded-lg hover:bg-black/5 transition-colors ${
+                note.isPinned ? 'text-amber-500' : 'text-slate-300 opacity-0 group-hover:opacity-100'
+              }`}
+              title={note.isPinned ? 'Unpin' : 'Pin note'}
+            >
+              <Pin className={`w-4 h-4 ${note.isPinned ? 'fill-amber-500 rotate-45' : ''}`} />
+            </button>
+          </div>
+
+          {/* Note Content Text */}
+          {note.content && (
+            <p className="text-xs font-semibold text-slate-700 line-clamp-3 mb-3 whitespace-pre-wrap leading-relaxed">
+              {note.content}
+            </p>
+          )}
+
+          {/* Checklist Snippet Preview */}
+          {totalTasks > 0 && (
+            <div className="space-y-1 mb-3 bg-white/70 rounded-xl p-2.5 border border-black/5">
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
+                ✅ {language === 'mr' ? 'चेकलिस्ट' : 'Tasks'} ({completedTasks}/{totalTasks})
+              </span>
+              {note.items?.slice(0, 3).map((it) => (
+                <div key={it.id} className="flex items-center gap-1.5 text-xs text-slate-800">
+                  <span className={it.done ? 'text-emerald-600' : 'text-slate-400'}>
+                    {it.done ? '☑' : '☐'}
+                  </span>
+                  <span className={`line-clamp-1 ${it.done ? 'line-through text-slate-400 font-medium' : 'font-bold'}`}>
+                    {it.text}
+                  </span>
+                </div>
+              ))}
+              {totalTasks > 3 && (
+                <span className="text-[10px] text-slate-400 font-bold block pt-0.5">
+                  +{totalTasks - 3} {language === 'mr' ? 'इतर कामे...' : 'more items...'}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Bullets Snippet Preview */}
+          {bulletsCount > 0 && (
+            <div className="space-y-1 mb-3">
+              {note.bullets?.slice(0, 2).map((b, idx) => (
+                <div key={idx} className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
+                  <span className="line-clamp-1">{b}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Table Snippet Preview */}
+          {tableRowsCount > 0 && (
+            <div className="bg-white/80 border border-black/5 rounded-xl p-2 mb-2 flex items-center gap-1.5 text-xs font-bold text-purple-800">
+              <TableIcon className="w-3.5 h-3.5 text-purple-600" />
+              <span>{tableRowsCount} {language === 'mr' ? 'ओळींचा हिशोब तक्ता' : 'Table Rows Included'}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Footer Badges */}
+        <div className="flex items-center justify-between pt-3 border-t border-black/5 mt-2 text-[11px] font-bold text-slate-500">
+          <span className="px-2 py-0.5 rounded-md bg-black/5 text-slate-800 font-black">
+            {CATEGORIES.find((c) => c.id === note.category)?.[language === 'mr' ? 'labelMr' : 'labelEn'] || note.category}
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-slate-400 font-medium">
+              {new Date(note.updatedAt || note.createdAt).toLocaleDateString('en-IN', {
+                day: 'numeric',
+                month: 'short'
+              })}
+            </span>
+            <button
+              onClick={(e) => handleDeleteNote(note.id, e)}
+              className="p-1 rounded-md text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors opacity-0 group-hover:opacity-100"
+              title="Delete Note"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
@@ -281,24 +404,24 @@ export default function NotesPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header />
 
-        <main className="flex-1 overflow-hidden p-3 md:p-6 flex flex-col gap-4">
-          {/* Top Bar / Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+          {/* Main Top Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
-                <StickyNote className="w-5 h-5" />
+              <div className="w-11 h-11 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold shadow-xs">
+                <StickyNote className="w-6 h-6" />
               </div>
               <div>
-                <h1 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                   {language === 'mr' ? 'एजन्सी नोंदी व डिजिटल डायरी' : 'Agency Notes & Digital Diary'}
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                  <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900">
                     {notes.length} {language === 'mr' ? 'नोंदी' : 'Notes'}
                   </span>
                 </h1>
-                <p className="text-xs text-slate-500 font-medium">
+                <p className="text-xs font-semibold text-slate-500 mt-0.5">
                   {language === 'mr'
-                    ? 'दैनंदिन कामांच्या चेकलिस्ट, शेतकऱ्यांच्या महत्वाच्या नोंदी आणि हिशोबांचे तक्ते जतन करा.'
-                    : 'Interactive checklists, bullet points, farmer reminders and calculation tables.'}
+                    ? 'गुगल कीप प्रमाणे सर्व दैनंदिन कामांच्या चेकलिस्ट, शेतकऱ्यांच्या नोंदी आणि हिशोबांचे तक्ते जतन करा.'
+                    : 'Google Keep & Notion style digital diary with checklists, bullet points, and spreadsheet tables.'}
                 </p>
               </div>
             </div>
@@ -306,508 +429,423 @@ export default function NotesPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleCreateNewNote}
-                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>{language === 'mr' ? 'नवीन नोंद बनवा' : 'Create New Note'}</span>
+                <span>{language === 'mr' ? '+ नवीन नोंद बनवा' : '+ Create Note'}</span>
               </button>
             </div>
           </div>
 
-          {/* Main Layout: Split Note List (Left) & Note Editor (Right) */}
-          <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0 overflow-hidden">
-            {/* Left Column: Note List & Filters */}
-            <div className="w-full md:w-80 lg:w-96 flex flex-col bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-              {/* Search & Category Tabs */}
-              <div className="p-3 border-b border-slate-100 space-y-2">
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder={language === 'mr' ? 'नोंदींमध्ये शोधा...' : 'Search notes...'}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Category Pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-                  {CATEGORIES.map((cat) => {
-                    const active = activeCategory === cat.id;
-                    return (
-                      <button
-                        key={cat.id}
-                        onClick={() => setActiveCategory(cat.id)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors cursor-pointer ${
-                          active
-                            ? 'bg-slate-900 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                      >
-                        {language === 'mr' ? cat.labelMr : cat.labelEn}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Notes Scrollable List */}
-              <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                {filteredNotes.length === 0 ? (
-                  <div className="text-center py-12 px-4">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
-                      <StickyNote className="w-6 h-6" />
-                    </div>
-                    <p className="text-xs font-bold text-slate-700">
-                      {language === 'mr' ? 'कोणत्याही नोंदी आढळल्या नाहीत' : 'No notes found'}
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      {language === 'mr' ? 'नवीन नोंद बनवण्यासाठी वरील बटण दाबा.' : 'Click "Create New Note" to start.'}
-                    </p>
-                  </div>
-                ) : (
-                  filteredNotes.map((note) => {
-                    const isSelected = selectedNote?.id === note.id;
-                    const checkItemsCount = note.items?.length || 0;
-                    const bulletsCount = note.bullets?.length || 0;
-                    const tableRowsCount = note.tableData?.rows?.length || 0;
-
-                    return (
-                      <div
-                        key={note.id}
-                        onClick={() => setSelectedNote(note)}
-                        style={{ backgroundColor: note.color || '#ffffff' }}
-                        className={`p-3.5 rounded-xl border transition-all cursor-pointer relative group ${
-                          isSelected
-                            ? 'border-blue-500 shadow-md ring-2 ring-blue-500/20'
-                            : 'border-slate-200/80 hover:border-slate-300 hover:shadow-xs'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-xs font-black text-slate-900 leading-snug line-clamp-1 flex items-center gap-1.5">
-                            {note.title || (language === 'mr' ? 'नवीन नोंद' : 'Untitled Note')}
-                          </h3>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              onClick={(e) => togglePin(e, note)}
-                              className={`p-1 rounded hover:bg-black/5 transition-colors ${
-                                note.isPinned ? 'text-amber-500' : 'text-slate-300 opacity-0 group-hover:opacity-100'
-                              }`}
-                              title={note.isPinned ? 'Unpin' : 'Pin to top'}
-                            >
-                              <Pin className={`w-3.5 h-3.5 ${note.isPinned ? 'fill-amber-500 rotate-45' : ''}`} />
-                            </button>
-                          </div>
-                        </div>
-
-                        {note.content && (
-                          <p className="text-[11px] text-slate-600 font-medium line-clamp-2 mt-1">
-                            {note.content}
-                          </p>
-                        )}
-
-                        {/* Badges for Checklists/Bullets/Tables */}
-                        <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-black/5 text-[10px] text-slate-500 font-bold">
-                          <span className="px-1.5 py-0.5 rounded bg-black/5 text-slate-700">
-                            {CATEGORIES.find((c) => c.id === note.category)?.[language === 'mr' ? 'labelMr' : 'labelEn'] || note.category}
-                          </span>
-                          {checkItemsCount > 0 && (
-                            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                              <CheckSquare className="w-3 h-3" />
-                              {note.items?.filter((i) => i.done).length}/{checkItemsCount}
-                            </span>
-                          )}
-                          {bulletsCount > 0 && (
-                            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
-                              <List className="w-3 h-3" />
-                              {bulletsCount}
-                            </span>
-                          )}
-                          {tableRowsCount > 0 && (
-                            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">
-                              <TableIcon className="w-3 h-3" />
-                              {tableRowsCount}
-                            </span>
-                          )}
-                          <span className="ml-auto text-[9px] text-slate-400 font-medium">
-                            {new Date(note.updatedAt || note.createdAt).toLocaleDateString('en-IN', {
-                              day: 'numeric',
-                              month: 'short'
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+          {/* Search Bar & Category Filters */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="relative w-full sm:w-80">
+              <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+              <input
+                type="text"
+                placeholder={language === 'mr' ? 'नोंदींमध्ये शोधा (शीर्षक, चेकलिस्ट, तक्ता)...' : 'Search notes, tasks, tables...'}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-semibold text-slate-800"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-slate-400">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
-            {/* Right Column: Note Editor & Tools */}
-            {selectedNote ? (
-              <div className="flex-1 flex flex-col bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-                {/* Editor Header */}
-                <div className="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
-                  <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-                    <input
-                      type="text"
-                      value={selectedNote.title}
-                      onChange={(e) => {
-                        const updated = { ...selectedNote, title: e.target.value };
-                        setSelectedNote(updated);
-                      }}
-                      onBlur={() => handleSaveCurrentNote()}
-                      placeholder={language === 'mr' ? 'नोंदीचे शीर्षक द्या...' : 'Note title...'}
-                      className="text-base font-black text-slate-900 bg-transparent border-none focus:outline-none focus:ring-0 w-full"
-                    />
-                  </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
+              {CATEGORIES.map((cat) => {
+                const active = activeCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-colors cursor-pointer ${
+                      active
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {language === 'mr' ? cat.labelMr : cat.labelEn}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* Category Selector */}
-                    <select
-                      value={selectedNote.category}
-                      onChange={(e) => {
-                        const updated = { ...selectedNote, category: e.target.value as any };
-                        setSelectedNote(updated);
-                        handleSaveCurrentNote(updated);
-                      }}
-                      className="text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
-                    >
-                      {CATEGORIES.filter((c) => c.id !== 'ALL').map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {language === 'mr' ? c.labelMr : c.labelEn}
-                        </option>
-                      ))}
-                    </select>
-
-                    {/* Color Swatches */}
-                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
-                      {COLORS.map((c) => (
-                        <button
-                          key={c.hex}
-                          onClick={() => {
-                            const updated = { ...selectedNote, color: c.hex };
-                            setSelectedNote(updated);
-                            handleSaveCurrentNote(updated);
-                          }}
-                          style={{ backgroundColor: c.hex }}
-                          className={`w-5 h-5 rounded-md border transition-transform cursor-pointer ${
-                            selectedNote.color === c.hex
-                              ? 'border-slate-800 scale-110 shadow-xs'
-                              : 'border-slate-300 hover:scale-105'
-                          }`}
-                          title={c.name}
-                        />
-                      ))}
-                    </div>
-
-                    {/* Pin Toggle */}
-                    <button
-                      onClick={(e) => togglePin(e, selectedNote)}
-                      className={`p-2 rounded-lg border text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
-                        selectedNote.isPinned
-                          ? 'bg-amber-50 border-amber-200 text-amber-700'
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                      }`}
-                      title={selectedNote.isPinned ? 'Pinned' : 'Pin Note'}
-                    >
-                      <Pin className={`w-3.5 h-3.5 ${selectedNote.isPinned ? 'fill-amber-500 rotate-45' : ''}`} />
-                    </button>
-
-                    {/* Print Button */}
-                    <button
-                      onClick={handlePrint}
-                      className="p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold transition-colors cursor-pointer"
-                      title="Print Note"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* Delete Note */}
-                    <button
-                      onClick={() => handleDeleteNote(selectedNote.id)}
-                      className="p-2 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold transition-colors cursor-pointer"
-                      title="Delete Note"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* Save Button */}
-                    <button
-                      onClick={() => handleSaveCurrentNote()}
-                      disabled={isSaving}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
-                    >
-                      {showSavedToast ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>{language === 'mr' ? 'जतन झाले' : 'Saved'}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Save className="w-3.5 h-3.5" />
-                          <span>{language === 'mr' ? 'सेव्ह करा' : 'Save'}</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Editor Body */}
-                <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-                  {/* General Free Text Content */}
-                  <div>
-                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
-                      {language === 'mr' ? 'नोंद तपशील (General Description / Notes)' : 'General Description / Notes'}
-                    </label>
-                    <textarea
-                      value={selectedNote.content || ''}
-                      onChange={(e) => {
-                        const updated = { ...selectedNote, content: e.target.value };
-                        setSelectedNote(updated);
-                      }}
-                      onBlur={() => handleSaveCurrentNote()}
-                      rows={3}
-                      placeholder={language === 'mr' ? 'येथे तपशीलवार माहिती लिहा...' : 'Write note description here...'}
-                      className="w-full text-xs font-medium text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                    />
-                  </div>
-
-                  {/* Section 1: Checklists (To-Do Items) */}
-                  <div className="bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <CheckSquare className="w-4 h-4 text-emerald-600" />
-                        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                          {language === 'mr' ? 'चेकलिस्ट / टू-डू यादी (Checklist)' : 'Checklist / Tasks'}
-                        </h3>
-                      </div>
-                      {totalChecksCount > 0 && (
-                        <span className="text-[11px] font-bold text-slate-500">
-                          {completedChecksCount} / {totalChecksCount} {language === 'mr' ? 'पूर्ण' : 'done'}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Check Items List */}
-                    <div className="space-y-2 mb-3">
-                      {(selectedNote.items || []).map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center gap-2.5 bg-white p-2.5 rounded-xl border border-slate-200/70 group"
-                        >
-                          <button
-                            onClick={() => toggleCheckItem(item.id)}
-                            className="text-slate-400 hover:text-emerald-600 transition-colors cursor-pointer"
-                          >
-                            {item.done ? (
-                              <CheckSquare className="w-4 h-4 text-emerald-600" />
-                            ) : (
-                              <Square className="w-4 h-4" />
-                            )}
-                          </button>
-                          <span
-                            className={`text-xs font-medium flex-1 ${
-                              item.done ? 'line-through text-slate-400' : 'text-slate-800'
-                            }`}
-                          >
-                            {item.text}
-                          </span>
-                          <button
-                            onClick={() => removeCheckItem(item.id)}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-600 transition-all cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Add Check Item Input */}
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder={language === 'mr' ? 'नवीन काम / चेकलिस्ट आयटम जोडा...' : 'Add a checklist task...'}
-                        value={newCheckText}
-                        onChange={(e) => setNewCheckText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') addCheckItem();
-                        }}
-                        className="flex-1 text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
-                      />
-                      <button
-                        onClick={addCheckItem}
-                        className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>{language === 'mr' ? 'जोडा' : 'Add'}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Section 2: Bullet Points */}
-                  <div className="bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <List className="w-4 h-4 text-blue-600" />
-                      <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                        {language === 'mr' ? 'महत्वाचे मुद्दे (Bullet Points)' : 'Bullet Points'}
-                      </h3>
-                    </div>
-
-                    {/* Bullet List */}
-                    <div className="space-y-1.5 mb-3">
-                      {(selectedNote.bullets || []).map((bullet, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200/70 group"
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
-                          <span className="text-xs font-medium text-slate-800 flex-1">{bullet}</span>
-                          <button
-                            onClick={() => removeBullet(idx)}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-600 transition-all cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Add Bullet Input */}
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder={language === 'mr' ? 'नवीन मुद्दा जोडा (उदा. सायंकाळी हिशोब करणे)...' : 'Add bullet point...'}
-                        value={newBulletText}
-                        onChange={(e) => setNewBulletText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') addBullet();
-                        }}
-                        className="flex-1 text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
-                      />
-                      <button
-                        onClick={addBullet}
-                        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>{language === 'mr' ? 'जोडा' : 'Add'}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Section 3: Interactive Table (तक्ता) */}
-                  <div className="bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                      <div className="flex items-center gap-2">
-                        <TableIcon className="w-4 h-4 text-purple-600" />
-                        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                          {language === 'mr' ? 'हिशोब तक्ता (Interactive Spreadsheet Table)' : 'Spreadsheet Table'}
-                        </h3>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={addTableColumn}
-                          className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-purple-700 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
-                        >
-                          <Plus className="w-3 h-3" />
-                          <span>{language === 'mr' ? '+ स्तंभ (Col)' : '+ Column'}</span>
-                        </button>
-                        <button
-                          onClick={addTableRow}
-                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1"
-                        >
-                          <Plus className="w-3 h-3" />
-                          <span>{language === 'mr' ? '+ ओळ (Row)' : '+ Row'}</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Editable Table Container */}
-                    <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="bg-slate-100/80 border-b border-slate-200">
-                            {selectedNote.tableData?.headers?.map((header, colIdx) => (
-                              <th key={colIdx} className="p-2 border-r border-slate-200 last:border-r-0 font-bold text-slate-700">
-                                <input
-                                  type="text"
-                                  value={header}
-                                  onChange={(e) => updateTableHeader(colIdx, e.target.value)}
-                                  onBlur={() => handleSaveCurrentNote()}
-                                  className="w-full bg-transparent font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-400 rounded px-1"
-                                />
-                              </th>
-                            ))}
-                            <th className="w-10 p-2 text-center text-slate-400 font-semibold">#</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(selectedNote.tableData?.rows || []).map((row, rIdx) => (
-                            <tr key={rIdx} className="border-b border-slate-100 hover:bg-slate-50/50">
-                              {row.map((cell, cIdx) => (
-                                <td key={cIdx} className="p-1.5 border-r border-slate-200 last:border-r-0">
-                                  <input
-                                    type="text"
-                                    value={cell}
-                                    onChange={(e) => updateTableCell(rIdx, cIdx, e.target.value)}
-                                    onBlur={() => handleSaveCurrentNote()}
-                                    placeholder="..."
-                                    className="w-full bg-transparent text-xs font-medium text-slate-800 focus:outline-none focus:bg-purple-50/50 rounded px-1.5 py-1"
-                                  />
-                                </td>
-                              ))}
-                              <td className="p-1.5 text-center">
-                                <button
-                                  onClick={() => removeTableRow(rIdx)}
-                                  className="p-1 text-slate-300 hover:text-red-600 transition-colors cursor-pointer"
-                                  title="Delete Row"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
+          {/* Pinned Notes Section */}
+          {pinnedNotes.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-xs font-black text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Pin className="w-3.5 h-3.5 fill-amber-500 rotate-45" />
+                <span>{language === 'mr' ? 'महत्वाच्या पिन केलेल्या नोंदी (Pinned Notes)' : 'Pinned Notes'}</span>
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {pinnedNotes.map(renderNoteCard)}
               </div>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-2xl border border-slate-200/80 p-8 text-center">
-                <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-500 flex items-center justify-center mb-4">
-                  <StickyNote className="w-8 h-8" />
+            </div>
+          )}
+
+          {/* All Other Notes Grid */}
+          <div className="space-y-3">
+            {pinnedNotes.length > 0 && (
+              <h2 className="text-xs font-black text-slate-500 uppercase tracking-wider">
+                {language === 'mr' ? 'इतर नोंदी (Other Notes)' : 'All Notes'}
+              </h2>
+            )}
+
+            {filteredNotes.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                  <StickyNote className="w-7 h-7" />
                 </div>
-                <h3 className="text-base font-black text-slate-800 mb-1">
-                  {language === 'mr' ? 'कोणतीही नोंद निवडलेली नाही' : 'No Note Selected'}
+                <h3 className="text-sm font-black text-slate-800">
+                  {language === 'mr' ? 'कोणतीही नोंद आढळली नाही' : 'No Notes Found'}
                 </h3>
-                <p className="text-xs text-slate-500 max-w-sm mb-6 font-medium">
-                  {language === 'mr'
-                    ? 'डाव्या बाजूच्या यादीतून नोंद निवडा किंवा नवीन नोंद तयार करण्यासाठी खालील बटण दाबा.'
-                    : 'Select a note from the left sidebar or create a new note to start writing.'}
+                <p className="text-xs text-slate-400 font-semibold mt-1 mb-4">
+                  {language === 'mr' ? 'नवीन कामांची चेकलिस्ट किंवा डायरी नोंद करण्यासाठी खालील बटण दाबा.' : 'Create your first note with checklists, bullet points or tables.'}
                 </p>
                 <button
                   onClick={handleCreateNewNote}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-black cursor-pointer shadow-md shadow-blue-500/20"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>{language === 'mr' ? 'नवीन नोंद बनवा' : 'Create New Note'}</span>
+                  {language === 'mr' ? '+ नवीन नोंद बनवा' : '+ Create Note'}
                 </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {otherNotes.map(renderNoteCard)}
               </div>
             )}
           </div>
         </main>
       </div>
+
+      {/* FULL-SCREEN / SPACIOUS NOTION-STYLE DOCUMENT EDITOR MODAL */}
+      {isEditorOpen && editingNote && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in">
+          <div
+            style={{ backgroundColor: editingNote.color || '#ffffff' }}
+            className="w-full max-w-4xl h-[92vh] rounded-3xl shadow-2xl border border-slate-300 flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 font-sans"
+          >
+            {/* Editor Toolbar Header */}
+            <div className="p-4 border-b border-black/10 flex flex-wrap items-center justify-between gap-3 bg-white/70 backdrop-blur-md">
+              <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                <input
+                  type="text"
+                  value={editingNote.title}
+                  onChange={(e) => setEditingNote({ ...editingNote, title: e.target.value })}
+                  placeholder={language === 'mr' ? 'नोंदीचे शीर्षक द्या (Title)...' : 'Note Title...'}
+                  className="text-lg font-black text-slate-900 bg-transparent border-none focus:outline-none w-full placeholder:text-slate-400"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                {/* Category Dropdown */}
+                <select
+                  value={editingNote.category}
+                  onChange={(e) => {
+                    const updated = { ...editingNote, category: e.target.value as any };
+                    setEditingNote(updated);
+                    handleSaveNote(updated);
+                  }}
+                  className="text-xs font-black text-slate-800 bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus:outline-none cursor-pointer"
+                >
+                  {CATEGORIES.filter((c) => c.id !== 'ALL').map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {language === 'mr' ? c.labelMr : c.labelEn}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Color Palette */}
+                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
+                  {COLORS.map((c) => (
+                    <button
+                      key={c.hex}
+                      onClick={() => {
+                        const updated = { ...editingNote, color: c.hex };
+                        setEditingNote(updated);
+                        handleSaveNote(updated);
+                      }}
+                      style={{ backgroundColor: c.hex }}
+                      className={`w-5 h-5 rounded-md border transition-transform cursor-pointer ${
+                        editingNote.color === c.hex ? 'border-slate-900 scale-110 shadow-xs' : 'border-slate-300'
+                      }`}
+                      title={c.name}
+                    />
+                  ))}
+                </div>
+
+                {/* Pin Button */}
+                <button
+                  onClick={(e) => togglePin(e, editingNote)}
+                  className={`p-2 rounded-xl border text-xs font-black transition-colors cursor-pointer ${
+                    editingNote.isPinned
+                      ? 'bg-amber-100 border-amber-300 text-amber-900'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  title={editingNote.isPinned ? 'Pinned' : 'Pin note'}
+                >
+                  <Pin className={`w-4 h-4 ${editingNote.isPinned ? 'fill-amber-500 rotate-45' : ''}`} />
+                </button>
+
+                {/* Print Button */}
+                <button
+                  onClick={() => window.print()}
+                  className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                  title="Print Note"
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
+
+                {/* Delete Button */}
+                <button
+                  onClick={(e) => handleDeleteNote(editingNote.id, e)}
+                  className="p-2 rounded-xl bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                  title="Delete Note"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+
+                {/* Save Button */}
+                <button
+                  onClick={() => handleSaveNote()}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black shadow-md transition-all active:scale-95 cursor-pointer"
+                >
+                  {showSavedToast ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span>{language === 'mr' ? 'जतन झाले' : 'Saved'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>{language === 'mr' ? 'सेव्ह करा' : 'Save'}</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Close Button */}
+                <button
+                  onClick={() => {
+                    handleSaveNote();
+                    setIsEditorOpen(false);
+                  }}
+                  className="p-2 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Editor Body: Large Document View */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6">
+              {/* Free-Text Description */}
+              <div>
+                <label className="block text-xs font-black text-slate-800 uppercase tracking-wider mb-2">
+                  📝 {language === 'mr' ? 'नोंद व माहिती (Description / Free Notes)' : 'Description & Notes'}
+                </label>
+                <textarea
+                  value={editingNote.content || ''}
+                  onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })}
+                  onBlur={() => handleSaveNote()}
+                  rows={4}
+                  placeholder={language === 'mr' ? 'येथे तपशीलवार माहिती लिहा...' : 'Type note details here...'}
+                  className="w-full text-sm font-semibold text-slate-900 bg-white/80 border border-black/10 rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+
+              {/* Tool 1: Interactive Checklists */}
+              <div className="bg-white/90 rounded-2xl border border-black/10 p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <CheckSquare className="w-4 h-4 text-emerald-600" />
+                    <span>{language === 'mr' ? 'टू-डू यादी व चेकलिस्ट (Checklists)' : 'Tasks & Checklists'}</span>
+                  </h3>
+                  <span className="text-xs font-bold text-slate-500">
+                    {(editingNote.items || []).filter((i) => i.done).length} / {(editingNote.items || []).length} {language === 'mr' ? 'पूर्ण' : 'done'}
+                  </span>
+                </div>
+
+                {/* Items List */}
+                <div className="space-y-2">
+                  {(editingNote.items || []).map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 group"
+                    >
+                      <button
+                        onClick={() => toggleCheckItem(item.id)}
+                        className="text-slate-400 hover:text-emerald-600 cursor-pointer"
+                      >
+                        {item.done ? (
+                          <CheckSquare className="w-5 h-5 text-emerald-600" />
+                        ) : (
+                          <Square className="w-5 h-5" />
+                        )}
+                      </button>
+                      <span
+                        className={`text-xs font-bold flex-1 ${
+                          item.done ? 'line-through text-slate-400' : 'text-slate-900'
+                        }`}
+                      >
+                        {item.text}
+                      </span>
+                      <button
+                        onClick={() => removeCheckItem(item.id)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add Check Item Input */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    placeholder={language === 'mr' ? '+ नवीन काम / चेकलिस्ट आयटम जोडा...' : '+ Add a task...'}
+                    value={newCheckText}
+                    onChange={(e) => setNewCheckText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addCheckItem();
+                    }}
+                    className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                  <button
+                    onClick={addCheckItem}
+                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black cursor-pointer shadow-xs"
+                  >
+                    {language === 'mr' ? 'जोडा' : 'Add'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Tool 2: Bullet Points */}
+              <div className="bg-white/90 rounded-2xl border border-black/10 p-5 space-y-3">
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <List className="w-4 h-4 text-blue-600" />
+                  <span>{language === 'mr' ? 'महत्वाचे मुद्दे (Bullet Points)' : 'Bullet Points'}</span>
+                </h3>
+
+                <div className="space-y-2">
+                  {(editingNote.bullets || []).map((bullet, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2.5 bg-slate-50 px-3.5 py-2.5 rounded-xl border border-slate-200 group"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+                      <span className="text-xs font-bold text-slate-900 flex-1">{bullet}</span>
+                      <button
+                        onClick={() => removeBullet(idx)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    placeholder={language === 'mr' ? '+ नवीन मुद्दा जोडा...' : '+ Add bullet point...'}
+                    value={newBulletText}
+                    onChange={(e) => setNewBulletText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addBullet();
+                    }}
+                    className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                  <button
+                    onClick={addBullet}
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black cursor-pointer shadow-xs"
+                  >
+                    {language === 'mr' ? 'जोडा' : 'Add'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Tool 3: Spreadsheet Calculation Table */}
+              <div className="bg-white/90 rounded-2xl border border-black/10 p-5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <TableIcon className="w-4 h-4 text-purple-600" />
+                    <span>{language === 'mr' ? 'हिशोब तक्ता (Interactive Spreadsheet Table)' : 'Spreadsheet Table'}</span>
+                  </h3>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={addTableColumn}
+                      className="px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-xl text-xs font-black cursor-pointer"
+                    >
+                      + {language === 'mr' ? 'स्तंभ (Col)' : 'Column'}
+                    </button>
+                    <button
+                      onClick={addTableRow}
+                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black cursor-pointer shadow-xs"
+                    >
+                      + {language === 'mr' ? 'ओळ (Row)' : 'Row'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200">
+                        {editingNote.tableData?.headers?.map((header, colIdx) => (
+                          <th key={colIdx} className="p-2.5 border-r border-slate-200 last:border-r-0 font-black text-slate-800">
+                            <input
+                              type="text"
+                              value={header}
+                              onChange={(e) => updateTableHeader(colIdx, e.target.value)}
+                              onBlur={() => handleSaveNote()}
+                              className="w-full bg-transparent font-black text-slate-900 focus:outline-none"
+                            />
+                          </th>
+                        ))}
+                        <th className="w-10 p-2.5 text-center text-slate-400 font-bold">#</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(editingNote.tableData?.rows || []).map((row, rIdx) => (
+                        <tr key={rIdx} className="border-b border-slate-100 hover:bg-slate-50">
+                          {row.map((cell, cIdx) => (
+                            <td key={cIdx} className="p-2 border-r border-slate-200 last:border-r-0">
+                              <input
+                                type="text"
+                                value={cell}
+                                onChange={(e) => updateTableCell(rIdx, cIdx, e.target.value)}
+                                onBlur={() => handleSaveNote()}
+                                placeholder="..."
+                                className="w-full bg-transparent text-xs font-bold text-slate-800 focus:outline-none"
+                              />
+                            </td>
+                          ))}
+                          <td className="p-2 text-center">
+                            <button
+                              onClick={() => removeTableRow(rIdx)}
+                              className="p-1 text-slate-300 hover:text-rose-600 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
