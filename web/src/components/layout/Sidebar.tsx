@@ -58,7 +58,6 @@ export const Sidebar: React.FC = () => {
     { name: t.customerManagement, href: '/customers', icon: UserCheck, hasSubmenu: true },
     { name: t.expenseManagement, href: '/expenses', icon: DollarSign, hasSubmenu: true },
     { name: language === 'mr' ? 'नोंदी व डायरी' : 'Agency Notes', href: '/notes', icon: StickyNote, hasSubmenu: false },
-    { name: language === 'mr' ? 'मराठी व्हिडिओ गाईड' : 'Marathi Video Guide', href: '/video-guide', icon: Video, hasSubmenu: false },
     { name: t.reportsAnalytics, href: '/reports', icon: BarChart3, hasSubmenu: true },
     ...(!isStaff ? [
       { name: t.userManagement, href: '/users', icon: ShieldCheck, hasSubmenu: true },
