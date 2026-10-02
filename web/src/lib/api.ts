@@ -129,11 +129,13 @@ export const apiGetFarmers = async () => {
       apiGetAllFarmerMaterials(),
     ]);
 
-    const data = (farmersRes.data && farmersRes.data.length > 0)
-      ? farmersRes.data
-      : getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
+    if (!farmersRes.error && Array.isArray(farmersRes.data)) {
+      const data = farmersRes.data;
+      if (data.length === 0) {
+        setLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
+        return [];
+      }
 
-    if (data.length > 0) {
       const mapped = data.map((f: any) => {
         const farmerPurchases = (allPurchases || []).filter((p: any) => isFarmerMatch(p, f));
         const farmerPayments = (allPayments || []).filter((pay: any) => isFarmerMatch(pay, f));
@@ -384,7 +386,11 @@ export const apiGetFarmerMaterials = async (farmerId: string) => {
     }
     const { data, error } = await query;
 
-    if (!error && data && data.length > 0) {
+    if (!error && Array.isArray(data)) {
+      if (data.length === 0) {
+        setLocalCache(cacheKey, []);
+        return [];
+      }
       const mapped = data.map((m: any) => {
         const qty = Number(m.quantity || 1);
         const price = Number(m.unitPrice || 0);
@@ -424,7 +430,11 @@ export const apiGetAllFarmerMaterials = async () => {
       .select('*')
       .order('createdAt', { ascending: false });
 
-    if (!error && data && data.length > 0) {
+    if (!error && Array.isArray(data)) {
+      if (data.length === 0) {
+        setLocalCache(cacheKey, []);
+        return [];
+      }
       const mapped = data.map((m: any) => {
         const qty = Number(m.quantity || 1);
         const price = Number(m.unitPrice || 0);
@@ -654,13 +664,18 @@ export const apiGetPurchases = async () => {
   const tenantId = getTenantId();
   if (!tenantId) return [];
   try {
-    const { data: purchaseData } = await supabase
+    const { data: purchaseData, error } = await supabase
       .from('Purchase')
       .select('*')
       .eq('tenantId', tenantId)
       .order('createdAt', { ascending: false });
 
-    if (purchaseData && purchaseData.length > 0) {
+    if (!error && Array.isArray(purchaseData)) {
+      if (purchaseData.length === 0) {
+        setLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
+        return [];
+      }
+
       const purchaseIds = purchaseData.map((p: any) => p.id).filter(Boolean);
       const purchaseNos = purchaseData.map((p: any) => p.purchaseNo).filter(Boolean);
       const allIds = Array.from(new Set([...purchaseIds, ...purchaseNos]));
@@ -1172,7 +1187,7 @@ export const apiGetTraders = async () => {
   if (!tenantId) return [];
   try {
     const { data, error } = await supabase.from('Trader').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
-    if (!error && data && data.length > 0) {
+    if (!error && Array.isArray(data)) {
       setLocalCache(`seavaig_traders_cache_${tenantId}`, data);
       return data;
     }
@@ -1247,7 +1262,11 @@ export const apiGetTraderPurchases = async () => {
       .select('*, trader:Trader(*)')
       .eq('tenantId', tenantId)
       .order('createdAt', { ascending: false });
-    if (!error && data && data.length > 0) {
+    if (!error && Array.isArray(data)) {
+      if (data.length === 0) {
+        setLocalCache(`seavaig_trader_purchases_cache_${tenantId}`, []);
+        return [];
+      }
       const mapped = data.map((tp: any) => ({
         id: tp.billNo || tp.id,
         dbId: tp.id,
@@ -1747,9 +1766,15 @@ export const apiUpdateDailyRate = async (data: any) => {
 
 export const apiGetSales = async () => {
   const tenantId = getTenantId();
-  if (!tenantId) return getLocalCache('seavaig_sales_cache', []);
-  const { data } = await supabase.from('Sale').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
-  return data || [];
+  if (!tenantId) return [];
+  try {
+    const { data, error } = await supabase.from('Sale').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+    if (!error && Array.isArray(data)) {
+      setLocalCache(`seavaig_sales_cache_${tenantId}`, data);
+      return data;
+    }
+  } catch {}
+  return getLocalCache(`seavaig_sales_cache_${tenantId}`, []);
 };
 
 export const apiCreateSale = async (saleData: any) => {
@@ -1961,21 +1986,27 @@ export const apiUploadImage = async (fileBlob: Blob, path: string, bucket: strin
 
 export const apiGetWorkers = async () => {
   const tenantId = getTenantId();
-  if (!tenantId) return getLocalCache('seavaig_workers_cache', []);
-  const { data } = await supabase.from('DailyWorker').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
-  const rawAttendance = getLocalCache(`seavaig_worker_attendance_${tenantId}`, []);
-  const list = (data && data.length > 0) ? data : getLocalCache(`seavaig_workers_cache_${tenantId}`, []);
-  
-  const mapped = list.map((w: any) => {
-    const workerAtt = rawAttendance.filter((a: any) => a.workerId === w.id || a.workerCode === w.workerCode);
-    return {
-      ...w,
-      attendanceHistory: workerAtt.length > 0 ? workerAtt : (w.attendanceHistory || [])
-    };
-  });
-  
-  setLocalCache(`seavaig_workers_cache_${tenantId}`, mapped);
-  return mapped;
+  if (!tenantId) return [];
+  try {
+    const { data, error } = await supabase.from('DailyWorker').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+    if (!error && Array.isArray(data)) {
+      if (data.length === 0) {
+        setLocalCache(`seavaig_workers_cache_${tenantId}`, []);
+        return [];
+      }
+      const rawAttendance = getLocalCache(`seavaig_worker_attendance_${tenantId}`, []);
+      const mapped = data.map((w: any) => {
+        const workerAtt = rawAttendance.filter((a: any) => a.workerId === w.id || a.workerCode === w.workerCode);
+        return {
+          ...w,
+          attendanceHistory: workerAtt.length > 0 ? workerAtt : (w.attendanceHistory || [])
+        };
+      });
+      setLocalCache(`seavaig_workers_cache_${tenantId}`, mapped);
+      return mapped;
+    }
+  } catch {}
+  return getLocalCache(`seavaig_workers_cache_${tenantId}`, []);
 };
 
 export const apiCreateWorker = async (workerData: any) => {
@@ -2095,15 +2126,20 @@ export const apiGetWorkerHistory = async (workerId: string) => {
 
 export const apiGetPayments = async () => {
   const tenantId = getTenantId();
-  if (!tenantId) return getLocalCache('seavaig_payments_cache', []);
+  if (!tenantId) return [];
   try {
-    const { data: payData } = await supabase
+    const { data: payData, error } = await supabase
       .from('Payment')
       .select('*')
       .eq('tenantId', tenantId)
       .order('createdAt', { ascending: false });
 
-    if (payData && payData.length > 0) {
+    if (!error && Array.isArray(payData)) {
+      if (payData.length === 0) {
+        setLocalCache(`seavaig_payments_cache_${tenantId}`, []);
+        return [];
+      }
+
       const { data: farmerData } = await supabase
         .from('Farmer')
         .select('*')
@@ -2291,9 +2327,15 @@ export const apiCreatePayment = async (payData: any) => {
 
 export const apiGetCustomers = async () => {
   const tenantId = getTenantId();
-  if (!tenantId) return getLocalCache('seavaig_customers_cache', []);
-  const { data } = await supabase.from('Customer').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
-  return data || [];
+  if (!tenantId) return [];
+  try {
+    const { data, error } = await supabase.from('Customer').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+    if (!error && Array.isArray(data)) {
+      setLocalCache(`seavaig_customers_cache_${tenantId}`, data);
+      return data;
+    }
+  } catch {}
+  return getLocalCache(`seavaig_customers_cache_${tenantId}`, []);
 };
 
 export const apiCreateCustomer = async (custData: any) => {
@@ -2344,21 +2386,27 @@ export const apiCreateCustomer = async (custData: any) => {
 
 export const apiGetExpenses = async () => {
   const tenantId = getTenantId();
-  if (!tenantId) return getLocalCache('seavaig_expenses_cache', []);
-  const { data } = await supabase.from('Expense').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
-  if (data && data.length > 0) {
-    const mapped = data.map((e: any) => ({
-      id: e.id,
-      title: e.notes || e.category || 'Expense',
-      category: e.category,
-      amount: `₹${Number(e.amount || 0).toLocaleString('en-IN')}`,
-      date: e.date,
-      paymentMode: e.paymentMode || 'CASH',
-      loggedBy: 'Agency Admin',
-    }));
-    setLocalCache(`seavaig_expenses_cache_${tenantId}`, mapped);
-    return mapped;
-  }
+  if (!tenantId) return [];
+  try {
+    const { data, error } = await supabase.from('Expense').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
+    if (!error && Array.isArray(data)) {
+      if (data.length === 0) {
+        setLocalCache(`seavaig_expenses_cache_${tenantId}`, []);
+        return [];
+      }
+      const mapped = data.map((e: any) => ({
+        id: e.id,
+        title: e.notes || e.category || 'Expense',
+        category: e.category,
+        amount: `₹${Number(e.amount || 0).toLocaleString('en-IN')}`,
+        date: e.date,
+        paymentMode: e.paymentMode || 'CASH',
+        loggedBy: 'Agency Admin',
+      }));
+      setLocalCache(`seavaig_expenses_cache_${tenantId}`, mapped);
+      return mapped;
+    }
+  } catch {}
   return getLocalCache(`seavaig_expenses_cache_${tenantId}`, []);
 };
 
@@ -2600,39 +2648,12 @@ export const apiGetNotes = async (): Promise<AgencyNote[]> => {
       .select('*')
       .eq('tenantId', tenantId)
       .order('createdAt', { ascending: false });
-    if (!error && data && data.length > 0) {
+    if (!error && Array.isArray(data)) {
       setLocalCache(`seavaig_notes_cache_${tenantId}`, data);
       return data;
     }
   } catch {}
-  return getLocalCache(`seavaig_notes_cache_${tenantId}`, [
-    {
-      id: 'default-welcome-note',
-      title: 'महत्वाच्या नोंदी व डायरी (Welcome Note)',
-      category: 'GENERAL',
-      content: 'येथे तुम्ही तुमच्या व्यवसायाशी संबंधित सर्व दैनंदिन नोंदी, चेकलिस्ट आणि तक्ते सुरक्षितपणे जतन करू शकता.',
-      items: [
-        { id: 'item-1', text: 'शेतकऱ्यांचे हिशोब तपासा', done: true },
-        { id: 'item-2', text: 'गाडी भाडे व मालक पेमेंट पूर्ण करा', done: false },
-        { id: 'item-3', text: 'मार्केटचे आजचे भाव अपडेट करा', done: false },
-      ],
-      bullets: [
-        'नवीन शेतकऱ्यांना लेजर बुक कोड द्या (उदा. BK-01)',
-        'सायंकाळी सर्व वजन पावत्यांचा मेळ घाला',
-      ],
-      tableData: {
-        headers: ['तपशील (Item)', 'संख्या / वजन', 'दर (Rate)', 'एकूण (Total)'],
-        rows: [
-          ['टोमॅटो क्रेट्स', '100 Crates', '₹450', '₹45,000'],
-          ['गाडी भाडे (Advance)', '1 Trip', '₹3,500', '₹3,500'],
-        ]
-      },
-      isPinned: true,
-      color: '#ffffff',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-  ]);
+  return getLocalCache(`seavaig_notes_cache_${tenantId}`, []);
 };
 
 export const apiSaveNote = async (note: Partial<AgencyNote>): Promise<AgencyNote> => {
