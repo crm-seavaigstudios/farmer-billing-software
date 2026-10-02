@@ -1356,14 +1356,12 @@ export const apiCreateTraderPurchase = async (tpData: any) => {
     itemName: tpObj.itemName,
     category: tpObj.category,
     quantity: tpObj.quantity,
-    unit: tpObj.unit,
     rate: tpObj.rate,
     totalAmount: tpObj.totalAmount,
+    amount: tpObj.totalAmount,
     paidAmount: tpObj.paidAmount,
     dueAmount: tpObj.dueAmount,
     paymentStatus: tpObj.paymentStatus,
-    vehicleNo: tpObj.vehicleNo,
-    notes: tpObj.notes,
     date: tpObj.date,
   };
 
