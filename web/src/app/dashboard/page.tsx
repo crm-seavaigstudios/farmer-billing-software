@@ -35,7 +35,7 @@ export default function DashboardPage() {
     pendingAmount: '₹0',
     totalFarmers: 0,
     activeFarmers: 0,
-    inventoryValue: '₹3,45,000',
+    inventoryValue: '₹0',
   });
 
   const loadAllData = async (filter: TimelineFilter) => {
