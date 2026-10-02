@@ -633,10 +633,10 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
               </div>
             </div>
 
-            {/* Multi-Page Footer & Timestamp */}
-            <div className="pt-3 text-[9px] text-slate-400 flex justify-between items-center border-t border-slate-100 mt-3 font-medium">
-              <span>संगणकीकृत कर बीजक • Valid Tax Invoice</span>
-              <span className="font-bold text-slate-500">पृष्ठ क्र. (Page 1)</span>
+            {/* Multi-Page Footer & Timestamp (ISO Standard) */}
+            <div className="pt-3 text-[9px] text-slate-500 flex justify-between items-center border-t border-slate-200 mt-3 font-semibold avoid-page-break print-footer-block">
+              <span>संगणकीकृत कर बीजक • Valid Computerized Tax Invoice • ISO 216 Standard</span>
+              <span>बीजक क्र (Invoice #{invoiceNo}) • पृष्ठ क्र. (Page 1)</span>
             </div>
 
           </div>
@@ -646,7 +646,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
         <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-2 no-print">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Format: {printFormat}</span>
+            <span>Format: {printFormat} (ISO Compliant)</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -678,6 +678,50 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
           </div>
         </div>
 
+        {/* Global Print Style for ISO Standard Page Output */}
+        <style jsx global>{`
+          @media print {
+            @page {
+              size: ${printFormat === 'A4_FULL' ? 'A4 portrait' : printFormat === 'A5_MANDI' ? 'A5 portrait' : '80mm auto'};
+              margin: ${printFormat === 'POS_80MM' ? '2mm 2mm 4mm 2mm' : '8mm 10mm 10mm 10mm'};
+            }
+            body {
+              background: white !important;
+              color: black !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            .no-print {
+              display: none !important;
+            }
+            #receipt-print-area {
+              border: none !important;
+              box-shadow: none !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              padding: 0 !important;
+              margin: 0 !important;
+            }
+            table {
+              page-break-inside: auto;
+              width: 100% !important;
+            }
+            tr {
+              page-break-inside: avoid;
+              page-break-after: auto;
+            }
+            thead {
+              display: table-header-group !important;
+            }
+            tfoot {
+              display: table-footer-group !important;
+            }
+            .avoid-page-break {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+          }
+        `}</style>
       </div>
     </div>
   );

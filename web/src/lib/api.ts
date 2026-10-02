@@ -624,6 +624,18 @@ export const apiAddLocation = async (name: string) => {
   return newItem;
 };
 
+export const apiDeleteLocation = async (id: string) => {
+  const tenantId = getTenantId();
+  if (!tenantId) return;
+  try {
+    await supabase.from('Location').delete().eq('id', id).eq('tenantId', tenantId);
+  } catch {}
+  const current = await apiGetLocations();
+  const updated = current.filter((l: any) => l.id !== id);
+  setLocalCache(`seavaig_locations_cache_${tenantId}`, updated);
+  return updated;
+};
+
 // ----------------------------------------------------
 // PURCHASES API
 // ----------------------------------------------------

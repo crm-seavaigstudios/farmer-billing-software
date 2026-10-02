@@ -230,10 +230,10 @@ export const PrintStatementModal: React.FC<PrintStatementModalProps> = ({
               </div>
             </div>
 
-            {/* Print Footer */}
-            <div className="pt-3 text-[9px] text-slate-400 flex justify-between items-center border-t border-slate-100 font-medium">
-              <span>संगणकीकृत खाते उतारा • Official Statement</span>
-              <span className="font-bold text-slate-500">पृष्ठ क्र. (Page 1)</span>
+            {/* Print Footer (ISO Standard Multi-Page) */}
+            <div className="pt-3 text-[9px] text-slate-500 flex justify-between items-center border-t border-slate-200 font-semibold avoid-page-break">
+              <span>संगणकीकृत खाते उतारा • Official Farmer Statement • ISO 216 Standard</span>
+              <span>खाते कोड ({data.farmerId}) • पृष्ठ क्र. (Page 1)</span>
             </div>
           </div>
         </div>
@@ -242,7 +242,7 @@ export const PrintStatementModal: React.FC<PrintStatementModalProps> = ({
         <div className="no-print px-6 py-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Digital Ledger Audit Verified</span>
+            <span>Digital Ledger Audit Verified (ISO 216 Compliant)</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -263,6 +263,51 @@ export const PrintStatementModal: React.FC<PrintStatementModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Global ISO Print Styles */}
+        <style jsx global>{`
+          @media print {
+            @page {
+              size: A4 portrait;
+              margin: 10mm 12mm 12mm 12mm;
+            }
+            body {
+              background: white !important;
+              color: black !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            .no-print {
+              display: none !important;
+            }
+            #receipt-print-area {
+              border: none !important;
+              box-shadow: none !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              padding: 0 !important;
+              margin: 0 !important;
+            }
+            table {
+              page-break-inside: auto;
+              width: 100% !important;
+            }
+            tr {
+              page-break-inside: avoid;
+              page-break-after: auto;
+            }
+            thead {
+              display: table-header-group !important;
+            }
+            tfoot {
+              display: table-footer-group !important;
+            }
+            .avoid-page-break {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+          }
+        `}</style>
       </div>
     </div>
   );
