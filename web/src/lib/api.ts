@@ -2371,7 +2371,6 @@ export const apiCreateCustomer = async (custData: any) => {
     name: custData.name,
     phone: custData.phone,
     address: custData.address || '',
-    totalSales: typeof custData.totalPurchases === 'number' ? custData.totalPurchases : Number(String(custData.totalPurchases || '0').replace(/[^0-9.-]+/g, '')),
     status: custData.status || 'ACTIVE'
   };
 
