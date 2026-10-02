@@ -178,7 +178,9 @@ export default function FarmerPortalPage() {
         }
       }
 
-      const enhancedPurchases = (pData || []).map((p: any) => {
+      const visiblePurchasesData = (pData || []).filter((p: any) => p.isVisibleToFarmer === true);
+
+      const enhancedPurchases = visiblePurchasesData.map((p: any) => {
         const pItems = itemsMap[p.id] || itemsMap[p.purchaseNo] || [];
         const firstItem = pItems[0];
         const crop = firstItem?.cropName || p.crop || 'Strawberry (A Grade)';

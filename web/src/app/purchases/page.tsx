@@ -15,6 +15,7 @@ import { sharePurchaseOnWhatsApp } from '@/lib/whatsapp';
 import { 
   apiGetPurchases, 
   apiUpdatePurchase, 
+  apiTogglePurchaseFarmerVisibility,
   apiCreatePayment, 
   apiUpdateFarmerBalance, 
   apiGetPayments, 
@@ -566,6 +567,7 @@ export default function PurchasesPage() {
                     <th className="py-3.5 px-4">Rate</th>
                     <th className="py-3.5 px-4">Total Amount</th>
                     <th className="py-3.5 px-4">Remaining Due</th>
+                    <th className="py-3.5 px-4">Farmer View</th>
                     <th className="py-3.5 px-4">Status</th>
                     <th className="py-3.5 px-4 text-right">Actions</th>
                   </tr>
@@ -573,7 +575,7 @@ export default function PurchasesPage() {
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                   {filteredPurchases.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-12 text-center">
+                      <td colSpan={10} className="py-12 text-center">
                         <Inbox className="w-10 h-10 text-slate-400 mx-auto mb-2" />
                         <p className="text-sm font-bold text-slate-800">No Harvest Purchases Recorded Yet</p>
                         <p className="text-xs text-slate-500 mt-1">Click "Record Crop Purchase" above to add your first entry.</p>
@@ -605,6 +607,27 @@ export default function PurchasesPage() {
                         <td className="py-3.5 px-4 text-slate-500">{row.rate}</td>
                         <td className="py-3.5 px-4 font-black text-slate-900">₹{Number(row.amount || 0).toLocaleString('en-IN')}</td>
                         <td className="py-3.5 px-4 font-bold text-amber-600">₹{Number(row.dueAmount || 0).toLocaleString('en-IN')}</td>
+                        <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const newVis = !row.isVisibleToFarmer;
+                              await apiTogglePurchaseFarmerVisibility(row.id, newVis);
+                              setPurchases((prev) =>
+                                prev.map((p) => (p.id === row.id ? { ...p, isVisibleToFarmer: newVis } : p))
+                              );
+                            }}
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-black border flex items-center gap-1.5 transition-all cursor-pointer ${
+                              row.isVisibleToFarmer
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
+                            }`}
+                            title="Toggle visibility on Farmer Portal"
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${row.isVisibleToFarmer ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                            <span>{row.isVisibleToFarmer ? 'दृश्यमान (ON)' : 'लपवलेले (OFF)'}</span>
+                          </button>
+                        </td>
                         <td className="py-3.5 px-4">
                           <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
                             row.paymentStatus === 'PAID'
@@ -639,7 +662,7 @@ export default function PurchasesPage() {
                             </button>
 
                             <button
-                              onClick={() => sharePurchaseOnWhatsApp(row, language === 'mr' ? tenant.businessNameMr || tenant.businessName : tenant.businessName)}
+                              onClick={() => sharePurchaseOnWhatsApp(row, language === 'mr' ? tenant.businessNameMr || tenant.businessName : tenant.businessName, null, purchases)}
                               className="p-1.5 text-emerald-600 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
                               title="Share Purchase Bill on WhatsApp"
                             >

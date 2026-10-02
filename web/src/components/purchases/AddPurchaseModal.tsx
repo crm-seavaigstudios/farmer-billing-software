@@ -43,6 +43,7 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
 
   const [locations, setLocations] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState('Cold Room #1 (Satpur)');
+  const [isVisibleToFarmer, setIsVisibleToFarmer] = useState<boolean>(true); // Default to true or customizable
 
   useEffect(() => {
     async function loadData() {
@@ -193,6 +194,7 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
         packagingCategory: activeCategory
       }],
       storageLocation: selectedLocation,
+      isVisibleToFarmer: isVisibleToFarmer,
       advanceApplied: activeAdvanceApplied,
       deductedMaterialIds: deductionMode === 'CUSTOM' ? selectedMaterialIds : []
     };
@@ -587,6 +589,35 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
               <span className="text-xs font-black text-blue-900 uppercase">Net Outstanding Due Bill:</span>
               <span className="text-base font-black text-blue-700">₹{dueAmount.toLocaleString('en-IN')}</span>
             </div>
+          </div>
+
+          {/* FARMER PORTAL VISIBILITY TOGGLE */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                <span>👁️</span>
+                <span>शेतकरी पोर्टल दृश्यमानता (Farmer Portal Visibility)</span>
+              </span>
+              <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
+                {isVisibleToFarmer
+                  ? 'चालू: हे बिल शेतकऱ्याला त्याच्या मोबाईल पोर्टलवर लगेच दिसेल.'
+                  : 'बंद: हे बिल जोपर्यंत तुम्ही चालू करत नाही तोपर्यंत शेतकऱ्याला दिसणार नाही.'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsVisibleToFarmer(!isVisibleToFarmer)}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                isVisibleToFarmer ? 'bg-emerald-600' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                  isVisibleToFarmer ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
         </form>
 

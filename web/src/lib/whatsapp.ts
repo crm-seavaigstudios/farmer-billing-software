@@ -1,6 +1,6 @@
 /**
  * Utility functions for 1-Click WhatsApp & SMS Bill / Ledger Sharing
- * with 360° Comprehensive Account Status Breakdown
+ * with 360° Comprehensive Account Status Breakdown and Bill-Wise Pending Details
  */
 
 export const sanitizePhoneForWhatsApp = (phone?: string): string => {
@@ -24,10 +24,16 @@ export const openWhatsApp = (phone: string, message: string) => {
 };
 
 /**
- * 1-Click WhatsApp Share for Farmer Purchase Bill with 360° Lifetime & Ledger Summary
+ * 1-Click WhatsApp Share for Farmer Purchase Bill with 360° Lifetime & Bill-Wise Pending Summary
  */
-export const sharePurchaseOnWhatsApp = (purchase: any, tenantName: string = 'कृषी एजन्सी', farmerSummary?: any) => {
+export const sharePurchaseOnWhatsApp = (
+  purchase: any,
+  tenantName: string = 'कृषी एजन्सी',
+  farmerSummary?: any,
+  allFarmerPurchases?: any[]
+) => {
   const farmerName = purchase.farmerName || 'शेतकरी मित्र';
+  const farmerCode = purchase.farmerCode || purchase.farmerUniqueCode || '';
   const billNo = purchase.purchaseNo || purchase.id || 'PUR-001';
   const date = purchase.date || new Date().toLocaleDateString('en-IN');
   const crop = purchase.crop || 'कृषी माल';
@@ -38,11 +44,11 @@ export const sharePurchaseOnWhatsApp = (purchase: any, tenantName: string = 'क
   const paidAmount = Number(purchase.paidAmount || 0).toLocaleString('en-IN');
   const dueAmount = Number(purchase.dueAmount || 0).toLocaleString('en-IN');
 
-  // Find farmer lifetime stats from farmerSummary or fallback from local cache
-  let totalPurchasesTillDate = '—';
-  let totalAdvancesTillDate = '—';
-  let totalMaterialGiven = '—';
-  let totalPaidTillDate = '—';
+  // Lifetime Stats
+  let totalPurchasesTillDate = totalAmount;
+  let totalAdvancesTillDate = '०';
+  let totalMaterialGiven = '०';
+  let totalPaidTillDate = paidAmount;
   let totalOutstandingDue = dueAmount;
 
   if (farmerSummary) {
@@ -69,30 +75,63 @@ export const sharePurchaseOnWhatsApp = (purchase: any, tenantName: string = 'क
     } catch {}
   }
 
+  // Calculate Bill-wise Pending Breakdown
+  let pendingBillsText = '';
+  try {
+    let listToCheck = allFarmerPurchases;
+    if (!listToCheck && typeof window !== 'undefined') {
+      const tenantId = purchase.tenantId || '';
+      const pCached = localStorage.getItem(`seavaig_purchases_cache_${tenantId}`) || localStorage.getItem('seavaig_purchases_cache');
+      if (pCached) {
+        const allP = JSON.parse(pCached);
+        listToCheck = allP.filter((p: any) => p.farmerId === purchase.farmerId || p.farmerName === purchase.farmerName || p.phone === purchase.phone);
+      }
+    }
+
+    if (Array.isArray(listToCheck) && listToCheck.length > 0) {
+      const pendingBills = listToCheck.filter((p) => {
+        const due = Number(p.dueAmount || 0);
+        return due > 0 || (p.paymentStatus && p.paymentStatus !== 'PAID');
+      });
+
+      if (pendingBills.length > 0) {
+        pendingBillsText = `\n🧾 *बिलनिहाय प्रलंबित रक्कम (Pending Bills):*\n` +
+          pendingBills.slice(0, 5).map((p) => {
+            const pNo = p.purchaseNo || p.id || 'PB';
+            const pTot = Number(p.totalAmount || p.amount || 0).toLocaleString('en-IN');
+            const pDue = Number(p.dueAmount || pTot).toLocaleString('en-IN');
+            const pDate = p.date ? new Date(p.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+            return `• #${pNo} ${pDate ? `(${pDate})` : ''}: एकूण ₹${pTot} | बाकी: *₹${pDue}*`;
+          }).join('\n') +
+          (pendingBills.length > 5 ? `\n...आणि इतर ${pendingBills.length - 5} बिले` : '');
+      }
+    }
+  } catch {}
+
   const message = `
 🌾 *${tenantName}* 🌾
-📄 *खरेदी पावती व चालू खाते उतारा (Purchase Slip & Ledger)*
+📄 *खरेदी पावती व चालू खाते हिशोब (Purchase Slip & Ledger)*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 *शेतकरी:* ${farmerName}
+👤 *शेतकरी:* ${farmerName} ${farmerCode ? `(कोड: ${farmerCode})` : ''}
 📅 *दिनांक:* ${date} | *पावती क्र:* #${billNo}
 
-📦 *चालू आवक तपशील (Current Bill):*
-• माल / जात: *${crop}* (${grade})
+📦 *चालू आवक पावती (Current Bill):*
+• जात / माल: *${crop}* (${grade})
 • एकूण वजन: *${weight}*
 • दर (Rate): *${rate}*
 • चालू बिल रक्कम: *₹${totalAmount}*
-• दिलेली उचल/पेमेंट: *₹${paidAmount}*
-• चालू बिल शिल्लक: *₹${dueAmount}*
+• आज दिलेले पेमेंट: *₹${paidAmount}*
+• चालू बिल बाकी: *₹${dueAmount}*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 *ऐतिहासिक हिशोब सारांश (360° Account Status):*
-🌾 १. एकूण माल आवक (Total Purchases): *₹${totalPurchasesTillDate}*
-💵 २. एकूण मिळालेली उचल/पेमेंट: *₹${totalPaidTillDate}*
-📦 ३. अ‍ॅडव्हान्स शिल्लक (Advance): *₹${totalAdvancesTillDate}*
-${totalMaterialGiven !== '—' && totalMaterialGiven !== '0' ? `🌱 ४. एकूण खते/साहित्य नावे: *₹${totalMaterialGiven}*\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚖️ *अंतिम चालू येणे/बाकी (Net Balance Due):* *₹${totalOutstandingDue}*
+📊 *ऐतिहासिक खाते सारांश (360° Account Status):*
+🌾 १. एकूण माल खरेदी (Total Purchases): *₹${totalPurchasesTillDate}*
+💵 २. एकूण मिळालेले पेमेंट (Total Paid): *₹${totalPaidTillDate}*
+💰 ३. रोख आगाऊ उचल (Cash Advances): *₹${totalAdvancesTillDate}*
+${totalMaterialGiven !== '—' && totalMaterialGiven !== '0' && totalMaterialGiven !== '०' ? `🌱 ४. दिलेले खते व साहित्य (Materials): *₹${totalMaterialGiven}*\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━${pendingBillsText ? `${pendingBillsText}\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n` : ''}
+⚖️ *आजची अंतिम निव्वळ बाकी (Net Balance Due):* *₹${totalOutstandingDue}*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 आपल्या सहकार्याबद्दल मनापासून धन्यवाद! 🙏
-तपशीलवार हिशोबासाठी आमच्याशी संपर्क साधा.
+हिशोबाच्या अधिक माहितीसाठी संपर्क साधा.
 `.trim();
 
   openWhatsApp(purchase.phone, message);
@@ -162,7 +201,7 @@ export const sharePaymentOnWhatsApp = (payment: any, tenantName: string = 'क�
 /**
  * 1-Click WhatsApp Share for Full Farmer Ledger Statement (खाते उतारा)
  */
-export const shareFarmerLedgerOnWhatsApp = (farmer: any, tenantName: string = 'कृषी एजन्सी') => {
+export const shareFarmerLedgerOnWhatsApp = (farmer: any, tenantName: string = 'कृषी एजन्सी', purchases?: any[]) => {
   const name = farmer.name || 'शेतकरी मित्र';
   const code = farmer.farmerUniqueCode || farmer.farmerCode || farmer.farmerIdCode || '';
   const totalPurchases = Number(farmer.totalPurchases || farmer.totalPurchase || 0).toLocaleString('en-IN');
@@ -171,20 +210,36 @@ export const shareFarmerLedgerOnWhatsApp = (farmer: any, tenantName: string = '�
   const totalMaterial = Number(farmer.totalMaterial || 0).toLocaleString('en-IN');
   const outstanding = Number(farmer.outstandingAmount || farmer.outstanding || 0).toLocaleString('en-IN');
 
+  // Calculate Bill-wise pending
+  let pendingBillsText = '';
+  if (Array.isArray(purchases) && purchases.length > 0) {
+    const pendingBills = purchases.filter((p) => Number(p.dueAmount || 0) > 0 || (p.paymentStatus && p.paymentStatus !== 'PAID'));
+    if (pendingBills.length > 0) {
+      pendingBillsText = `\n🧾 *बिलनिहाय प्रलंबित रक्कम:*\n` +
+        pendingBills.slice(0, 5).map((p) => {
+          const pNo = p.purchaseNo || p.id || 'PB';
+          const pTot = Number(p.totalAmount || p.amount || 0).toLocaleString('en-IN');
+          const pDue = Number(p.dueAmount || pTot).toLocaleString('en-IN');
+          const pDate = p.date ? new Date(p.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+          return `• #${pNo} ${pDate ? `(${pDate})` : ''}: एकूण ₹${pTot} | बाकी: *₹${pDue}*`;
+        }).join('\n');
+    }
+  }
+
   const message = `
 📊 *${tenantName}* 📊
 📋 *शेतकरी खाते उतारा (360° Farmer Ledger Statement)*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 *शेतकरी:* ${name} ${code ? `(${code})` : ''}
+👤 *शेतकरी:* ${name} ${code ? `(कोड: ${code})` : ''}
 📞 *फोन:* ${farmer.phone || '-'}
 🏡 *गाव:* ${farmer.village || '-'}
 📅 *तारीख:* ${new Date().toLocaleDateString('en-IN')}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-🌾 *१. एकूण माल खरेदी जमा (Total Purchases):* *₹${totalPurchases}*
-💵 *२. एकूण मिळालेली उचल/पेमेंट (Total Paid):* *₹${totalPaid}*
-📦 *३. अ‍ॅडव्हान्स शिल्लक (Advance Balance):* *₹${advanceBalance}*
-${totalMaterial !== '0' ? `🌱 *४. एकूण खते/साहित्य नावे (Materials):* *₹${totalMaterial}*\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚖️ *अंतिम चालू निव्वळ येणे/बाकी (Net Balance Due):* *₹${outstanding}*
+🌾 *१. एकूण माल खरेदी (Total Purchases):* *₹${totalPurchases}*
+💵 *२. एकूण मिळालेले पेमेंट (Total Paid):* *₹${totalPaid}*
+💰 *३. रोख आगाऊ उचल (Advance Balance):* *₹${advanceBalance}*
+${totalMaterial !== '0' && totalMaterial !== '०' ? `🌱 *४. एकूण खते/साहित्य नावे (Materials):* *₹${totalMaterial}*\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━${pendingBillsText ? `${pendingBillsText}\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n` : ''}
+⚖️ *अंतिम चालू निव्वळ बाकी (Net Outstanding Due):* *₹${outstanding}*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 तपशीलवार हिशोबासाठी आमच्याशी संपर्क साधा. धन्यवाद! 🙏
 `.trim();

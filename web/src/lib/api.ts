@@ -713,6 +713,7 @@ export const apiGetPurchases = async () => {
           date: p.date || (p.purchaseDate ? p.purchaseDate.split('T')[0] : new Date(p.createdAt || Date.now()).toLocaleDateString('en-IN')),
           purchaseDate: p.purchaseDate || p.createdAt || p.date || null,
           storageLocation: p.storageLocation || '',
+          isVisibleToFarmer: p.isVisibleToFarmer !== undefined ? Boolean(p.isVisibleToFarmer) : false,
           items: pItems,
         };
       });
@@ -723,6 +724,35 @@ export const apiGetPurchases = async () => {
     console.error('Error in apiGetPurchases:', err);
   }
   return getLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
+};
+
+export const apiTogglePurchaseFarmerVisibility = async (purchaseId: string, isVisible: boolean) => {
+  const tenantId = getTenantId();
+  if (!tenantId) return;
+  const currentList = getLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
+  const oldPurchase = currentList.find((p: any) => p.id === purchaseId || p.dbId === purchaseId);
+  const targetId = oldPurchase?.dbId || purchaseId;
+
+  try {
+    const { error } = await supabase
+      .from('Purchase')
+      .update({ isVisibleToFarmer: isVisible })
+      .or(`id.eq.${targetId},purchaseNo.eq.${purchaseId}`);
+    if (error) {
+      console.warn('Note: isVisibleToFarmer column update notice:', error.message);
+    }
+  } catch (e) {}
+
+  const updatedList = currentList.map((p: any) => {
+    if (p.id === purchaseId || p.dbId === purchaseId) {
+      return { ...p, isVisibleToFarmer: isVisible };
+    }
+    return p;
+  });
+  setLocalCache(`seavaig_purchases_cache_${tenantId}`, updatedList);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('purchases_changed'));
+  }
 };
 
 
@@ -937,6 +967,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     createdAt: new Date().toISOString(),
     storageLocation: purchaseData.storageLocation || '',
+    isVisibleToFarmer: Boolean(purchaseData.isVisibleToFarmer || false),
     items: purchaseData.items || []
   };
 
@@ -946,7 +977,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
   while (attempts < 5 && !success) {
     attempts++;
     try {
-      await supabase.from('Purchase').insert([{
+      const insertPayload: any = {
         id: globalId,
         tenantId,
         purchaseNo: billNo,
@@ -958,8 +989,17 @@ export const apiCreatePurchase = async (purchaseData: any) => {
         paymentStatus: purchaseObj.paymentStatus,
         purchaseDate: purchaseObj.date,
         date: purchaseObj.date,
-        storageLocation: purchaseObj.storageLocation
-      }]).throwOnError();
+        storageLocation: purchaseObj.storageLocation,
+        isVisibleToFarmer: purchaseObj.isVisibleToFarmer
+      };
+      
+      const { error } = await supabase.from('Purchase').insert([insertPayload]);
+      if (error && error.message.includes('isVisibleToFarmer')) {
+        delete insertPayload.isVisibleToFarmer;
+        await supabase.from('Purchase').insert([insertPayload]).throwOnError();
+      } else if (error) {
+        throw error;
+      }
       success = true;
     } catch (e: any) {
       if (attempts >= 5) {
