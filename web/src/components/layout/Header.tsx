@@ -191,6 +191,30 @@ export const Header: React.FC<HeaderProps> = ({
                   <User className="w-4 h-4 text-slate-400" />
                   <span>Business Settings</span>
                 </a>
+                <button
+                  onClick={() => {
+                    try {
+                      const keysToRemove: string[] = [];
+                      for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key && key.startsWith('seavaig_')) {
+                          keysToRemove.push(key);
+                        }
+                      }
+                      keysToRemove.forEach(k => localStorage.removeItem(k));
+                      if ('caches' in window) {
+                        caches.keys().then(names => {
+                          names.forEach(name => caches.delete(name));
+                        });
+                      }
+                      window.location.reload();
+                    } catch {}
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer text-left"
+                >
+                  <ShieldCheck className="w-4 h-4 text-blue-500" />
+                  <span>{language === 'mr' ? 'कॅशे साफ करा (Sync Live DB)' : 'Clear Cache & Sync DB'}</span>
+                </button>
               </div>
 
               <div className="pt-1 border-t border-slate-100">
