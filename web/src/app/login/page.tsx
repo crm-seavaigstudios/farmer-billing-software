@@ -214,49 +214,53 @@ export default function LoginPage() {
       }
 
       if (roleTab === 'SELLER') {
+        const cleanPhone = identifier.trim();
+
+        // 1. Fetch seller records from Customer and Trader tables
+        const [custRes, traderRes, saleRes] = await Promise.all([
+          supabase.from('Customer').select('*').eq('phone', cleanPhone),
+          supabase.from('Trader').select('*').eq('phone', cleanPhone),
+          supabase.from('Sale').select('*').eq('phone', cleanPhone),
+        ]);
+
+        const custRecords = custRes.data || [];
+        const traderRecords = traderRes.data || [];
+        const saleRecords = saleRes.data || [];
+
+        const hasRecord = custRecords.length > 0 || traderRecords.length > 0 || saleRecords.length > 0;
+        if (!hasRecord) {
+          throw new Error("Mobile number not registered as seller / customer / trader.");
+        }
+
+        const sellerName = custRecords[0]?.name || traderRecords[0]?.name || custRecords[0]?.company || 'Seller';
+        const sellerId = custRecords[0]?.id || traderRecords[0]?.id || `seller-${cleanPhone}`;
+
+        // Password handling
+        const pwdKey = `seavaig_seller_pwd_${cleanPhone}`;
+        let savedPassword = typeof window !== 'undefined' ? localStorage.getItem(pwdKey) : null;
+
         if (needsPasswordSetup) {
           if (password.length < 4) throw new Error("Password must be at least 4 characters.");
-          await supabase.from('GlobalSeller').update({ password }).eq('id', foundUserId);
-          await supabase.from('Customer').update({ password }).eq('phone', identifier);
-          
           if (typeof window !== 'undefined') {
-            localStorage.setItem('active_tenant', JSON.stringify({ id: foundUserId, userRole: 'SELLER', phone: identifier }));
+            localStorage.setItem(pwdKey, password);
           }
-          router.push('/seller-portal');
-          return;
-        }
-
-        let { data: globalSellerList } = await supabase.from('GlobalSeller').select('*').eq('phone', identifier).limit(1);
-        let globalSeller = globalSellerList?.[0];
-        
-        if (!globalSeller) {
-          const { data: custData } = await supabase.from('Customer').select('*').eq('phone', identifier).limit(1);
-          if (custData && custData.length > 0) {
-            const newGs = { id: `gs-${Date.now()}`, phone: identifier, name: custData[0].name };
-            await supabase.from('GlobalSeller').insert([newGs]);
-            globalSeller = newGs;
-          } else {
-            throw new Error("Mobile number not registered as seller / trader.");
-          }
-        }
-
-        if (!globalSeller.password) {
+          savedPassword = password;
+        } else if (!savedPassword) {
+          // If no custom password setup yet, prompt user to set password
           setNeedsPasswordSetup(true);
-          setFoundUserId(globalSeller.id);
+          setFoundUserId(sellerId);
           setPassword('');
           setLoading(false);
           return;
+        } else if (savedPassword !== password) {
+          throw new Error("Incorrect password.");
         }
 
-        if (globalSeller.password !== password) throw new Error("Incorrect password.");
-
-        // Find all Tenants this seller is registered with in Customer and Sale tables
-        const { data: custRecords } = await supabase.from('Customer').select('tenantId').eq('phone', identifier);
-        const { data: saleRecords } = await supabase.from('Sale').select('tenantId').eq('phone', identifier);
-        
+        // Find all Tenants this seller is registered with in Customer, Trader, and Sale tables
         const tenantIds = Array.from(new Set([
-          ...(custRecords || []).map((c: any) => c.tenantId),
-          ...(saleRecords || []).map((s: any) => s.tenantId)
+          ...custRecords.map((c: any) => c.tenantId),
+          ...traderRecords.map((t: any) => t.tenantId),
+          ...saleRecords.map((s: any) => s.tenantId),
         ].filter(Boolean)));
 
         let tenantList: any[] = [];
@@ -269,9 +273,9 @@ export default function LoginPage() {
           setAgencySelectionList(tenantList);
           setPendingUserAuth({
             role: 'SELLER',
-            phone: identifier,
-            name: globalSeller.name,
-            globalSellerId: globalSeller.id
+            phone: cleanPhone,
+            name: sellerName,
+            globalSellerId: sellerId,
           });
           setIsAgencyModalOpen(true);
           setLoading(false);
@@ -281,10 +285,10 @@ export default function LoginPage() {
         const singleTenant = tenantList[0] || { id: tenantIds[0] || '' };
         if (typeof window !== 'undefined') {
           localStorage.setItem('active_tenant', JSON.stringify({
-            id: globalSeller.id,
+            id: sellerId,
             userRole: 'SELLER',
-            phone: identifier,
-            name: globalSeller.name,
+            phone: cleanPhone,
+            name: sellerName,
             tenantId: singleTenant.id,
             tenantName: singleTenant.companyName || ''
           }));

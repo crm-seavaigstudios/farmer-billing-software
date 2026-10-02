@@ -30,10 +30,10 @@ export function DailyRatePINWidget() {
 
     if (ratesData) {
       const sellerIds = [...new Set(ratesData.map(r => r.sellerId))];
-      const { data: sellers } = await supabase.from('GlobalSeller').select('id, name, phone').in('id', sellerIds);
+      const { data: sellers } = await supabase.from('Customer').select('id, name, phone').in('id', sellerIds);
       
       const enriched = ratesData.map(r => {
-        const s = sellers?.find(s => s.id === r.sellerId);
+        const s = sellers?.find((s: any) => s.id === r.sellerId || s.phone === r.sellerId);
         return { ...r, sellerName: s?.name || s?.phone || 'Unknown Seller' };
       });
       setRates(enriched);

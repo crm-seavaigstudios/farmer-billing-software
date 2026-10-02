@@ -62,26 +62,18 @@ export default function SellerPortalPage() {
 
     const userPhone = auth.phone || '';
 
-    // Find all Tenants this seller's phone is registered under in Customer table or Sale table
-    const { data: customerLinks } = await supabase
-      .from('Customer')
-      .select('tenantId, name')
-      .eq('phone', userPhone);
+    // Find all Tenants this seller's phone is registered under in Customer, Trader, or Sale table
+    const [{ data: customerLinks }, { data: traderLinks }, { data: saleLinks }] = await Promise.all([
+      supabase.from('Customer').select('tenantId, name').eq('phone', userPhone),
+      supabase.from('Trader').select('tenantId, name').eq('phone', userPhone),
+      supabase.from('Sale').select('tenantId').eq('phone', userPhone),
+    ]);
     
-    let tenantIds = (customerLinks || []).map((c: any) => c.tenantId).filter(Boolean);
-
-    const { data: saleLinks } = await supabase
-      .from('Sale')
-      .select('tenantId')
-      .eq('phone', userPhone);
-    
-    if (saleLinks) {
-      saleLinks.forEach((s: any) => {
-        if (s.tenantId && !tenantIds.includes(s.tenantId)) {
-          tenantIds.push(s.tenantId);
-        }
-      });
-    }
+    let tenantIds = Array.from(new Set([
+      ...(customerLinks || []).map((c: any) => c.tenantId),
+      ...(traderLinks || []).map((t: any) => t.tenantId),
+      ...(saleLinks || []).map((s: any) => s.tenantId),
+    ].filter(Boolean)));
     
     if (tenantIds.length > 0) {
       const { data: tenants } = await supabase.from('Tenant').select('*').in('id', tenantIds);
