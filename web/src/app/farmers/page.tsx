@@ -11,7 +11,7 @@ import { AddFarmerAdvanceModal } from '@/components/farmers/AddFarmerAdvanceModa
 import { FinancialSummaryBar, TimelineFilter } from '@/components/common/FinancialSummaryBar';
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetFarmers, apiGetPurchases, apiGetPayments, apiGetAllFarmerMaterials, apiUpdateFarmer, isFarmerMatch, getTenantId } from '@/lib/api';
+import { apiGetFarmers, apiGetPurchases, apiGetPayments, apiGetAllFarmerMaterials, apiUpdateFarmer, apiDeleteFarmer, isFarmerMatch, getTenantId } from '@/lib/api';
 import {
   Users,
   Search,
@@ -19,6 +19,7 @@ import {
   Download,
   Database,
   Edit3,
+  Trash2,
   UserPlus,
   Inbox,
   Eye,
@@ -107,6 +108,12 @@ export default function FarmersPage() {
     const updated = farmers.map((f) => (f.id === updatedFarmer.id ? updatedFarmer : f));
     setFarmers(updated);
     await apiUpdateFarmer(updatedFarmer);
+  };
+
+  const handleDeleteFarmer = async (farmerId: string) => {
+    await apiDeleteFarmer(farmerId);
+    const updated = farmers.filter((f) => f.id !== farmerId);
+    setFarmers(updated);
   };
 
   // Dynamic Financial Metrics Calculation
@@ -403,9 +410,22 @@ export default function FarmersPage() {
                                 setEditingFarmer(f);
                               }}
                               className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold border border-slate-200 flex items-center gap-1 cursor-pointer"
+                              title="Edit Farmer"
                             >
                               <Edit3 className="w-3 h-3 text-slate-500" />
                               <span>Edit</span>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Are you sure you want to delete farmer "${f.name}"?`)) {
+                                  handleDeleteFarmer(f.id);
+                                }
+                              }}
+                              className="p-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg border border-rose-200 flex items-center justify-center cursor-pointer"
+                              title="Delete Farmer"
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-600" />
                             </button>
                           </div>
                         </td>
@@ -431,6 +451,7 @@ export default function FarmersPage() {
         onClose={() => setEditingFarmer(null)}
         farmer={editingFarmer}
         onSaveFarmer={handleSaveFarmer}
+        onDeleteFarmer={handleDeleteFarmer}
       />
 
       <FarmerCategoryModal

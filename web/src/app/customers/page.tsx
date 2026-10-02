@@ -4,9 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { AddCustomerModal } from '@/components/customers/AddCustomerModal';
+import { EditCustomerModal } from '@/components/customers/EditCustomerModal';
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer';
 import { useLanguage } from '@/context/LanguageContext';
-import { apiGetCustomers } from '@/lib/api';
+import { apiGetCustomers, apiDeleteCustomer, apiUpdateCustomer } from '@/lib/api';
 import {
   UserCheck,
   Building2,
@@ -18,6 +19,8 @@ import {
   Plus,
   ChevronRight,
   Eye,
+  Edit3,
+  Trash2,
   Phone,
   MapPin,
   X
@@ -62,9 +65,35 @@ export default function CustomersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
+  const [editingCustomer, setEditingCustomer] = useState<any | null>(null);
 
   const handleAddCustomer = (newCust: any) => {
     const updated = [newCust, ...customers];
+    setCustomers(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_customers_cache', JSON.stringify(updated));
+    }
+  };
+
+  const handleSaveCustomer = (updatedCust: any) => {
+    const updated = customers.map((c) =>
+      c.id === updatedCust.id || c.customerIdCode === updatedCust.id
+        ? {
+            ...c,
+            ...updatedCust,
+            company: updatedCust.name || updatedCust.company,
+          }
+        : c
+    );
+    setCustomers(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('seavaig_customers_cache', JSON.stringify(updated));
+    }
+  };
+
+  const handleDeleteCustomer = async (customerId: string) => {
+    await apiDeleteCustomer(customerId);
+    const updated = customers.filter((c) => c.id !== customerId && c.customerIdCode !== customerId);
     setCustomers(updated);
     if (typeof window !== 'undefined') {
       localStorage.setItem('seavaig_customers_cache', JSON.stringify(updated));
@@ -223,12 +252,33 @@ export default function CustomersPage() {
                       <td className="py-3 px-3 text-right font-black text-rose-600">{c.outstanding}</td>
                       <td className="py-3 px-3 text-right font-black text-slate-900">{c.totalPurchases}</td>
                       <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => setSelectedCustomer(c)}
-                          className="p-1 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-100 cursor-pointer"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => setSelectedCustomer(c)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                            title="View Customer Invoices & Ledger"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setEditingCustomer(c)}
+                            className="p-1.5 text-slate-400 hover:text-amber-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                            title="Edit Customer"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(language === 'mr' ? 'तुम्हाला नक्की हा ग्राहक हटवायचा आहे का?' : 'Are you sure you want to delete this customer?')) {
+                                handleDeleteCustomer(c.id);
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                            title="Delete Customer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -243,6 +293,14 @@ export default function CustomersPage() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAddCustomer={handleAddCustomer}
+      />
+
+      <EditCustomerModal
+        isOpen={!!editingCustomer}
+        onClose={() => setEditingCustomer(null)}
+        customer={editingCustomer}
+        onSaveCustomer={handleSaveCustomer}
+        onDeleteCustomer={handleDeleteCustomer}
       />
 
       {/* Customer Detail Drawer with Invoices, Latest-First Ledger, Payments & Tax Invoices */}

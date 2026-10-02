@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { X, UserCheck, Phone, MapPin, CreditCard, ShieldCheck, Sprout } from 'lucide-react';
+import { X, UserCheck, Phone, MapPin, CreditCard, ShieldCheck, Sprout, Trash2 } from 'lucide-react';
 
 interface EditFarmerModalProps {
   isOpen: boolean;
   onClose: () => void;
   farmer: any;
   onSaveFarmer: (updated: any) => void;
+  onDeleteFarmer?: (farmerId: string) => void;
 }
 
 export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
@@ -15,6 +16,7 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
   onClose,
   farmer,
   onSaveFarmer,
+  onDeleteFarmer,
 }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -335,20 +337,38 @@ export const EditFarmerModal: React.FC<EditFarmerModalProps> = ({
             </div>
           </div>
 
-          <div className="pt-2 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20"
-            >
-              Save Profile & Bank Changes
-            </button>
+          <div className="pt-3 flex items-center justify-between border-t border-slate-100">
+            {onDeleteFarmer ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Are you sure you want to delete farmer "${farmer.name}"? All associated data will be removed.`)) {
+                    onDeleteFarmer(farmer.id);
+                    onClose();
+                  }
+                }}
+                className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold border border-rose-200 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Farmer</span>
+              </button>
+            ) : <div />}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 cursor-pointer"
+              >
+                Save Profile & Bank Changes
+              </button>
+            </div>
           </div>
         </form>
       </div>

@@ -373,6 +373,23 @@ export const apiUpdateFarmer = async (farmerData: any) => {
   return farmerData;
 };
 
+export const apiDeleteFarmer = async (farmerId: string) => {
+  const tenantId = getTenantId();
+  if (!tenantId) return false;
+  try {
+    await supabase.from('Farmer').delete().eq('id', farmerId).eq('tenantId', tenantId);
+  } catch (e) {
+    console.error('Error deleting farmer in Supabase:', e);
+  }
+  const current = getLocalCache(`seavaig_farmers_cache_${tenantId}`, []);
+  const updated = current.filter((f: any) => f.id !== farmerId);
+  setLocalCache(`seavaig_farmers_cache_${tenantId}`, updated);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('farmers_changed'));
+  }
+  return true;
+};
+
 export const apiGetFarmerMaterials = async (farmerId: string) => {
   const tenantId = getTenantId();
   const cacheKey = tenantId ? `seavaig_material_supplies_cache_${tenantId}` : 'seavaig_material_supplies_cache';
@@ -1232,13 +1249,9 @@ export const apiCreateTrader = async (trData: any) => {
     name,
     businessName,
     phone: traderObj.phone,
-    email: traderObj.email,
-    gstNumber: traderObj.gstNumber,
-    address: traderObj.address,
     totalPurchased: traderObj.totalPurchased,
     totalPaid: traderObj.totalPaid,
     dueAmount: traderObj.dueAmount,
-    updatedAt: nowIso,
   };
 
   try {
@@ -1259,35 +1272,38 @@ export const apiGetTraderPurchases = async () => {
   const tenantId = getTenantId();
   if (!tenantId) return [];
   try {
-    const { data, error } = await supabase
-      .from('TraderPurchase')
-      .select('*, trader:Trader(*)')
-      .eq('tenantId', tenantId)
-      .order('createdAt', { ascending: false });
-    if (!error && Array.isArray(data)) {
+    const [tpRes, traders] = await Promise.all([
+      supabase.from('TraderPurchase').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false }),
+      apiGetTraders()
+    ]);
+    const data = tpRes.data;
+    if (!tpRes.error && Array.isArray(data)) {
       if (data.length === 0) {
         setLocalCache(`seavaig_trader_purchases_cache_${tenantId}`, []);
         return [];
       }
-      const mapped = data.map((tp: any) => ({
-        id: tp.billNo || tp.id,
-        dbId: tp.id,
-        traderId: tp.traderId,
-        traderName: tp.trader?.name || 'Trader',
-        businessName: tp.trader?.businessName || 'Business',
-        itemName: tp.itemName || 'Material Batch',
-        category: tp.category || 'PACKAGING',
-        quantity: tp.quantity || 1,
-        unit: tp.unit || 'QTY',
-        rate: tp.rate || 0,
-        totalAmount: tp.totalAmount || (Number(tp.rate || 0) * Number(tp.quantity || 1)),
-        paidAmount: tp.paidAmount || 0,
-        dueAmount: tp.dueAmount || 0,
-        paymentStatus: tp.paymentStatus || 'PAID',
-        notes: tp.notes || '',
-        vehicleNo: tp.vehicleNo || '',
-        date: tp.date || (tp.createdAt ? new Date(tp.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')),
-      }));
+      const mapped = data.map((tp: any) => {
+        const tr = (traders || []).find((t: any) => t.id === tp.traderId || t.traderCode === tp.traderId);
+        return {
+          id: tp.billNo || tp.id,
+          dbId: tp.id,
+          traderId: tp.traderId,
+          traderName: tr?.name || tp.traderName || 'Trader',
+          businessName: tr?.businessName || tr?.name || 'Business',
+          itemName: tp.itemName || 'Material Batch',
+          category: tp.category || 'PACKAGING',
+          quantity: tp.quantity || 1,
+          unit: tp.unit || 'QTY',
+          rate: tp.rate || 0,
+          totalAmount: tp.totalAmount || (Number(tp.rate || 0) * Number(tp.quantity || 1)),
+          paidAmount: tp.paidAmount || 0,
+          dueAmount: tp.dueAmount || 0,
+          paymentStatus: tp.paymentStatus || 'PAID',
+          notes: tp.notes || '',
+          vehicleNo: tp.vehicleNo || '',
+          date: tp.date || (tp.createdAt ? new Date(tp.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')),
+        };
+      });
       setLocalCache(`seavaig_trader_purchases_cache_${tenantId}`, mapped);
       return mapped;
     }
@@ -2050,7 +2066,6 @@ export const apiCreateWorker = async (workerData: any) => {
       totalPaid: Number(workerData.totalPaid || 0),
       outstandingBalance: Number(workerData.outstandingBalance || 0),
       tenantId,
-      updatedAt: new Date().toISOString(),
     };
     await supabase.from('DailyWorker').insert([workerObj]).throwOnError();
     
@@ -2383,6 +2398,49 @@ export const apiCreateCustomer = async (custData: any) => {
   const updated = [customerObj, ...current];
   setLocalCache(`seavaig_customers_cache_${tenantId}`, updated);
   return customerObj;
+};
+
+export const apiUpdateCustomer = async (custData: any) => {
+  const tenantId = getTenantId();
+  if (!tenantId) return custData;
+
+  const dbCustomerObj = {
+    name: custData.name || custData.company,
+    phone: custData.phone,
+    address: custData.address || '',
+    status: custData.status || 'ACTIVE'
+  };
+
+  try {
+    await supabase.from('Customer').update(dbCustomerObj).or(`id.eq.${custData.id},customerIdCode.eq.${custData.id}`).eq('tenantId', tenantId);
+  } catch (e) {
+    console.error('Error updating customer in Supabase:', e);
+  }
+
+  const current = getLocalCache(`seavaig_customers_cache_${tenantId}`, []);
+  const updated = current.map((c: any) => (c.id === custData.id || c.customerIdCode === custData.id) ? { ...c, ...custData, company: custData.name || custData.company } : c);
+  setLocalCache(`seavaig_customers_cache_${tenantId}`, updated);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('customers_changed'));
+  }
+  return custData;
+};
+
+export const apiDeleteCustomer = async (customerId: string) => {
+  const tenantId = getTenantId();
+  if (!tenantId) return false;
+  try {
+    await supabase.from('Customer').delete().or(`id.eq.${customerId},customerIdCode.eq.${customerId}`).eq('tenantId', tenantId);
+  } catch (e) {
+    console.error('Error deleting customer in Supabase:', e);
+  }
+  const current = getLocalCache(`seavaig_customers_cache_${tenantId}`, []);
+  const updated = current.filter((c: any) => c.id !== customerId && c.customerIdCode !== customerId);
+  setLocalCache(`seavaig_customers_cache_${tenantId}`, updated);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('customers_changed'));
+  }
+  return true;
 };
 
 export const apiGetExpenses = async () => {
