@@ -532,16 +532,18 @@ export const apiCreateFarmerMaterialPurchase = async (matData: any) => {
   try {
     await supabase.from('FarmerMaterialPurchase').insert([{
       id: matObj.id,
+      tenantId: tenantId || 'tenant_default',
       farmerId: matObj.farmerId,
       itemName: matObj.itemName,
       quantity: matObj.quantity,
       unit: matObj.unit,
       unitPrice: matObj.unitPrice,
       totalAmount: matObj.totalAmount,
-      date: new Date(),
+      date: new Date().toISOString().split('T')[0],
       createdAt: new Date().toISOString(),
       isDeductedFromBill: false,
-    }]);
+      notes: matObj.notes || '',
+    }]).throwOnError();
 
     await apiUpdateFarmerBalance(matObj.farmerId, 0, matObj.totalAmount, 'MATERIAL');
   } catch (err) {
