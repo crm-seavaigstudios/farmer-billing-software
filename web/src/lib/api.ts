@@ -691,6 +691,14 @@ export const apiGetPurchases = async () => {
         const weightStr = `${parsedWeight} ${unitStr}`;
         const rateStr = `₹${parsedRate}/${unitStr}`;
 
+        const isVisibleToFarmer = p.storageLocation?.includes('[HIDDEN_FROM_FARMER]')
+          ? false
+          : p.storageLocation?.includes('[VISIBLE_TO_FARMER]')
+          ? true
+          : p.isVisibleToFarmer !== undefined && p.isVisibleToFarmer !== null
+          ? Boolean(p.isVisibleToFarmer)
+          : true;
+
         return {
           id: p.purchaseNo || p.id,
           rawId: p.id,
@@ -713,7 +721,7 @@ export const apiGetPurchases = async () => {
           date: p.date || (p.purchaseDate ? p.purchaseDate.split('T')[0] : new Date(p.createdAt || Date.now()).toLocaleDateString('en-IN')),
           purchaseDate: p.purchaseDate || p.createdAt || p.date || null,
           storageLocation: p.storageLocation || '',
-          isVisibleToFarmer: p.isVisibleToFarmer !== undefined ? Boolean(p.isVisibleToFarmer) : false,
+          isVisibleToFarmer: isVisibleToFarmer,
           items: pItems,
         };
       });
@@ -730,22 +738,34 @@ export const apiTogglePurchaseFarmerVisibility = async (purchaseId: string, isVi
   const tenantId = getTenantId();
   if (!tenantId) return;
   const currentList = getLocalCache(`seavaig_purchases_cache_${tenantId}`, []);
-  const oldPurchase = currentList.find((p: any) => p.id === purchaseId || p.dbId === purchaseId);
-  const targetId = oldPurchase?.dbId || purchaseId;
+  const oldPurchase = currentList.find((p: any) => p.id === purchaseId || p.dbId === purchaseId || p.purchaseNo === purchaseId);
+  const targetId = oldPurchase?.dbId || oldPurchase?.rawId || purchaseId;
+
+  const rawLocation = oldPurchase?.storageLocation || '';
+  const cleanLocation = rawLocation.replace(/\s*\[(VISIBLE_TO_FARMER|HIDDEN_FROM_FARMER)\]/g, '').trim();
+  const updatedLocation = `${cleanLocation} [${isVisible ? 'VISIBLE_TO_FARMER' : 'HIDDEN_FROM_FARMER'}]`.trim();
 
   try {
-    const { error } = await supabase
+    // 1. Update storageLocation which is persistent across all clients/devices
+    await supabase
       .from('Purchase')
-      .update({ isVisibleToFarmer: isVisible })
+      .update({ storageLocation: updatedLocation })
       .or(`id.eq.${targetId},purchaseNo.eq.${purchaseId}`);
-    if (error) {
-      console.warn('Note: isVisibleToFarmer column update notice:', error.message);
-    }
-  } catch (e) {}
+
+    // 2. Also attempt direct column update if schema ever gets migrated
+    try {
+      await supabase
+        .from('Purchase')
+        .update({ isVisibleToFarmer: isVisible })
+        .or(`id.eq.${targetId},purchaseNo.eq.${purchaseId}`);
+    } catch {}
+  } catch (e) {
+    console.warn('apiTogglePurchaseFarmerVisibility warning:', e);
+  }
 
   const updatedList = currentList.map((p: any) => {
-    if (p.id === purchaseId || p.dbId === purchaseId) {
-      return { ...p, isVisibleToFarmer: isVisible };
+    if (p.id === purchaseId || p.dbId === purchaseId || p.purchaseNo === purchaseId) {
+      return { ...p, isVisibleToFarmer: isVisible, storageLocation: updatedLocation };
     }
     return p;
   });
@@ -947,6 +967,10 @@ export const apiCreatePurchase = async (purchaseData: any) => {
   }
 
   const unitStr = item?.unit || 'KG';
+  const isVis = purchaseData.isVisibleToFarmer !== false;
+  const baseLoc = (purchaseData.storageLocation || '').replace(/\s*\[(VISIBLE_TO_FARMER|HIDDEN_FROM_FARMER)\]/g, '').trim();
+  const taggedLoc = `${baseLoc} [${isVis ? 'VISIBLE_TO_FARMER' : 'HIDDEN_FROM_FARMER'}]`.trim();
+
   const purchaseObj = {
     id: billNo,
     rawId: globalId,
@@ -966,8 +990,8 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     paymentStatus: purchaseData.paymentStatus || (purAmt > 0 && Number(purchaseData.paidAmount || 0) >= purAmt ? 'PAID' : 'UNPAID'),
     date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     createdAt: new Date().toISOString(),
-    storageLocation: purchaseData.storageLocation || '',
-    isVisibleToFarmer: Boolean(purchaseData.isVisibleToFarmer || false),
+    storageLocation: taggedLoc,
+    isVisibleToFarmer: isVis,
     items: purchaseData.items || []
   };
 

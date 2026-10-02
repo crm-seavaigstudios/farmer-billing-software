@@ -1040,7 +1040,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
               <span>Print Ledger</span>
             </button>
             <button
-              onClick={() => shareFarmerLedgerOnWhatsApp(farmer, language === 'mr' ? tenant.businessNameMr || tenant.businessName : tenant.businessName)}
+              onClick={() => shareFarmerLedgerOnWhatsApp(farmer, language === 'mr' ? tenant.businessNameMr || tenant.businessName : tenant.businessName, purchases)}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
               title="Share Statement on WhatsApp"
             >

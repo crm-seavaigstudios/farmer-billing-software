@@ -23,6 +23,76 @@ export const openWhatsApp = (phone: string, message: string) => {
   }
 };
 
+const getActiveTenantId = (explicitTenantId?: string): string => {
+  if (explicitTenantId) return explicitTenantId;
+  if (typeof window !== 'undefined') {
+    try {
+      const activeTenant = localStorage.getItem('active_tenant');
+      if (activeTenant) {
+        const parsed = JSON.parse(activeTenant);
+        return parsed.tenantId || parsed.id || '';
+      }
+    } catch {}
+  }
+  return '';
+};
+
+const getCachedFarmersList = (tenantId?: string): any[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const tid = getActiveTenantId(tenantId);
+    if (tid) {
+      const cached = localStorage.getItem(`seavaig_farmers_cache_${tid}`);
+      if (cached) return JSON.parse(cached);
+    }
+    const fallback = localStorage.getItem('seavaig_farmers_cache');
+    if (fallback) return JSON.parse(fallback);
+    
+    // Scan all keys if needed
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('seavaig_farmers_cache_')) {
+        const val = localStorage.getItem(k);
+        if (val) return JSON.parse(val);
+      }
+    }
+  } catch {}
+  return [];
+};
+
+const getCachedPurchasesList = (tenantId?: string): any[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const tid = getActiveTenantId(tenantId);
+    if (tid) {
+      const cached = localStorage.getItem(`seavaig_purchases_cache_${tid}`);
+      if (cached) return JSON.parse(cached);
+    }
+    const fallback = localStorage.getItem('seavaig_purchases_cache');
+    if (fallback) return JSON.parse(fallback);
+
+    // Scan all keys if needed
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('seavaig_purchases_cache_')) {
+        const val = localStorage.getItem(k);
+        if (val) return JSON.parse(val);
+      }
+    }
+  } catch {}
+  return [];
+};
+
+const isFarmerMatchHelper = (purchaseOrRecord: any, farmer: any): boolean => {
+  if (!purchaseOrRecord || !farmer) return false;
+  if (farmer.id && (purchaseOrRecord.farmerId === farmer.id || purchaseOrRecord.id === farmer.id)) return true;
+  if (farmer.phone && purchaseOrRecord.phone && String(purchaseOrRecord.phone).replace(/[^0-9]/g, '') === String(farmer.phone).replace(/[^0-9]/g, '')) return true;
+  if (farmer.name && (purchaseOrRecord.farmerName === farmer.name || purchaseOrRecord.name === farmer.name)) return true;
+  if (farmer.farmerUniqueCode && purchaseOrRecord.farmerCode === farmer.farmerUniqueCode) return true;
+  if (farmer.farmerIdCode && purchaseOrRecord.farmerId === farmer.farmerIdCode) return true;
+  return false;
+};
+
 /**
  * 1-Click WhatsApp Share for Farmer Purchase Bill with 360° Lifetime & Bill-Wise Pending Summary
  */
@@ -40,67 +110,66 @@ export const sharePurchaseOnWhatsApp = (
   const grade = purchase.grade || 'A_GRADE';
   const weight = purchase.weight || `${purchase.totalWeight || 0} KG`;
   const rate = purchase.rate || `₹${purchase.ratePerKg || 0}/KG`;
-  const totalAmount = Number(purchase.totalAmount || purchase.amount || 0).toLocaleString('en-IN');
-  const paidAmount = Number(purchase.paidAmount || 0).toLocaleString('en-IN');
-  const dueAmount = Number(purchase.dueAmount || 0).toLocaleString('en-IN');
+  const totalAmountNum = Number(purchase.totalAmount ?? purchase.amount ?? 0);
+  const paidAmountNum = Number(purchase.paidAmount ?? 0);
+  const dueAmountNum = Number(purchase.dueAmount ?? (totalAmountNum - paidAmountNum));
 
-  // Lifetime Stats
-  let totalPurchasesTillDate = totalAmount;
-  let totalAdvancesTillDate = '०';
-  let totalMaterialGiven = '०';
-  let totalPaidTillDate = paidAmount;
-  let totalOutstandingDue = dueAmount;
+  const totalAmount = totalAmountNum.toLocaleString('en-IN');
+  const paidAmount = paidAmountNum.toLocaleString('en-IN');
+  const dueAmount = dueAmountNum.toLocaleString('en-IN');
+
+  const allFarmers = getCachedFarmersList(purchase.tenantId);
+  const matchedFarmer = allFarmers.find((f: any) => isFarmerMatchHelper(purchase, f)) || null;
+
+  // Resolve 360° Lifetime Stats
+  let totalPurchasesVal = totalAmountNum;
+  let totalPaidVal = paidAmountNum;
+  let totalAdvancesVal = 0;
+  let totalMaterialVal = 0;
+  let totalOutstandingVal = dueAmountNum;
 
   if (farmerSummary) {
-    totalPurchasesTillDate = Number(farmerSummary.totalPurchases || farmerSummary.totalPurchase || 0).toLocaleString('en-IN');
-    totalAdvancesTillDate = Number(farmerSummary.advanceBalance || farmerSummary.totalAdvances || 0).toLocaleString('en-IN');
-    totalMaterialGiven = Number(farmerSummary.totalMaterial || 0).toLocaleString('en-IN');
-    totalPaidTillDate = Number(farmerSummary.totalPaid || 0).toLocaleString('en-IN');
-    totalOutstandingDue = Number(farmerSummary.outstandingAmount || farmerSummary.outstanding || purchase.dueAmount || 0).toLocaleString('en-IN');
-  } else if (typeof window !== 'undefined') {
-    try {
-      const tenantId = purchase.tenantId || '';
-      const cached = localStorage.getItem(`seavaig_farmers_cache_${tenantId}`) || localStorage.getItem('seavaig_farmers_cache');
-      if (cached) {
-        const list = JSON.parse(cached);
-        const f = list.find((x: any) => x.id === purchase.farmerId || x.phone === purchase.phone || x.name === purchase.farmerName);
-        if (f) {
-          totalPurchasesTillDate = Number(f.totalPurchases || f.totalPurchase || 0).toLocaleString('en-IN');
-          totalAdvancesTillDate = Number(f.advanceBalance || 0).toLocaleString('en-IN');
-          totalMaterialGiven = Number(f.totalMaterial || 0).toLocaleString('en-IN');
-          totalPaidTillDate = Number(f.totalPaid || 0).toLocaleString('en-IN');
-          totalOutstandingDue = Number(f.outstandingAmount || f.outstanding || purchase.dueAmount || 0).toLocaleString('en-IN');
-        }
-      }
-    } catch {}
+    totalPurchasesVal = Number(farmerSummary.totalPurchases ?? farmerSummary.totalPurchase ?? totalPurchasesVal);
+    totalPaidVal = Number(farmerSummary.totalPaid ?? totalPaidVal);
+    totalAdvancesVal = Number(farmerSummary.advanceBalance ?? farmerSummary.totalAdvances ?? 0);
+    totalMaterialVal = Number(farmerSummary.totalMaterial ?? 0);
+    totalOutstandingVal = Number(farmerSummary.outstandingAmount ?? farmerSummary.outstanding ?? totalOutstandingVal);
+  } else if (matchedFarmer) {
+    totalPurchasesVal = Number(matchedFarmer.totalPurchases ?? matchedFarmer.totalPurchase ?? totalPurchasesVal);
+    totalPaidVal = Number(matchedFarmer.totalPaid ?? totalPaidVal);
+    totalAdvancesVal = Number(matchedFarmer.advanceBalance ?? 0);
+    totalMaterialVal = Number(matchedFarmer.totalMaterial ?? 0);
+    totalOutstandingVal = Number(matchedFarmer.outstandingAmount ?? matchedFarmer.outstanding ?? totalOutstandingVal);
   }
 
   // Calculate Bill-wise Pending Breakdown
   let pendingBillsText = '';
   try {
     let listToCheck = allFarmerPurchases;
-    if (!listToCheck && typeof window !== 'undefined') {
-      const tenantId = purchase.tenantId || '';
-      const pCached = localStorage.getItem(`seavaig_purchases_cache_${tenantId}`) || localStorage.getItem('seavaig_purchases_cache');
-      if (pCached) {
-        const allP = JSON.parse(pCached);
-        listToCheck = allP.filter((p: any) => p.farmerId === purchase.farmerId || p.farmerName === purchase.farmerName || p.phone === purchase.phone);
-      }
+    if (!listToCheck || listToCheck.length === 0) {
+      const allPurchases = getCachedPurchasesList(purchase.tenantId);
+      listToCheck = allPurchases.filter((p: any) => {
+        if (matchedFarmer) return isFarmerMatchHelper(p, matchedFarmer);
+        return p.farmerId === purchase.farmerId || p.farmerName === purchase.farmerName || (p.phone && p.phone === purchase.phone);
+      });
     }
 
     if (Array.isArray(listToCheck) && listToCheck.length > 0) {
       const pendingBills = listToCheck.filter((p) => {
-        const due = Number(p.dueAmount || 0);
-        return due > 0 || (p.paymentStatus && p.paymentStatus !== 'PAID');
+        const pTot = Number(p.totalAmount ?? p.amount ?? 0);
+        const pPaid = Number(p.paidAmount ?? 0);
+        const pDue = Number(p.dueAmount !== undefined ? p.dueAmount : (pTot - pPaid));
+        return pDue > 0 || (p.paymentStatus && p.paymentStatus !== 'PAID');
       });
 
       if (pendingBills.length > 0) {
-        pendingBillsText = `\n🧾 *बिलनिहाय प्रलंबित रक्कम (Pending Bills):*\n` +
+        pendingBillsText = `\n🧾 *बिलनिहाय प्रलंबित बाकी (Pending Bills Breakdown):*\n` +
           pendingBills.slice(0, 5).map((p) => {
             const pNo = p.purchaseNo || p.id || 'PB';
-            const pTot = Number(p.totalAmount || p.amount || 0).toLocaleString('en-IN');
-            const pDue = Number(p.dueAmount || pTot).toLocaleString('en-IN');
-            const pDate = p.date ? new Date(p.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+            const pTot = Number(p.totalAmount ?? p.amount ?? 0).toLocaleString('en-IN');
+            const pPaid = Number(p.paidAmount ?? 0);
+            const pDue = Number(p.dueAmount !== undefined ? p.dueAmount : (Number(p.totalAmount ?? p.amount ?? 0) - pPaid)).toLocaleString('en-IN');
+            const pDate = p.date ? new Date(p.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : (p.purchaseDate ? new Date(p.purchaseDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '');
             return `• #${pNo} ${pDate ? `(${pDate})` : ''}: एकूण ₹${pTot} | बाकी: *₹${pDue}*`;
           }).join('\n') +
           (pendingBills.length > 5 ? `\n...आणि इतर ${pendingBills.length - 5} बिले` : '');
@@ -108,33 +177,35 @@ export const sharePurchaseOnWhatsApp = (
     }
   } catch {}
 
+  const farmerCodeDisplay = farmerCode || (matchedFarmer ? matchedFarmer.farmerUniqueCode || matchedFarmer.farmerCode || matchedFarmer.farmerIdCode : '');
+
   const message = `
 🌾 *${tenantName}* 🌾
-📄 *खरेदी पावती व चालू खाते हिशोब (Purchase Slip & Ledger)*
+📄 *खरेदी पावती व ३६०° खाते हिशोब (Purchase Bill & Ledger)*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 *शेतकरी:* ${farmerName} ${farmerCode ? `(कोड: ${farmerCode})` : ''}
-📅 *दिनांक:* ${date} | *पावती क्र:* #${billNo}
+👤 *शेतकरी:* ${farmerName} ${farmerCodeDisplay ? `(कोड: ${farmerCodeDisplay})` : ''}
+📅 *दिनांक:* ${date} | 🧾 *पावती क्र:* #${billNo}
 
-📦 *चालू आवक पावती (Current Bill):*
-• जात / माल: *${crop}* (${grade})
-• एकूण वजन: *${weight}*
-• दर (Rate): *${rate}*
+📦 *चालू आवक पावती तपशील (Current Bill):*
+• शेतमाल / जात: *${crop}* (${grade})
+• एकूण आवक / वजन: *${weight}*
+• खरेदी दर: *${rate}*
 • चालू बिल रक्कम: *₹${totalAmount}*
-• आज दिलेले पेमेंट: *₹${paidAmount}*
-• चालू बिल बाकी: *₹${dueAmount}*
+• आज जमा केलेले पेमेंट: *₹${paidAmount}*
+• चालू बिल प्रलंबित बाकी: *₹${dueAmount}*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 *ऐतिहासिक खाते सारांश (360° Account Status):*
-🌾 १. एकूण माल खरेदी (Total Purchases): *₹${totalPurchasesTillDate}*
-💵 २. एकूण मिळालेले पेमेंट (Total Paid): *₹${totalPaidTillDate}*
-💰 ३. रोख आगाऊ उचल (Cash Advances): *₹${totalAdvancesTillDate}*
-${totalMaterialGiven !== '—' && totalMaterialGiven !== '0' && totalMaterialGiven !== '०' ? `🌱 ४. दिलेले खते व साहित्य (Materials): *₹${totalMaterialGiven}*\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━${pendingBillsText ? `${pendingBillsText}\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n` : ''}
-⚖️ *आजची अंतिम निव्वळ बाकी (Net Balance Due):* *₹${totalOutstandingDue}*
+📊 *३६०° चालू खाते सारांश (Account Summary):*
+🌾 १. एकूण माल खरेदी (Total Purchases): *₹${totalPurchasesVal.toLocaleString('en-IN')}*
+💵 २. एकूण मिळालेले पेमेंट (Total Paid): *₹${totalPaidVal.toLocaleString('en-IN')}*
+💰 ३. रोख आगाऊ उचल (Advance Balance): *₹${totalAdvancesVal.toLocaleString('en-IN')}*
+${totalMaterialVal > 0 ? `🌱 ४. एकूण खते / साहित्य नावे (Materials): *₹${totalMaterialVal.toLocaleString('en-IN')}*\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━${pendingBillsText ? `${pendingBillsText}\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n` : ''}
+⚖️ *अंतिम चालू निव्वळ बाकी (Net Balance Due):* *₹${totalOutstandingVal.toLocaleString('en-IN')}*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-आपल्या सहकार्याबद्दल मनापासून धन्यवाद! 🙏
+आमच्यासोबत सहकार्य केल्याबद्दल धन्यवाद! 🙏
 हिशोबाच्या अधिक माहितीसाठी संपर्क साधा.
 `.trim();
 
-  openWhatsApp(purchase.phone, message);
+  openWhatsApp(purchase.phone || matchedFarmer?.phone || '', message);
 };
 
 /**
@@ -204,25 +275,39 @@ export const sharePaymentOnWhatsApp = (payment: any, tenantName: string = 'क�
 export const shareFarmerLedgerOnWhatsApp = (farmer: any, tenantName: string = 'कृषी एजन्सी', purchases?: any[]) => {
   const name = farmer.name || 'शेतकरी मित्र';
   const code = farmer.farmerUniqueCode || farmer.farmerCode || farmer.farmerIdCode || '';
-  const totalPurchases = Number(farmer.totalPurchases || farmer.totalPurchase || 0).toLocaleString('en-IN');
-  const totalPaid = Number(farmer.totalPaid || 0).toLocaleString('en-IN');
-  const advanceBalance = Number(farmer.advanceBalance || 0).toLocaleString('en-IN');
-  const totalMaterial = Number(farmer.totalMaterial || 0).toLocaleString('en-IN');
-  const outstanding = Number(farmer.outstandingAmount || farmer.outstanding || 0).toLocaleString('en-IN');
+  const totalPurchases = Number(farmer.totalPurchases ?? farmer.totalPurchase ?? 0).toLocaleString('en-IN');
+  const totalPaid = Number(farmer.totalPaid ?? 0).toLocaleString('en-IN');
+  const advanceBalance = Number(farmer.advanceBalance ?? 0).toLocaleString('en-IN');
+  const totalMaterial = Number(farmer.totalMaterial ?? 0).toLocaleString('en-IN');
+  const outstanding = Number(farmer.outstandingAmount ?? farmer.outstanding ?? 0).toLocaleString('en-IN');
 
   // Calculate Bill-wise pending
   let pendingBillsText = '';
-  if (Array.isArray(purchases) && purchases.length > 0) {
-    const pendingBills = purchases.filter((p) => Number(p.dueAmount || 0) > 0 || (p.paymentStatus && p.paymentStatus !== 'PAID'));
+  let listToCheck = purchases;
+  if (!listToCheck || listToCheck.length === 0) {
+    const allPurchases = getCachedPurchasesList(farmer.tenantId);
+    listToCheck = allPurchases.filter((p: any) => isFarmerMatchHelper(p, farmer));
+  }
+
+  if (Array.isArray(listToCheck) && listToCheck.length > 0) {
+    const pendingBills = listToCheck.filter((p) => {
+      const pTot = Number(p.totalAmount ?? p.amount ?? 0);
+      const pPaid = Number(p.paidAmount ?? 0);
+      const pDue = Number(p.dueAmount !== undefined ? p.dueAmount : (pTot - pPaid));
+      return pDue > 0 || (p.paymentStatus && p.paymentStatus !== 'PAID');
+    });
+
     if (pendingBills.length > 0) {
-      pendingBillsText = `\n🧾 *बिलनिहाय प्रलंबित रक्कम:*\n` +
+      pendingBillsText = `\n🧾 *बिलनिहाय प्रलंबित रक्कम (Bill-wise Pending Breakdown):*\n` +
         pendingBills.slice(0, 5).map((p) => {
           const pNo = p.purchaseNo || p.id || 'PB';
-          const pTot = Number(p.totalAmount || p.amount || 0).toLocaleString('en-IN');
-          const pDue = Number(p.dueAmount || pTot).toLocaleString('en-IN');
-          const pDate = p.date ? new Date(p.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+          const pTot = Number(p.totalAmount ?? p.amount ?? 0).toLocaleString('en-IN');
+          const pPaid = Number(p.paidAmount ?? 0);
+          const pDue = Number(p.dueAmount !== undefined ? p.dueAmount : (Number(p.totalAmount ?? p.amount ?? 0) - pPaid)).toLocaleString('en-IN');
+          const pDate = p.date ? new Date(p.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : (p.purchaseDate ? new Date(p.purchaseDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '');
           return `• #${pNo} ${pDate ? `(${pDate})` : ''}: एकूण ₹${pTot} | बाकी: *₹${pDue}*`;
-        }).join('\n');
+        }).join('\n') +
+        (pendingBills.length > 5 ? `\n...आणि इतर ${pendingBills.length - 5} बिले` : '');
     }
   }
 
@@ -235,10 +320,11 @@ export const shareFarmerLedgerOnWhatsApp = (farmer: any, tenantName: string = '�
 🏡 *गाव:* ${farmer.village || '-'}
 📅 *तारीख:* ${new Date().toLocaleDateString('en-IN')}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-🌾 *१. एकूण माल खरेदी (Total Purchases):* *₹${totalPurchases}*
-💵 *२. एकूण मिळालेले पेमेंट (Total Paid):* *₹${totalPaid}*
-💰 *३. रोख आगाऊ उचल (Advance Balance):* *₹${advanceBalance}*
-${totalMaterial !== '0' && totalMaterial !== '०' ? `🌱 *४. एकूण खते/साहित्य नावे (Materials):* *₹${totalMaterial}*\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━${pendingBillsText ? `${pendingBillsText}\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n` : ''}
+📊 *चालू खाते आर्थिक सारांश:*
+🌾 १. एकूण माल खरेदी (Total Purchases): *₹${totalPurchases}*
+💵 २. एकूण मिळालेले पेमेंट (Total Paid): *₹${totalPaid}*
+💰 ३. रोख आगाऊ उचल (Advance Balance): *₹${advanceBalance}*
+${Number(farmer.totalMaterial || 0) > 0 ? `🌱 ४. एकूण खते / साहित्य नावे (Materials): *₹${totalMaterial}*\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━${pendingBillsText ? `${pendingBillsText}\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n` : ''}
 ⚖️ *अंतिम चालू निव्वळ बाकी (Net Outstanding Due):* *₹${outstanding}*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 तपशीलवार हिशोबासाठी आमच्याशी संपर्क साधा. धन्यवाद! 🙏

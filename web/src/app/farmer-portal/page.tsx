@@ -178,7 +178,16 @@ export default function FarmerPortalPage() {
         }
       }
 
-      const visiblePurchasesData = (pData || []).filter((p: any) => p.isVisibleToFarmer === true);
+      const visiblePurchasesData = (pData || []).filter((p: any) => {
+        if (p.storageLocation && typeof p.storageLocation === 'string') {
+          if (p.storageLocation.includes('[HIDDEN_FROM_FARMER]')) return false;
+          if (p.storageLocation.includes('[VISIBLE_TO_FARMER]')) return true;
+        }
+        if (p.isVisibleToFarmer !== undefined && p.isVisibleToFarmer !== null) {
+          return Boolean(p.isVisibleToFarmer);
+        }
+        return true;
+      });
 
       const enhancedPurchases = visiblePurchasesData.map((p: any) => {
         const pItems = itemsMap[p.id] || itemsMap[p.purchaseNo] || [];
