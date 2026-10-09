@@ -86,6 +86,21 @@ export default function AgencyAdminPage() {
 
   useEffect(() => {
     setTotpSecret(GLOBAL_SUPERADMIN_SECRET);
+    if (typeof window !== 'undefined') {
+      const activeTenant = localStorage.getItem('active_tenant');
+      if (activeTenant) {
+        try {
+          const parsed = JSON.parse(activeTenant);
+          if (
+            parsed.role === 'SUPERADMIN' ||
+            parsed.userRole === 'SUPERADMIN' ||
+            parsed.ownerEmail?.toLowerCase() === 'crm@seavaigstudios.com'
+          ) {
+            setIs2FaAuthenticated(true);
+          }
+        } catch {}
+      }
+    }
   }, []);
 
   const [validationError, setValidationError] = useState('');
@@ -343,6 +358,21 @@ export default function AgencyAdminPage() {
                 >
                   <Plus className="w-4 h-4" />
                   <span>Onboard New Client Company</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      localStorage.removeItem('active_tenant');
+                    }
+                    setIs2FaAuthenticated(false);
+                    window.location.href = '/login';
+                  }}
+                  className="px-3.5 py-2.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-bold rounded-xl border border-rose-800/50 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  title="Sign out of Agency Console"
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  <span>Exit / Sign Out</span>
                 </button>
               </div>
             </div>

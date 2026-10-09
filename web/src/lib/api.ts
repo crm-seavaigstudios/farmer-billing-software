@@ -32,6 +32,21 @@ function setLocalCache(key: string, val: any[]) {
 // ----------------------------------------------------
 // EXECUTIVE DASHBOARD & STATS ENGINE
 // ----------------------------------------------------
+// Safe amount extractor that prioritizes real positive values and handles zero totalAmount edge-cases
+export const parseRecordAmount = (item: any): number => {
+  if (!item) return 0;
+  const candidates = [item.netAmount, item.totalAmount, item.amount];
+  for (const val of candidates) {
+    if (val !== undefined && val !== null) {
+      const num = typeof val === 'number' ? val : parseFloat(String(val).replace(/[^0-9.-]+/g, ''));
+      if (!isNaN(num) && num > 0) return num;
+    }
+  }
+  const weight = parseFloat(String(item.totalWeight || item.weight || item.quantity || '0').replace(/[^0-9.-]+/g, '')) || 0;
+  const rate = parseFloat(String(item.rate || item.ratePerKg || item.unitPrice || '0').replace(/[^0-9.-]+/g, '')) || 0;
+  return weight * rate;
+};
+
 export const apiGetDashboardStats = async (filterStart?: number, filterEnd?: number) => {
   try {
     const farmers = await apiGetFarmers();
@@ -59,16 +74,45 @@ export const apiGetDashboardStats = async (filterStart?: number, filterEnd?: num
       return t >= rangeStart && t <= rangeEnd;
     };
 
-    const todaysPurchasesList = purchases.filter((p: any) => inRange(p.createdAt || p.date));
-    const todaysSalesList = sales.filter((s: any) => inRange(s.createdAt || s.date));
-    const todaysPaymentsList = payments.filter((p: any) => inRange(p.createdAt || p.date));
+    const todaysPurchasesList = purchases.filter((p: any) => inRange(p.createdAt || p.date || p.purchaseDate));
+    const todaysSalesList = sales.filter((s: any) => inRange(s.createdAt || s.date || s.saleDate));
+    const todaysPaymentsList = payments.filter((p: any) => inRange(p.createdAt || p.date || p.paymentDate));
 
-    const todaysPurchase = todaysPurchasesList.reduce((acc: number, p: any) => acc + parseNum(p.totalAmount || p.amount || p.netAmount), 0);
-    const todaysSales = todaysSalesList.reduce((acc: number, s: any) => acc + parseNum(s.totalAmount || s.amount), 0);
-    const todaysPayment = todaysPaymentsList.reduce((acc: number, p: any) => acc + parseNum(p.amount), 0);
+    const todaysPurchase = todaysPurchasesList.reduce((acc: number, p: any) => acc + parseRecordAmount(p), 0);
+    const todaysSales = todaysSalesList.reduce((acc: number, s: any) => acc + parseRecordAmount(s), 0);
+    const todaysPayment = todaysPaymentsList.reduce((acc: number, p: any) => acc + parseRecordAmount(p), 0);
     
-    const totalDue = purchases.reduce((acc: number, p: any) => acc + parseNum(p.dueAmount), 0);
+    const totalDue = purchases.reduce((acc: number, p: any) => acc + parseNum(p.dueAmount || p.rawDue), 0);
     const inventoryValuation = inventory.reduce((acc: number, i: any) => acc + (i.value || 0), 0);
+
+    // Dynamic Period-Over-Period Comparison Math
+    const duration = Math.max(86400000, rangeEnd - rangeStart);
+    const priorStart = rangeStart - duration;
+    const priorEnd = rangeStart - 1;
+
+    const inPriorRange = (dStr: string) => {
+      if (!dStr) return false;
+      const t = new Date(dStr).getTime();
+      return t >= priorStart && t <= priorEnd;
+    };
+
+    const priorPurchases = purchases.filter((p: any) => inPriorRange(p.createdAt || p.date || p.purchaseDate)).reduce((acc: number, p: any) => acc + parseRecordAmount(p), 0);
+    const priorSales = sales.filter((s: any) => inPriorRange(s.createdAt || s.date || s.saleDate)).reduce((acc: number, s: any) => acc + parseRecordAmount(s), 0);
+    const priorPayments = payments.filter((p: any) => inPriorRange(p.createdAt || p.date || p.paymentDate)).reduce((acc: number, p: any) => acc + parseRecordAmount(p), 0);
+
+    const calcTrend = (curr: number, prior: number) => {
+      if (prior === 0) {
+        return curr > 0 ? { change: '+100%', changeType: 'up' as const } : { change: '0%', changeType: 'neutral' as const };
+      }
+      const pct = Math.round(((curr - prior) / prior) * 100);
+      if (pct > 0) return { change: `+${pct}%`, changeType: 'up' as const };
+      if (pct < 0) return { change: `${pct}%`, changeType: 'down' as const };
+      return { change: '0%', changeType: 'neutral' as const };
+    };
+
+    const purchaseTrend = calcTrend(todaysPurchase, priorPurchases);
+    const salesTrend = calcTrend(todaysSales, priorSales);
+    const paymentTrend = calcTrend(todaysPayment, priorPayments);
 
     return {
       totalFarmers,
@@ -77,7 +121,14 @@ export const apiGetDashboardStats = async (filterStart?: number, filterEnd?: num
       todaysSales: `₹${todaysSales.toLocaleString('en-IN')}`,
       todaysPayment: `₹${todaysPayment.toLocaleString('en-IN')}`,
       pendingAmount: `₹${totalDue.toLocaleString('en-IN')}`,
-      inventoryValue: `₹${inventoryValuation.toLocaleString('en-IN')}`
+      inventoryValue: `₹${inventoryValuation.toLocaleString('en-IN')}`,
+      inventoryCount: inventory.length,
+      purchaseChange: purchaseTrend.change,
+      purchaseChangeType: purchaseTrend.changeType,
+      salesChange: salesTrend.change,
+      salesChangeType: salesTrend.changeType,
+      paymentChange: paymentTrend.change,
+      paymentChangeType: paymentTrend.changeType,
     };
   } catch (err) {
     return null;

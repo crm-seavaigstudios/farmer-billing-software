@@ -11,11 +11,11 @@ import {
   CartesianGrid
 } from 'recharts';
 import { Info } from 'lucide-react';
-import { apiGetPurchases, apiGetSales } from '@/lib/api';
+import { apiGetPurchases, apiGetSales, parseRecordAmount } from '@/lib/api';
 
 export const PurchaseSalesChart: React.FC = () => {
   const [chartData, setChartData] = React.useState<any[]>([]);
-  const [maxValue, setMaxValue] = React.useState(0);
+  const [timeframe, setTimeframe] = React.useState<'THIS_MONTH' | 'LAST_MONTH' | 'THIS_YEAR'>('THIS_MONTH');
 
   React.useEffect(() => {
     async function loadData() {
@@ -23,39 +23,61 @@ export const PurchaseSalesChart: React.FC = () => {
         const purchases = await apiGetPurchases();
         const sales = await apiGetSales();
 
-      const aggregated: Record<string, { purchase: number, sales: number }> = {};
-      
-      const parseNum = (val: any) => parseFloat(String(val).replace(/[^0-9.-]+/g, '')) || 0;
-      
-      purchases.forEach((p: any) => {
-        if (p.date) {
-          const d = p.date.substring(0, 5); // simple grouping by day
-          if (!aggregated[d]) aggregated[d] = { purchase: 0, sales: 0 };
-          aggregated[d].purchase += parseNum(p.amount || p.totalAmount);
-        }
-      });
-      sales.forEach((s: any) => {
-        if (s.date) {
-          const d = s.date.substring(0, 5);
-          if (!aggregated[d]) aggregated[d] = { purchase: 0, sales: 0 };
-          aggregated[d].sales += parseNum(s.amount || s.totalAmount);
-        }
-      });
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
 
-      const sortedDates = Object.keys(aggregated).sort();
-      const finalData = sortedDates.slice(-7).map(d => ({
-        date: d,
-        purchase: aggregated[d].purchase,
-        sales: aggregated[d].sales
-      }));
+        const isMatch = (dateStr: string) => {
+          if (!dateStr) return false;
+          const d = new Date(dateStr);
+          if (isNaN(d.getTime())) return true;
+          const y = d.getFullYear();
+          const m = d.getMonth();
 
-      setChartData(finalData.length ? finalData : [
-        { date: 'No Data', purchase: 0, sales: 0 }
-      ]);
+          if (timeframe === 'THIS_MONTH') return y === currentYear && m === currentMonth;
+          if (timeframe === 'LAST_MONTH') {
+            const lm = currentMonth === 0 ? 11 : currentMonth - 1;
+            const ly = currentMonth === 0 ? currentYear - 1 : currentYear;
+            return y === ly && m === lm;
+          }
+          if (timeframe === 'THIS_YEAR') return y === currentYear;
+          return true;
+        };
+
+        const aggregated: Record<string, { purchase: number, sales: number }> = {};
+
+        purchases.forEach((p: any) => {
+          const dStr = p.date || p.purchaseDate || p.createdAt;
+          if (dStr && isMatch(dStr)) {
+            const d = String(dStr).slice(0, 10);
+            if (!aggregated[d]) aggregated[d] = { purchase: 0, sales: 0 };
+            aggregated[d].purchase += parseRecordAmount(p);
+          }
+        });
+
+        sales.forEach((s: any) => {
+          const dStr = s.date || s.saleDate || s.createdAt;
+          if (dStr && isMatch(dStr)) {
+            const d = String(dStr).slice(0, 10);
+            if (!aggregated[d]) aggregated[d] = { purchase: 0, sales: 0 };
+            aggregated[d].sales += parseRecordAmount(s);
+          }
+        });
+
+        const sortedDates = Object.keys(aggregated).sort();
+        const finalData = sortedDates.slice(-7).map(d => ({
+          date: d.slice(5), // MM-DD
+          purchase: aggregated[d].purchase,
+          sales: aggregated[d].sales
+        }));
+
+        setChartData(finalData.length ? finalData : [
+          { date: 'Live Data', purchase: 0, sales: 0 }
+        ]);
       } catch(e) {}
     }
     loadData();
-  }, []);
+  }, [timeframe]);
   return (
     <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle flex flex-col justify-between h-[340px]">
       {/* Header */}
@@ -64,10 +86,14 @@ export const PurchaseSalesChart: React.FC = () => {
           <h3 className="text-sm font-extrabold text-slate-800">Purchase & Sales Overview</h3>
           <Info className="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600" />
         </div>
-        <select className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-600 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20">
-          <option>This Month</option>
-          <option>Last Month</option>
-          <option>This Year</option>
+        <select 
+          value={timeframe}
+          onChange={(e) => setTimeframe(e.target.value as any)}
+          className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-600 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+        >
+          <option value="THIS_MONTH">This Month</option>
+          <option value="LAST_MONTH">Last Month</option>
+          <option value="THIS_YEAR">This Year</option>
         </select>
       </div>
 

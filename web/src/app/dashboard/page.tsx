@@ -13,7 +13,7 @@ import { RecentActivitiesFeed } from '@/components/dashboard/RecentActivitiesFee
 import { QuickActionsWidget } from '@/components/dashboard/QuickActionsWidget';
 import { DailyRatePINWidget } from '@/components/common/DailyRatePINModal';
 import { ProfitLossAnalyzer } from '@/components/dashboard/ProfitLossAnalyzer';
-import { apiGetDashboardStats, apiGetFarmers, apiGetPurchases, getTenantId, TimelineFilter, getTimelineDateRange } from '@/lib/api';
+import { apiGetDashboardStats, apiGetFarmers, apiGetPurchases, parseRecordAmount, getTenantId, TimelineFilter, getTimelineDateRange } from '@/lib/api';
 
 import {
   ShoppingBag,
@@ -69,14 +69,14 @@ export default function DashboardPage() {
           return t >= start && t <= end;
         };
 
-        const todaysPurchasesList = purchases.filter((p: any) => inRange(p.createdAt || p.date));
-        const todaysSalesList = sales.filter((s: any) => inRange(s.createdAt || s.date));
-        const todaysPaymentsList = payments.filter((p: any) => inRange(p.createdAt || p.date));
+        const todaysPurchasesList = purchases.filter((p: any) => inRange(p.createdAt || p.date || p.purchaseDate));
+        const todaysSalesList = sales.filter((s: any) => inRange(s.createdAt || s.date || s.saleDate));
+        const todaysPaymentsList = payments.filter((p: any) => inRange(p.createdAt || p.date || p.paymentDate));
 
-        const calcPurchase = todaysPurchasesList.reduce((acc: number, p: any) => acc + parseNum(p.amount || p.totalAmount || p.netAmount), 0);
+        const calcPurchase = todaysPurchasesList.reduce((acc: number, p: any) => acc + parseRecordAmount(p), 0);
         const calcDue = purchases.reduce((acc: number, p: any) => acc + parseNum(p.dueAmount || p.rawDue), 0);
-        const calcSales = todaysSalesList.reduce((acc: number, s: any) => acc + parseNum(s.amount || s.totalAmount), 0);
-        const calcPayments = todaysPaymentsList.reduce((acc: number, p: any) => acc + parseNum(p.amount), 0);
+        const calcSales = todaysSalesList.reduce((acc: number, s: any) => acc + parseRecordAmount(s), 0);
+        const calcPayments = todaysPaymentsList.reduce((acc: number, p: any) => acc + parseRecordAmount(p), 0);
 
         const initialStats = {
           todaysPurchase: `₹${calcPurchase.toLocaleString('en-IN')}`,
@@ -85,7 +85,13 @@ export default function DashboardPage() {
           pendingAmount: `₹${calcDue.toLocaleString('en-IN')}`,
           totalFarmers: farmers.length,
           activeFarmers: farmers.filter((f: any) => f.status !== 'INACTIVE').length || farmers.length,
-          inventoryValue: `₹0`, // Requires real API for inventory aggregate
+          inventoryValue: `₹0`,
+          purchaseChange: '0%',
+          purchaseChangeType: 'neutral',
+          salesChange: '0%',
+          salesChangeType: 'neutral',
+          paymentChange: '0%',
+          paymentChangeType: 'neutral',
         };
         setStats(initialStats);
       }
@@ -134,8 +140,8 @@ export default function DashboardPage() {
             <KPICard
               title={activeTimeline === 'ALL_TIME' ? "Total Purchase" : activeTimeline === 'TODAY' ? "Today's Purchase" : "Purchased"}
               value={stats.todaysPurchase}
-              change="+12%"
-              changeType="up"
+              change={stats.purchaseChange || "0%"}
+              changeType={stats.purchaseChangeType || "neutral"}
               comparison="vs previous"
               icon={ShoppingBag}
               iconBgColor="bg-blue-50"
@@ -146,8 +152,8 @@ export default function DashboardPage() {
             <KPICard
               title={activeTimeline === 'ALL_TIME' ? "Total Sales" : activeTimeline === 'TODAY' ? "Today's Sales" : "Sales"}
               value={stats.todaysSales}
-              change="+8%"
-              changeType="up"
+              change={stats.salesChange || "0%"}
+              changeType={stats.salesChangeType || "neutral"}
               comparison="vs previous"
               icon={TrendingUp}
               iconBgColor="bg-emerald-50"
@@ -158,9 +164,9 @@ export default function DashboardPage() {
             <KPICard
               title={activeTimeline === 'ALL_TIME' ? "Total Payments" : activeTimeline === 'TODAY' ? "Today's Payment" : "Payments"}
               value={stats.todaysPayment}
-              change="+5%"
-              changeType="up"
-              comparison="vs yesterday"
+              change={stats.paymentChange || "0%"}
+              changeType={stats.paymentChangeType || "neutral"}
+              comparison="vs previous"
               icon={CreditCard}
               iconBgColor="bg-purple-50"
               iconTextColor="text-purple-600"
@@ -170,9 +176,9 @@ export default function DashboardPage() {
             <KPICard
               title="Pending Dues"
               value={stats.pendingAmount}
-              change="-3%"
-              changeType="down"
-              comparison="vs yesterday"
+              change={stats.totalFarmers ? `${Math.round((stats.activeFarmers / stats.totalFarmers) * 100)}% active` : "0%"}
+              changeType="neutral"
+              comparison="Farmer network"
               icon={Hourglass}
               iconBgColor="bg-amber-50"
               iconTextColor="text-amber-600"
@@ -194,9 +200,9 @@ export default function DashboardPage() {
             <KPICard
               title="Inventory Valuation"
               value={stats.inventoryValue}
-              change="Optimal"
+              change={stats.inventoryCount ? `${stats.inventoryCount} Crops` : "Live stock"}
               changeType="neutral"
-              comparison="Smart Factory"
+              comparison="Realtime"
               icon={Package}
               iconBgColor="bg-indigo-50"
               iconTextColor="text-indigo-600"

@@ -9,6 +9,7 @@ import {
   apiGetWorkers,
   apiGetAllFarmerMaterials,
   apiGetTraders,
+  apiGetTraderPurchases,
   getTenantId
 } from '@/lib/api';
 import {
@@ -69,18 +70,20 @@ export const ProfitLossAnalyzer: React.FC = () => {
   const [workers, setWorkers] = useState<any[]>([]);
   const [farmerMaterials, setFarmerMaterials] = useState<any[]>([]);
   const [traders, setTraders] = useState<any[]>([]);
+  const [traderPurchases, setTraderPurchases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadFinancialData = async () => {
     setLoading(true);
     try {
-      const [pData, sData, eData, wData, mData, tData] = await Promise.all([
+      const [pData, sData, eData, wData, mData, tData, tpData] = await Promise.all([
         apiGetPurchases(),
         apiGetSales(),
         apiGetExpenses(),
         apiGetWorkers(),
         apiGetAllFarmerMaterials(),
         apiGetTraders(),
+        apiGetTraderPurchases(),
       ]);
       setPurchases(Array.isArray(pData) ? pData : []);
       setSales(Array.isArray(sData) ? sData : []);
@@ -88,6 +91,7 @@ export const ProfitLossAnalyzer: React.FC = () => {
       setWorkers(Array.isArray(wData) ? wData : []);
       setFarmerMaterials(Array.isArray(mData) ? mData : []);
       setTraders(Array.isArray(tData) ? tData : []);
+      setTraderPurchases(Array.isArray(tpData) ? tpData : []);
     } catch (err) {
       console.error('Error loading P&L data:', err);
     } finally {
@@ -104,6 +108,7 @@ export const ProfitLossAnalyzer: React.FC = () => {
       window.addEventListener('expenses_changed', handleSync);
       window.addEventListener('payments_changed', handleSync);
       window.addEventListener('farmer_materials_changed', handleSync);
+      window.addEventListener('trader_purchases_changed', handleSync);
     }
     return () => {
       if (typeof window !== 'undefined') {
@@ -112,6 +117,7 @@ export const ProfitLossAnalyzer: React.FC = () => {
         window.removeEventListener('expenses_changed', handleSync);
         window.removeEventListener('payments_changed', handleSync);
         window.removeEventListener('farmer_materials_changed', handleSync);
+        window.removeEventListener('trader_purchases_changed', handleSync);
       }
     };
   }, []);
@@ -136,6 +142,20 @@ export const ProfitLossAnalyzer: React.FC = () => {
           d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
         } else {
           d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+        }
+      }
+    } else if (str.includes(' ')) {
+      const months: Record<string, number> = {
+        jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+      };
+      const parts = str.split(' ');
+      if (parts.length === 3) {
+        const day = parseInt(parts[0], 10);
+        const mKey = parts[1].toLowerCase().slice(0, 3);
+        const month = months[mKey] ?? -1;
+        const year = parseInt(parts[2], 10);
+        if (!isNaN(day) && month >= 0 && !isNaN(year)) {
+          d = new Date(year, month, day);
         }
       }
     }
@@ -205,32 +225,45 @@ export const ProfitLossAnalyzer: React.FC = () => {
     return parseFloat(String(val).replace(/[^0-9.-]+/g, '')) || 0;
   };
 
+  // Safe amount extractor that prioritizes real positive values and handles zero totalAmount edge-cases
+  const parseRecordAmount = (item: any): number => {
+    if (!item) return 0;
+    const candidates = [item.netAmount, item.totalAmount, item.amount];
+    for (const val of candidates) {
+      if (val !== undefined && val !== null) {
+        const num = typeof val === 'number' ? val : parseFloat(String(val).replace(/[^0-9.-]+/g, ''));
+        if (!isNaN(num) && num > 0) return num;
+      }
+    }
+    const weight = parseFloat(String(item.totalWeight || item.weight || item.quantity || '0').replace(/[^0-9.-]+/g, '')) || 0;
+    const rate = parseFloat(String(item.rate || item.ratePerKg || item.unitPrice || '0').replace(/[^0-9.-]+/g, '')) || 0;
+    return weight * rate;
+  };
+
   // Filtered lists
   const filteredPurchases = useMemo(() => purchases.filter((p) => isDateInTimeline(p.date || p.purchaseDate || p.createdAt)), [purchases, timeline, customStartDate, customEndDate]);
   const filteredSales = useMemo(() => sales.filter((s) => isDateInTimeline(s.date || s.saleDate || s.createdAt)), [sales, timeline, customStartDate, customEndDate]);
   const filteredExpenses = useMemo(() => expenses.filter((e) => isDateInTimeline(e.date || e.createdAt)), [expenses, timeline, customStartDate, customEndDate]);
   const filteredMaterials = useMemo(() => farmerMaterials.filter((m) => isDateInTimeline(m.date || m.createdAt)), [farmerMaterials, timeline, customStartDate, customEndDate]);
+  const filteredTraderPurchases = useMemo(() => traderPurchases.filter((t) => isDateInTimeline(t.date || t.createdAt)), [traderPurchases, timeline, customStartDate, customEndDate]);
 
   // Calculations
   const salesRevenue = useMemo(() => {
-    return filteredSales.reduce((acc, s) => {
-      const amt = s.netAmount ?? s.totalAmount ?? s.amount ?? (parseNum(s.weight) * parseNum(s.rate));
-      return acc + parseNum(amt);
-    }, 0);
+    return filteredSales.reduce((acc, s) => acc + parseRecordAmount(s), 0);
   }, [filteredSales]);
 
   const materialsIssuedRevenue = useMemo(() => {
     return filteredMaterials.reduce((acc, m) => {
-      const amt = m.totalPrice ?? m.totalAmount ?? m.amount ?? (parseNum(m.quantity) * parseNum(m.unitPrice));
-      return acc + parseNum(amt);
+      const amt = parseRecordAmount(m);
+      if (amt > 0) return acc + amt;
+      const q = parseNum(m.quantity);
+      const p = parseNum(m.unitPrice);
+      return acc + (q * p);
     }, 0);
   }, [filteredMaterials]);
 
   const farmerPurchasesCost = useMemo(() => {
-    return filteredPurchases.reduce((acc, p) => {
-      const amt = p.totalAmount ?? p.amount ?? (parseNum(p.weight) * parseNum(p.rate));
-      return acc + parseNum(amt);
-    }, 0);
+    return filteredPurchases.reduce((acc, p) => acc + parseRecordAmount(p), 0);
   }, [filteredPurchases]);
 
   const workerWagesCost = useMemo(() => {
@@ -248,11 +281,14 @@ export const ProfitLossAnalyzer: React.FC = () => {
   }, [filteredExpenses]);
 
   const traderSuppliesCost = useMemo(() => {
+    if (filteredTraderPurchases.length > 0) {
+      return filteredTraderPurchases.reduce((acc, t) => acc + parseRecordAmount(t), 0);
+    }
     return traders.reduce((acc, t) => {
       const amt = t.totalSupplied ?? t.totalPurchased ?? t.totalAmount ?? 0;
       return acc + parseNum(amt);
     }, 0);
-  }, [traders]);
+  }, [filteredTraderPurchases, traders]);
 
   // Aggregate Totals based on Checkboxes & Custom Adjustments
   const totalInflows = useMemo(() => {
@@ -604,7 +640,7 @@ export const ProfitLossAnalyzer: React.FC = () => {
                     {language === 'mr' ? 'व्यापाऱ्यांकडून खरेदी माल (Supplies)' : 'Trader Material Purchases'}
                   </span>
                   <span className="text-[10px] text-slate-400">
-                    {traders.length} {language === 'mr' ? 'सप्लायर्स' : 'traders'}
+                    {filteredTraderPurchases.length > 0 ? filteredTraderPurchases.length : traders.length} {language === 'mr' ? 'खरेदी नोंदी' : 'purchases'}
                   </span>
                 </div>
               </div>
