@@ -1839,10 +1839,35 @@ export const apiGetSales = async () => {
   try {
     const { data, error } = await supabase.from('Sale').select('*').eq('tenantId', tenantId).order('createdAt', { ascending: false });
     if (!error && Array.isArray(data)) {
-      setLocalCache(`seavaig_sales_cache_${tenantId}`, data);
-      return data;
+      const enriched = data.map((s: any) => {
+        if (s.itemsData && typeof s.itemsData === 'object' && s.itemsData.pattiMeta) {
+          const meta = s.itemsData.pattiMeta;
+          return {
+            ...s,
+            isPattiReceived: meta.isPattiReceived ?? s.isPattiReceived,
+            isRateFixedNow: meta.isRateFixedNow ?? s.isRateFixedNow,
+            rateBasis: meta.rateBasis ?? s.rateBasis,
+            sellerPattiAdvance: meta.sellerPattiAdvance ?? s.sellerPattiAdvance,
+            sellerAdvanceMode: meta.sellerAdvanceMode ?? s.sellerAdvanceMode,
+            sellerAdvanceRef: meta.sellerAdvanceRef ?? s.sellerAdvanceRef,
+            pattiStatus: meta.pattiStatus ?? s.pattiStatus,
+            pattiDetails: meta.pattiDetails ?? s.pattiDetails,
+            pattiBargainingNotes: meta.pattiBargainingNotes ?? s.pattiBargainingNotes,
+            pattiRateLock: meta.pattiRateLock ?? s.pattiRateLock,
+            items: s.items || s.itemsData?.lines || []
+          };
+        }
+        return s;
+      });
+      setLocalCache(`seavaig_sales_cache_${tenantId}`, enriched);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('seavaig_sales_cache', JSON.stringify(enriched));
+      }
+      return enriched;
     }
-  } catch {}
+  } catch (e) {
+    console.error('apiGetSales error:', e);
+  }
   return getLocalCache(`seavaig_sales_cache_${tenantId}`, []);
 };
 
@@ -1856,7 +1881,6 @@ export const apiCreateSale = async (saleData: any) => {
   const mm = String(today.getMonth() + 1).padStart(2, '0');
   const yy = String(today.getFullYear()).slice(2);
   const dateFormatted = `${dd}/${mm}/${yy}`;
-  const ddmmyy = `${dd}${mm}${yy}`;
   
   const { data: latestData } = await supabase
     .from('Sale')
@@ -1879,14 +1903,49 @@ export const apiCreateSale = async (saleData: any) => {
   const serialBillNo = saleData.billNo || `sale-${dateFormatted}-${serial}`;
   const newId = serialBillNo;
   
-  // Non-schema columns to strip before sending to Supabase Sale table
-  const invalidCols = ['driverSignatureUrl', 'deliveryStatus', 'paymentHistory', 'notes', 'rate', 'price', 'cropName', 'weight', 'itemsData', 'itemsList', 'customerGstin', 'buyerGstin', 'lineItems'];
+  // Real columns in PostgreSQL 'Sale' table
+  const VALID_SALE_COLUMNS = new Set([
+    'id', 'tenantId', 'billNo', 'saleNo', 'customerId', 'customerName', 'phone', 'address',
+    'amount', 'totalAmount', 'totalWeight', 'paidAmount', 'dueAmount', 'paymentStatus',
+    'paymentHistory', 'deliveryStatus', 'vehicleNo', 'driverName', 'driverPhone',
+    'vehiclePhotoUrl', 'driverSignatureUrl', 'photoUrl', 'farmerBatches', 'items', 'itemsData',
+    'status', 'date', 'saleDate', 'createdAt', 'invoiceNo', 'vehicleType', 'ownerName',
+    'ownerPhone', 'driverSignature', 'ownerSignature', 'traceabilityLotId', 'updatedAt'
+  ]);
+
+  // Pack patti and line metadata cleanly into itemsData JSON column
+  const pattiMeta = {
+    isPattiReceived: Boolean(saleData.isPattiReceived),
+    isRateFixedNow: saleData.isRateFixedNow !== undefined ? Boolean(saleData.isRateFixedNow) : true,
+    rateBasis: saleData.rateBasis || (saleData.isRateFixedNow === false ? 'PATTI_BASIS' : 'FIXED'),
+    pattiStatus: saleData.pattiStatus || (saleData.isPattiReceived ? 'CONFIRMED' : (saleData.isRateFixedNow === false ? 'RATE_PENDING' : 'CONFIRMED')),
+    sellerPattiAdvance: Number(saleData.sellerPattiAdvance || 0),
+    sellerAdvanceMode: saleData.sellerAdvanceMode || 'CASH',
+    sellerAdvanceRef: saleData.sellerAdvanceRef || '',
+    pattiRateLock: Boolean(saleData.pattiRateLock),
+    pattiDetails: saleData.pattiDetails || null,
+    pattiBargainingNotes: saleData.pattiBargainingNotes || '',
+  };
+
+  const lines = Array.isArray(saleData.itemsData?.lines)
+    ? saleData.itemsData.lines
+    : (Array.isArray(saleData.items) ? saleData.items : (Array.isArray(saleData.lineItems) ? saleData.lineItems : []));
+
+  const itemsDataCombined = {
+    lines,
+    pattiMeta
+  };
+
   const dbSaleData: any = {};
   for (const [k, v] of Object.entries(saleData)) {
-    if (!invalidCols.includes(k)) {
+    if (VALID_SALE_COLUMNS.has(k)) {
       dbSaleData[k] = v;
     }
   }
+
+  dbSaleData.itemsData = itemsDataCombined;
+  dbSaleData.deliveryStatus = dbSaleData.deliveryStatus || saleData.deliveryStatus || 'IN_TRANSIT';
+  dbSaleData.paymentHistory = Array.isArray(saleData.paymentHistory) ? saleData.paymentHistory : [];
 
   const targetCustomerId = dbSaleData.customerId || `cust-${tenantShort}-${Date.now()}`;
   dbSaleData.customerId = targetCustomerId;
@@ -1924,10 +1983,24 @@ export const apiCreateSale = async (saleData: any) => {
     console.error('apiCreateSale error:', e);
   }
 
+  const resultSale = {
+    ...saleData,
+    ...pattiMeta,
+    id: newId,
+    billNo: serialBillNo,
+    customerId: targetCustomerId,
+    tenantId,
+    itemsData: itemsDataCombined,
+    deliveryStatus: dbSaleData.deliveryStatus,
+  };
+
   const current = getLocalCache(`seavaig_sales_cache_${tenantId}`, []);
-  const updated = [{ ...saleData, id: newId, billNo: serialBillNo, customerId: targetCustomerId, tenantId }, ...current];
+  const updated = [resultSale, ...current.filter((s: any) => s.id !== newId)];
   setLocalCache(`seavaig_sales_cache_${tenantId}`, updated);
-  return { ...saleData, id: newId, billNo: serialBillNo, customerId: targetCustomerId, tenantId };
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('seavaig_sales_cache', JSON.stringify(updated));
+  }
+  return resultSale;
 };
 
 export const apiUpdateSalePayment = async (
@@ -1977,6 +2050,7 @@ export const apiUpdateSalePayment = async (
     dueAmount: newDueAmount,
     paymentStatus: newStatus,
     status: newStatus,
+    paymentHistory: updatedHistory,
     updatedAt: new Date().toISOString()
   };
 
@@ -1999,6 +2073,9 @@ export const apiUpdateSalePayment = async (
     return s;
   });
   setLocalCache(`seavaig_sales_cache_${tenantId}`, updatedList);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('seavaig_sales_cache', JSON.stringify(updatedList));
+  }
 
   return {
     ...currentSale,
@@ -2010,22 +2087,90 @@ export const apiUpdateSalePayment = async (
 export const apiUpdateSale = async (id: string, updateData: any) => {
   const tenantId = getTenantId();
   try {
-    const invalidCols = ['driverSignatureUrl', 'deliveryStatus', 'paymentHistory', 'notes', 'rate', 'price', 'cropName', 'weight'];
+    const VALID_SALE_COLUMNS = new Set([
+      'id', 'tenantId', 'billNo', 'saleNo', 'customerId', 'customerName', 'phone', 'address',
+      'amount', 'totalAmount', 'totalWeight', 'paidAmount', 'dueAmount', 'paymentStatus',
+      'paymentHistory', 'deliveryStatus', 'vehicleNo', 'driverName', 'driverPhone',
+      'vehiclePhotoUrl', 'driverSignatureUrl', 'photoUrl', 'farmerBatches', 'items', 'itemsData',
+      'status', 'date', 'saleDate', 'createdAt', 'invoiceNo', 'vehicleType', 'ownerName',
+      'ownerPhone', 'driverSignature', 'ownerSignature', 'traceabilityLotId', 'updatedAt'
+    ]);
+
+    const hasPattiFields = [
+      'isPattiReceived', 'isRateFixedNow', 'rateBasis', 'pattiStatus',
+      'sellerPattiAdvance', 'sellerAdvanceMode', 'sellerAdvanceRef',
+      'pattiRateLock', 'pattiDetails', 'pattiBargainingNotes'
+    ].some(k => k in updateData);
+
     const dbUpdateData: any = {};
     for (const [k, v] of Object.entries(updateData)) {
-      if (!invalidCols.includes(k)) {
+      if (VALID_SALE_COLUMNS.has(k)) {
         dbUpdateData[k] = v;
       }
     }
+
+    if (hasPattiFields || updateData.itemsData) {
+      const cached = tenantId ? getLocalCache(`seavaig_sales_cache_${tenantId}`, []) : [];
+      const currentSale = cached.find((s: any) => s.id === id || s.billNo === id) || {};
+      const currentMeta = (currentSale.itemsData && typeof currentSale.itemsData === 'object' && currentSale.itemsData.pattiMeta) || {};
+
+      const newMeta = {
+        ...currentMeta,
+        isPattiReceived: updateData.isPattiReceived !== undefined ? Boolean(updateData.isPattiReceived) : (currentMeta.isPattiReceived ?? currentSale.isPattiReceived),
+        isRateFixedNow: updateData.isRateFixedNow !== undefined ? Boolean(updateData.isRateFixedNow) : (currentMeta.isRateFixedNow ?? currentSale.isRateFixedNow),
+        rateBasis: updateData.rateBasis !== undefined ? updateData.rateBasis : (currentMeta.rateBasis ?? currentSale.rateBasis),
+        pattiStatus: updateData.pattiStatus !== undefined ? updateData.pattiStatus : (currentMeta.pattiStatus ?? currentSale.pattiStatus),
+        sellerPattiAdvance: updateData.sellerPattiAdvance !== undefined ? Number(updateData.sellerPattiAdvance) : (currentMeta.sellerPattiAdvance ?? currentSale.sellerPattiAdvance),
+        sellerAdvanceMode: updateData.sellerAdvanceMode !== undefined ? updateData.sellerAdvanceMode : (currentMeta.sellerAdvanceMode ?? currentSale.sellerAdvanceMode),
+        sellerAdvanceRef: updateData.sellerAdvanceRef !== undefined ? updateData.sellerAdvanceRef : (currentMeta.sellerAdvanceRef ?? currentSale.sellerAdvanceRef),
+        pattiRateLock: updateData.pattiRateLock !== undefined ? Boolean(updateData.pattiRateLock) : (currentMeta.pattiRateLock ?? currentSale.pattiRateLock),
+        pattiDetails: updateData.pattiDetails !== undefined ? updateData.pattiDetails : (currentMeta.pattiDetails ?? currentSale.pattiDetails),
+        pattiBargainingNotes: updateData.pattiBargainingNotes !== undefined ? updateData.pattiBargainingNotes : (currentMeta.pattiBargainingNotes ?? currentSale.pattiBargainingNotes),
+      };
+
+      const lines = Array.isArray(updateData.itemsData)
+        ? updateData.itemsData
+        : (updateData.itemsData?.lines || currentSale.itemsData?.lines || currentSale.items || []);
+
+      dbUpdateData.itemsData = {
+        lines,
+        pattiMeta: newMeta
+      };
+    }
+
+    dbUpdateData.updatedAt = new Date().toISOString();
+
     if (Object.keys(dbUpdateData).length > 0) {
       let query = supabase.from('Sale').update(dbUpdateData).eq('id', id);
       if (tenantId) {
         query = query.eq('tenantId', tenantId);
       }
-      await query;
+      await query.throwOnError();
+    }
+
+    // Synchronize local caches
+    if (tenantId) {
+      const cacheKey = `seavaig_sales_cache_${tenantId}`;
+      const cached = getLocalCache(cacheKey, []);
+      const updated = cached.map((s: any) => {
+        if (s.id === id || s.billNo === id) {
+          return {
+            ...s,
+            ...updateData,
+            ...dbUpdateData,
+            ...(dbUpdateData.itemsData?.pattiMeta || {})
+          };
+        }
+        return s;
+      });
+      setLocalCache(cacheKey, updated);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('seavaig_sales_cache', JSON.stringify(updated));
+      }
     }
   } catch (e) {
     console.error('apiUpdateSale error:', e);
+    throw e;
   }
 };
 

@@ -130,7 +130,27 @@ export default function SellerPortalPage() {
     }
     
     const { data: salesRes } = await query.order('createdAt', { ascending: false });
-    setDispatches(salesRes || []);
+    const enrichedSales = (salesRes || []).map((s: any) => {
+      if (s.itemsData && typeof s.itemsData === 'object' && s.itemsData.pattiMeta) {
+        const meta = s.itemsData.pattiMeta;
+        return {
+          ...s,
+          isPattiReceived: meta.isPattiReceived ?? s.isPattiReceived,
+          isRateFixedNow: meta.isRateFixedNow ?? s.isRateFixedNow,
+          rateBasis: meta.rateBasis ?? s.rateBasis,
+          sellerPattiAdvance: meta.sellerPattiAdvance ?? s.sellerPattiAdvance,
+          sellerAdvanceMode: meta.sellerAdvanceMode ?? s.sellerAdvanceMode,
+          sellerAdvanceRef: meta.sellerAdvanceRef ?? s.sellerAdvanceRef,
+          pattiStatus: meta.pattiStatus ?? s.pattiStatus,
+          pattiDetails: meta.pattiDetails ?? s.pattiDetails,
+          pattiBargainingNotes: meta.pattiBargainingNotes ?? s.pattiBargainingNotes,
+          pattiRateLock: meta.pattiRateLock ?? s.pattiRateLock,
+          items: s.items || s.itemsData?.lines || []
+        };
+      }
+      return s;
+    });
+    setDispatches(enrichedSales);
 
     // 2. Get today's crop rates for this tenant
     const { data: rates } = await supabase
@@ -178,7 +198,7 @@ export default function SellerPortalPage() {
 
   const markAsReceived = async (billId: string) => {
     try {
-      await supabase.from('Sale').update({ status: 'RECEIVED' }).eq('id', billId).throwOnError();
+      await supabase.from('Sale').update({ status: 'RECEIVED', deliveryStatus: 'RECEIVED' }).eq('id', billId).throwOnError();
       setDispatches(prev => prev.map(b => b.id === billId ? { ...b, deliveryStatus: 'RECEIVED', status: 'RECEIVED' } : b));
       if (selectedBillForModal && selectedBillForModal.id === billId) {
         setSelectedBillForModal((prev: any) => ({ ...prev, deliveryStatus: 'RECEIVED', status: 'RECEIVED' }));
@@ -334,27 +354,45 @@ export default function SellerPortalPage() {
       const totalPaidFinal = advancePaidEarlier + (isFinalLock ? netPayable : 0);
       const dueFinal = Math.max(0, netPattiAmount - totalPaidFinal);
 
-      const patchPayload = {
+      const existingItemsData = typeof billForPatti.itemsData === 'object' && billForPatti.itemsData !== null ? billForPatti.itemsData : {};
+      const updatedItemsData = {
+        ...existingItemsData,
+        lines: editablePattiItems,
+        pattiMeta: {
+          isPattiReceived: true,
+          pattiBargainingNotes,
+          pattiDetails,
+          pattiRateLock: isFinalLock,
+          pattiStatus: isFinalLock ? 'CONFIRMED' : 'PATTI_DRAFT',
+          rateBasis: 'PATTI',
+          sellerPattiAdvance: advancePaidEarlier,
+        }
+      };
+
+      const dbUpdatePayload = {
         amount: grossAmt,
-        itemsData: editablePattiItems,
-        pattiBargainingNotes,
-        pattiDetails,
-        pattiRateLock: isFinalLock,
-        pattiStatus: isFinalLock ? 'CONFIRMED' : 'PATTI_DRAFT',
+        totalAmount: grossAmt,
+        itemsData: updatedItemsData,
         status: isFinalLock ? 'PATTI_CLEARED' : (billForPatti.status || 'RECEIVED'),
         deliveryStatus: isFinalLock ? 'PATTI_CLEARED' : 'RECEIVED',
         paymentStatus: isFinalLock ? (dueFinal === 0 ? 'PAID' : 'PARTIAL') : billForPatti.paymentStatus,
         paidAmount: isFinalLock ? totalPaidFinal : billForPatti.paidAmount,
         dueAmount: isFinalLock ? dueFinal : billForPatti.dueAmount,
         paymentHistory: updatedHistory,
+        updatedAt: new Date().toISOString()
       };
 
-      await supabase.from('Sale').update(patchPayload).eq('id', billForPatti.id).throwOnError();
+      await supabase.from('Sale').update(dbUpdatePayload).eq('id', billForPatti.id).throwOnError();
 
       // Update in local React state
       const updatedBill = {
         ...billForPatti,
-        ...patchPayload
+        ...dbUpdatePayload,
+        pattiBargainingNotes,
+        pattiDetails,
+        pattiRateLock: isFinalLock,
+        pattiStatus: isFinalLock ? 'CONFIRMED' : 'PATTI_DRAFT',
+        isPattiReceived: true,
       };
 
       setDispatches(prev => prev.map(b => b.id === billForPatti.id ? updatedBill : b));
@@ -839,7 +877,7 @@ export default function SellerPortalPage() {
                             <span>Manifest</span>
                           </button>
                           
-                          {bill.deliveryStatus !== 'RECEIVED' && bill.deliveryStatus !== 'PATTI_CLEARED' && bill.status !== 'PATTI_CLEARED' && (
+                          {!(bill.deliveryStatus === 'RECEIVED' || bill.status === 'RECEIVED' || bill.deliveryStatus === 'PATTI_CLEARED' || bill.status === 'PATTI_CLEARED') && (
                             <button 
                               type="button"
                               onClick={(e) => {
@@ -1006,7 +1044,7 @@ export default function SellerPortalPage() {
                     </span>
                   </div>
                 </div>
-                {selectedBillForModal.deliveryStatus !== 'RECEIVED' && (
+                {!(selectedBillForModal.deliveryStatus === 'RECEIVED' || selectedBillForModal.status === 'RECEIVED' || selectedBillForModal.deliveryStatus === 'PATTI_CLEARED' || selectedBillForModal.status === 'PATTI_CLEARED') && (
                   <button
                     onClick={() => markAsReceived(selectedBillForModal.id)}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-sm text-xs flex items-center gap-1.5 cursor-pointer"
