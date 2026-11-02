@@ -24,38 +24,7 @@ import {
   isFarmerMatch, 
   getTenantId 
 } from '@/lib/api';
-
-const parseDateRobust = (dateStr: string): Date => {
-  if (!dateStr) return new Date(0);
-  let d = new Date(dateStr);
-  if (!isNaN(d.getTime())) return d;
-  
-  if (dateStr.includes('/')) {
-    const parts = dateStr.split('/');
-    if (parts.length === 3) {
-      d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-      if (!isNaN(d.getTime())) return d;
-    }
-  }
-  
-  const months: { [key: string]: number } = {
-    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
-    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
-  };
-  const cleaned = dateStr.replace(/\s+/g, ' ').trim();
-  const parts = cleaned.split(' ');
-  if (parts.length === 3) {
-    const day = parseInt(parts[0], 10);
-    const monthStr = parts[1].toLowerCase().substring(0, 3);
-    const year = parseInt(parts[2], 10);
-    if (months[monthStr] !== undefined && !isNaN(day) && !isNaN(year)) {
-      d = new Date(year, months[monthStr], day);
-      if (!isNaN(d.getTime())) return d;
-    }
-  }
-  
-  return new Date(dateStr);
-};
+import { parseDateRobust, isDateInTimeline } from '@/lib/dateUtils';
 import {
   ShoppingBag,
   Scale,
@@ -412,32 +381,7 @@ export default function PurchasesPage() {
   };
 
   const filteredPurchases = purchases.filter((p) => {
-    let dateMatch = true;
-    if (timelineFilter !== 'ALL_TIME' && (p.purchaseDate || p.date)) {
-      const pDate = parseDateRobust(p.purchaseDate || p.date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (timelineFilter === 'TODAY') {
-        dateMatch = pDate >= today;
-      } else if (timelineFilter === 'YESTERDAY') {
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        dateMatch = pDate >= yesterday && pDate < today;
-      } else if (timelineFilter === 'THIS_WEEK' || timelineFilter === 'WEEK') {
-        const weekAgo = new Date(today);
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        dateMatch = pDate >= weekAgo;
-      } else if (timelineFilter === 'THIS_MONTH' || timelineFilter === 'MONTH') {
-        const monthAgo = new Date(today);
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        dateMatch = pDate >= monthAgo;
-      } else if (timelineFilter === 'CUSTOM' && customStartDate && customEndDate) {
-        const s = new Date(customStartDate);
-        const e = new Date(customEndDate);
-        dateMatch = pDate >= s && pDate <= e;
-      }
-    }
+    const dateMatch = isDateInTimeline(p.purchaseDate || p.date || p.createdAt, timelineFilter, customStartDate, customEndDate);
 
     const textMatch = 
       (p.farmerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -22,6 +22,7 @@ import {
   MessageCircle,
   X
 } from 'lucide-react';
+import { isDateInTimeline, TimelineFilter } from '@/lib/dateUtils';
 
 const initialPayments: any[] = [];
 
@@ -34,6 +35,7 @@ export default function PaymentsPage() {
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('ALL_TIME');
 
   useEffect(() => {
     const tenantId = getTenantId();
@@ -97,12 +99,14 @@ export default function PaymentsPage() {
     });
   };
 
-  const filtered = payments.filter(
-    (p) =>
+  const filtered = payments.filter((p) => {
+    const dateMatch = isDateInTimeline(p.date || p.paymentDate || p.createdAt, timelineFilter);
+    const textMatch = 
       (p.farmerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.method || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+      (p.method || '').toLowerCase().includes(searchQuery.toLowerCase());
+    return dateMatch && textMatch;
+  });
 
   const parseAmt = (val: any): number => {
     if (typeof val === 'number') return val;
@@ -110,12 +114,12 @@ export default function PaymentsPage() {
     return parseFloat(String(val).replace(/[^0-9.-]+/g, '')) || 0;
   };
 
-  const totalPaidOutSum = payments.reduce((acc, p) => acc + parseAmt(p.amount), 0);
+  const totalPaidOutSum = filtered.reduce((acc, p) => acc + parseAmt(p.amount), 0);
   
-  const bankOrUpiPayments = payments.filter(p => String(p.method).toUpperCase().includes('UPI') || String(p.method).toUpperCase().includes('BANK') || String(p.method).toUpperCase().includes('TRANSFER'));
-  const bankOrUpiRatio = payments.length > 0 ? (bankOrUpiPayments.length / payments.length) * 100 : 92.4;
+  const bankOrUpiPayments = filtered.filter(p => String(p.method).toUpperCase().includes('UPI') || String(p.method).toUpperCase().includes('BANK') || String(p.method).toUpperCase().includes('TRANSFER'));
+  const bankOrUpiRatio = filtered.length > 0 ? (bankOrUpiPayments.length / filtered.length) * 100 : 92.4;
 
-  const chequePayments = payments.filter(p => String(p.method).toUpperCase().includes('CHEQUE'));
+  const chequePayments = filtered.filter(p => String(p.method).toUpperCase().includes('CHEQUE'));
   const pendingChequesSum = chequePayments.reduce((acc, p) => acc + parseAmt(p.amount), 0);
 
   return (
@@ -204,6 +208,21 @@ export default function PaymentsPage() {
                   placeholder={t.searchPlaceholder}
                   className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={timelineFilter}
+                  onChange={(e) => setTimelineFilter(e.target.value as TimelineFilter)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="ALL_TIME">All Time</option>
+                  <option value="TODAY">Today</option>
+                  <option value="YESTERDAY">Yesterday</option>
+                  <option value="THIS_WEEK">This Week</option>
+                  <option value="THIS_MONTH">This Month</option>
+                  <option value="THIS_YEAR">This Year</option>
+                </select>
               </div>
             </div>
 

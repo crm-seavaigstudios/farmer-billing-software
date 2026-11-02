@@ -63,6 +63,19 @@ export type ReceiptData = {
   driverPhone?: string;
   gstin?: string;
   buyerGstin?: string;
+  pattiDetails?: {
+    hamali?: number;
+    tolai?: number;
+    mandiTax?: number;
+    commission?: number;
+    freight?: number;
+    other?: number;
+    totalDeductions?: number;
+    netPayable?: number;
+    clearedDate?: string;
+    paymentMode?: string;
+    paymentRef?: string;
+  };
 };
 
 export function numberToWordsINR(amount: number | string): string {
@@ -449,7 +462,9 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
             <div className="py-2 px-3 my-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
               <div>
                 <span className="font-black text-blue-700 uppercase tracking-wider block text-[11px]">
-                  {data.type === 'FARMER_PAYMENT' 
+                  {data.type === 'PATTI_CLEAR'
+                    ? 'APMC MANDI VIKRI PATTI (कृषी उत्पन्न बाजार समिती विक्री पट्टी)'
+                    : data.type === 'FARMER_PAYMENT' 
                     ? 'PAYMENT VOUCHER / RECEIPT (पेमेंट पावती)'
                     : (data.type === 'B2B_SALE' || data.type === 'SALE' 
                         ? 'TAX INVOICE / SALES BILL (कर बीजक)' 
@@ -577,6 +592,63 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
                 </tbody>
               </table>
             </div>
+
+            {/* APMC Mandi Deductions Breakdown if Patti Clear */}
+            {data.pattiDetails && (
+              <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200 space-y-1.5 text-xs mb-3 text-slate-800">
+                <div className="flex justify-between items-center font-black text-amber-950 pb-1 border-b border-amber-200">
+                  <span className="uppercase tracking-wider text-[10px]">APMC Mandi Deductions (बाजार समिती वजावटी):</span>
+                  <span>रक्कम (₹)</span>
+                </div>
+                {(data.pattiDetails.hamali || 0) > 0 && (
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-600">हमाली (Hamali):</span>
+                    <span className="font-bold text-rose-700">- ₹{Number(data.pattiDetails.hamali).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {(data.pattiDetails.tolai || 0) > 0 && (
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-600">तोलाई / वजन (Tolai):</span>
+                    <span className="font-bold text-rose-700">- ₹{Number(data.pattiDetails.tolai).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {(data.pattiDetails.mandiTax || 0) > 0 && (
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-600">बाजार फी / सेस (Mandi Cess):</span>
+                    <span className="font-bold text-rose-700">- ₹{Number(data.pattiDetails.mandiTax).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {(data.pattiDetails.commission || 0) > 0 && (
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-600">आडत / दलाली (Commission):</span>
+                    <span className="font-bold text-rose-700">- ₹{Number(data.pattiDetails.commission).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {(data.pattiDetails.freight || 0) > 0 && (
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-600">वाहतूक भाडे (Freight):</span>
+                    <span className="font-bold text-rose-700">- ₹{Number(data.pattiDetails.freight).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {(data.pattiDetails.other || 0) > 0 && (
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-600">इतर खर्च / बारदाना (Other):</span>
+                    <span className="font-bold text-rose-700">- ₹{Number(data.pattiDetails.other).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-black text-rose-800 text-xs pt-1 border-t border-amber-200">
+                  <span>एकूण वजावट (Total Deductions):</span>
+                  <span>- ₹{Number(data.pattiDetails.totalDeductions || (
+                    (data.pattiDetails.hamali || 0) +
+                    (data.pattiDetails.tolai || 0) +
+                    (data.pattiDetails.mandiTax || 0) +
+                    (data.pattiDetails.commission || 0) +
+                    (data.pattiDetails.freight || 0) +
+                    (data.pattiDetails.other || 0)
+                  )).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+            )}
 
             {/* Financial Summary & Amount in Words */}
             <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2 text-xs mb-4">

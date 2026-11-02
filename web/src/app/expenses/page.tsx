@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { AddExpenseModal } from '@/components/expenses/AddExpenseModal';
 import { apiGetExpenses } from '@/lib/api';
+import { isDateInTimeline, TimelineFilter } from '@/lib/dateUtils';
 import { useLanguage } from '@/context/LanguageContext';
 import {
   DollarSign,
@@ -21,6 +22,7 @@ import {
 export default function ExpensesPage() {
   const { t, language } = useLanguage();
   const [expenses, setExpenses] = useState<any[]>([]);
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('ALL_TIME');
   
   useEffect(() => {
     const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_expenses_cache') : null;
@@ -68,11 +70,12 @@ export default function ExpensesPage() {
   };
 
   const filtered = expenses.filter((e) => {
+    const matchesDate = isDateInTimeline(e.date || e.createdAt, timelineFilter);
     const matchesSearch =
       (e.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (e.id || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = categoryFilter === 'ALL' || e.category === categoryFilter;
-    return matchesSearch && matchesCategory;
+    return matchesDate && matchesSearch && matchesCategory;
   });
 
   return (
@@ -113,7 +116,7 @@ export default function ExpensesPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Total Expenses</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹{expenses.reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{filtered.reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-rose-600">Operational</span>
               </div>
             </div>
@@ -124,7 +127,7 @@ export default function ExpensesPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Freight & Fuel</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹{expenses.filter(e => e.category === 'Transport & Freight').reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{filtered.filter(e => e.category === 'Transport & Freight').reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-blue-600">Transport Costs</span>
               </div>
             </div>
@@ -135,7 +138,7 @@ export default function ExpensesPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Cold Storage Utility</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹{expenses.filter(e => e.category === 'Cold Storage Electricity').reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{filtered.filter(e => e.category === 'Cold Storage Electricity').reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-amber-600">Electricity Power</span>
               </div>
             </div>
@@ -146,7 +149,7 @@ export default function ExpensesPage() {
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-500">Packaging Crates</span>
-                <h3 className="text-xl font-extrabold text-slate-900">₹{expenses.filter(e => e.category === 'Packaging & Crates').reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
+                <h3 className="text-xl font-extrabold text-slate-900">₹{filtered.filter(e => e.category === 'Packaging & Crates').reduce((acc, e) => acc + (parseFloat(String(e.amount).replace(/[^0-9.-]+/g, '')) || 0), 0).toLocaleString('en-IN')}</h3>
                 <span className="text-[10px] font-bold text-purple-600">Punnets</span>
               </div>
             </div>
@@ -167,6 +170,19 @@ export default function ExpensesPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                <select
+                  value={timelineFilter}
+                  onChange={(e) => setTimelineFilter(e.target.value as TimelineFilter)}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-xl focus:outline-none cursor-pointer"
+                >
+                  <option value="ALL_TIME">All Time</option>
+                  <option value="TODAY">Today</option>
+                  <option value="YESTERDAY">Yesterday</option>
+                  <option value="THIS_WEEK">This Week</option>
+                  <option value="THIS_MONTH">This Month</option>
+                  <option value="THIS_YEAR">This Year</option>
+                </select>
+
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value)}

@@ -13,7 +13,7 @@ import { RecentActivitiesFeed } from '@/components/dashboard/RecentActivitiesFee
 import { QuickActionsWidget } from '@/components/dashboard/QuickActionsWidget';
 import { DailyRatePINWidget } from '@/components/common/DailyRatePINModal';
 import { ProfitLossAnalyzer } from '@/components/dashboard/ProfitLossAnalyzer';
-import { apiGetDashboardStats, apiGetFarmers, apiGetPurchases, parseRecordAmount, getTenantId, TimelineFilter, getTimelineDateRange } from '@/lib/api';
+import { apiGetDashboardStats, apiGetFarmers, apiGetPurchases, parseRecordAmount, getTenantId, TimelineFilter, getTimelineDateRange, parseDateRobust } from '@/lib/api';
 
 import {
   ShoppingBag,
@@ -65,7 +65,7 @@ export default function DashboardPage() {
 
         const inRange = (dStr: string) => {
           if (!dStr) return false;
-          const t = new Date(dStr).getTime();
+          const t = parseDateRobust(dStr).getTime();
           return t >= start && t <= end;
         };
 

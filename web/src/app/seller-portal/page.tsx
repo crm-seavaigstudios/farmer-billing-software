@@ -23,9 +23,11 @@ import {
   MapPin,
   CheckCircle2,
   FileText,
-  Printer
+  Printer,
+  Scale
 } from "lucide-react";
 import { PrintReceiptModal } from '@/components/common/PrintReceiptModal';
+import { isDateInTimeline, parseDateRobust, TimelineFilter } from '@/lib/dateUtils';
 
 export default function SellerPortalPage() {
   const router = useRouter();
@@ -40,11 +42,26 @@ export default function SellerPortalPage() {
   const [newCropRate, setNewCropRate] = useState('');
 
   // Status Filter State
-  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<'ALL' | 'IN_TRANSIT' | 'RECEIVED'>('ALL');
+  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<'ALL' | 'IN_TRANSIT' | 'RECEIVED' | 'PATTI_CLEARED'>('ALL');
   const [selectedBillForModal, setSelectedBillForModal] = useState<any | null>(null);
 
+  // APMC Mandi Patti Clear Modal State
+  const [isPattiModalOpen, setIsPattiModalOpen] = useState(false);
+  const [billForPatti, setBillForPatti] = useState<any | null>(null);
+  const [pattiDeductions, setPattiDeductions] = useState({
+    hamali: 150,
+    tolai: 50,
+    mandiTax: 0,
+    commission: 0,
+    freight: 0,
+    other: 0,
+    paymentMode: 'BANK_TRANSFER',
+    paymentRef: '',
+    clearedDate: new Date().toISOString().slice(0, 10),
+  });
+
   // Timeline Filter State
-  const [timelineFilter, setTimelineFilter] = useState<'ALL' | 'THIS_MONTH' | 'LAST_MONTH' | 'CUSTOM'>('THIS_MONTH');
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('THIS_MONTH');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
@@ -188,45 +205,20 @@ export default function SellerPortalPage() {
   // Filter Dispatches
   const filteredDispatches = useMemo(() => {
     let result = [...dispatches];
-    const now = new Date();
     
     result = result.filter(bill => {
       // 1. Delivery Status Filter
-      if (deliveryStatusFilter === 'IN_TRANSIT' && bill.deliveryStatus === 'RECEIVED') {
-        return false;
-      }
-      if (deliveryStatusFilter === 'RECEIVED' && bill.deliveryStatus !== 'RECEIVED') {
-        return false;
-      }
+      const isPatti = bill.deliveryStatus === 'PATTI_CLEARED' || bill.status === 'PATTI_CLEARED';
+      const isRecv = (bill.deliveryStatus === 'RECEIVED' || bill.status === 'RECEIVED') && !isPatti;
+      const isInTransit = !isRecv && !isPatti;
+
+      if (deliveryStatusFilter === 'IN_TRANSIT' && !isInTransit) return false;
+      if (deliveryStatusFilter === 'RECEIVED' && !isRecv) return false;
+      if (deliveryStatusFilter === 'PATTI_CLEARED' && !isPatti) return false;
 
       // 2. Timeline Filter
-      if (!bill.date && !bill.createdAt) return true;
-      let billDate: Date;
-      const dateStr = bill.date || bill.createdAt;
-      
-      try {
-        if (dateStr.includes('/')) {
-          const parts = dateStr.split('/');
-          billDate = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
-        } else {
-          billDate = new Date(dateStr);
-        }
-      } catch {
-        billDate = new Date(0);
-      }
-      
-      if (timelineFilter === 'THIS_MONTH') {
-        return billDate.getMonth() === now.getMonth() && billDate.getFullYear() === now.getFullYear();
-      }
-      if (timelineFilter === 'LAST_MONTH') {
-        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        return billDate.getMonth() === lastMonth.getMonth() && billDate.getFullYear() === lastMonth.getFullYear();
-      }
-      if (timelineFilter === 'CUSTOM' && customStartDate && customEndDate) {
-        const start = new Date(customStartDate);
-        const end = new Date(customEndDate);
-        end.setHours(23, 59, 59, 999);
-        return billDate >= start && billDate <= end;
+      if (!isDateInTimeline(bill.date || bill.createdAt, timelineFilter, customStartDate, customEndDate)) {
+        return false;
       }
       return true;
     });
@@ -235,11 +227,12 @@ export default function SellerPortalPage() {
   }, [dispatches, deliveryStatusFilter, timelineFilter, customStartDate, customEndDate]);
 
   // Counts for status pills
-  const { inTransitCount, receivedCount, totalCount } = useMemo(() => {
+  const { inTransitCount, receivedCount, pattiClearedCount, totalCount } = useMemo(() => {
     const total = dispatches.length;
-    const received = dispatches.filter(d => d.deliveryStatus === 'RECEIVED').length;
-    const inTransit = total - received;
-    return { inTransitCount: inTransit, receivedCount: received, totalCount: total };
+    const pattiCleared = dispatches.filter(d => d.deliveryStatus === 'PATTI_CLEARED' || d.status === 'PATTI_CLEARED').length;
+    const received = dispatches.filter(d => (d.deliveryStatus === 'RECEIVED' || d.status === 'RECEIVED') && d.deliveryStatus !== 'PATTI_CLEARED' && d.status !== 'PATTI_CLEARED').length;
+    const inTransit = total - received - pattiCleared;
+    return { inTransitCount: inTransit, receivedCount: received, pattiClearedCount: pattiCleared, totalCount: total };
   }, [dispatches]);
 
   const [activeReceipt, setActiveReceipt] = useState<any | null>(null);
@@ -253,6 +246,159 @@ export default function SellerPortalPage() {
       return bill.paymentHistory.reduce((sum: number, p: any) => sum + parseFloat(p.amount || 0), 0);
     }
     return 0;
+  };
+
+  const handleOpenPattiModal = (bill: any) => {
+    const grossAmt = parseFloat(bill.netAmount || bill.totalAmount || bill.amount || 0);
+    const estCommission = Math.round(grossAmt * 0.05); // standard 5% APMC commission
+    const estCess = Math.round(grossAmt * 0.0105); // 1.05% APMC cess
+    setBillForPatti(bill);
+    setPattiDeductions({
+      hamali: 150,
+      tolai: 50,
+      mandiTax: estCess,
+      commission: estCommission,
+      freight: 0,
+      other: 0,
+      paymentMode: 'BANK_TRANSFER',
+      paymentRef: '',
+      clearedDate: new Date().toISOString().slice(0, 10),
+    });
+    setIsPattiModalOpen(true);
+  };
+
+  const handleConfirmPattiClear = async () => {
+    if (!billForPatti) return;
+    try {
+      const grossAmt = parseFloat(billForPatti.netAmount || billForPatti.totalAmount || billForPatti.amount || 0);
+      const totalDeductions = (Number(pattiDeductions.hamali) || 0) +
+        (Number(pattiDeductions.tolai) || 0) +
+        (Number(pattiDeductions.mandiTax) || 0) +
+        (Number(pattiDeductions.commission) || 0) +
+        (Number(pattiDeductions.freight) || 0) +
+        (Number(pattiDeductions.other) || 0);
+
+      const netPayable = Math.max(0, grossAmt - totalDeductions);
+
+      const pattiDetails = {
+        hamali: Number(pattiDeductions.hamali) || 0,
+        tolai: Number(pattiDeductions.tolai) || 0,
+        mandiTax: Number(pattiDeductions.mandiTax) || 0,
+        commission: Number(pattiDeductions.commission) || 0,
+        freight: Number(pattiDeductions.freight) || 0,
+        other: Number(pattiDeductions.other) || 0,
+        totalDeductions,
+        netPayable,
+        clearedDate: pattiDeductions.clearedDate,
+        paymentMode: pattiDeductions.paymentMode,
+        paymentRef: pattiDeductions.paymentRef,
+      };
+
+      const existingHistory = Array.isArray(billForPatti.paymentHistory) ? billForPatti.paymentHistory : [];
+      const newPaymentEntry = {
+        date: pattiDeductions.clearedDate,
+        amount: netPayable,
+        mode: pattiDeductions.paymentMode,
+        ref: pattiDeductions.paymentRef,
+        type: 'PATTI_CLEAR',
+        notes: `APMC Vikri Patti Cleared (Deductions: ₹${totalDeductions})`
+      };
+      const updatedHistory = [...existingHistory, newPaymentEntry];
+
+      const patchPayload = {
+        status: 'PATTI_CLEARED',
+        deliveryStatus: 'PATTI_CLEARED',
+        paymentStatus: 'PAID',
+        paidAmount: netPayable,
+        dueAmount: 0,
+        pattiDetails,
+        paymentHistory: updatedHistory,
+      };
+
+      await supabase.from('Sale').update(patchPayload).eq('id', billForPatti.id).throwOnError();
+
+      // Update in local React state
+      const updatedBill = {
+        ...billForPatti,
+        ...patchPayload
+      };
+
+      setDispatches(prev => prev.map(b => b.id === billForPatti.id ? updatedBill : b));
+      if (selectedBillForModal && selectedBillForModal.id === billForPatti.id) {
+        setSelectedBillForModal(updatedBill);
+      }
+
+      // Update in local cache
+      if (selectedTenant) {
+        const cacheKey = `seavaig_sales_cache_${selectedTenant.id}`;
+        const raw = localStorage.getItem(cacheKey);
+        if (raw) {
+          try {
+            const list = JSON.parse(raw);
+            const updatedList = list.map((b: any) => b.id === billForPatti.id ? updatedBill : b);
+            localStorage.setItem(cacheKey, JSON.stringify(updatedList));
+          } catch {}
+        }
+      }
+
+      setIsPattiModalOpen(false);
+
+      // Open print receipt modal with Vikri Patti
+      handleOpenPrintPatti(updatedBill);
+    } catch (err) {
+      console.error('Error clearing APMC Patti:', err);
+      alert('Error clearing Patti. Please check database permissions or try again.');
+    }
+  };
+
+  const handleOpenPrintPatti = (bill: any) => {
+    const grossAmt = parseFloat(bill.netAmount || bill.totalAmount || bill.amount || 0);
+    const patti = bill.pattiDetails || {};
+    const netPayable = patti.netPayable || bill.paidAmount || grossAmt;
+
+    setActiveReceipt({
+      id: bill.id,
+      billNo: bill.billNo || bill.id,
+      date: patti.clearedDate || bill.date || bill.createdAt || new Date().toISOString(),
+      type: 'PATTI_CLEAR',
+      title: 'APMC MANDI VIKRI PATTI (कृषी उत्पन्न बाजार समिती विक्री पट्टी)',
+      farmerName: bill.customerName || seller?.name || seller?.phone || 'Mandi Buyer / Commission Agent',
+      farmerPhone: bill.customerPhone || seller?.phone || 'N/A',
+      address: bill.address || seller?.address || 'APMC Market Yard',
+      vehicleNo: bill.vehicleNo || 'MH-15-EG-4521',
+      driverName: bill.driverName || 'Santosh Gaikwad',
+      driverPhone: bill.driverPhone || '9876543210',
+      items: bill.itemsData || bill.itemsList || [
+        {
+          cropName: bill.items || 'Agricultural Produce',
+          grade: 'Mandi Lot A',
+          packaging: 'Crates',
+          weightKg: parseFloat(bill.totalWeight || 0),
+          ratePerKg: parseFloat(bill.totalWeight || 0) > 0 ? (grossAmt / parseFloat(bill.totalWeight || 1)) : 0,
+          totalAmount: grossAmt
+        }
+      ],
+      totalWeight: bill.totalWeight || 0,
+      totalAmount: grossAmt,
+      netAmount: grossAmt,
+      paidAmount: netPayable,
+      dueAmount: 0,
+      paymentStatus: 'PAID',
+      paymentMode: patti.paymentMode || 'BANK_TRANSFER',
+      pattiDetails: {
+        hamali: patti.hamali || 0,
+        tolai: patti.tolai || 0,
+        mandiTax: patti.mandiTax || 0,
+        commission: patti.commission || 0,
+        freight: patti.freight || 0,
+        other: patti.other || 0,
+        totalDeductions: patti.totalDeductions || ((grossAmt - netPayable) > 0 ? (grossAmt - netPayable) : 0),
+        netPayable: netPayable,
+        clearedDate: patti.clearedDate || bill.date || new Date().toISOString().slice(0, 10),
+        paymentMode: patti.paymentMode || 'BANK_TRANSFER',
+        paymentRef: patti.paymentRef || 'APMC-REF-01',
+      }
+    });
   };
 
   const handleOpenPrintInvoice = (bill: any) => {
@@ -308,10 +454,17 @@ export default function SellerPortalPage() {
 
   const getFilterLabel = () => {
     switch (timelineFilter) {
-      case 'ALL': return 'All Time';
+      case 'TODAY': return 'Today';
+      case 'YESTERDAY': return 'Yesterday';
+      case 'THIS_WEEK': return 'This Week';
       case 'THIS_MONTH': return 'This Month';
       case 'LAST_MONTH': return 'Last Month';
+      case 'THIS_YEAR': return 'This Year';
       case 'CUSTOM': return 'Custom Range';
+      case 'ALL':
+      case 'ALL_TIME':
+      default:
+        return 'All Time';
     }
   };
 
@@ -422,14 +575,14 @@ export default function SellerPortalPage() {
 
               {showFilterDropdown && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-stone-200 rounded-xl shadow-xl overflow-hidden p-2 space-y-1">
-                  {['THIS_MONTH', 'LAST_MONTH', 'ALL'].map((opt) => (
+                  {['TODAY', 'YESTERDAY', 'THIS_WEEK', 'THIS_MONTH', 'LAST_MONTH', 'THIS_YEAR', 'ALL'].map((opt) => (
                     <button
                       key={opt}
                       onClick={() => {
                         setTimelineFilter(opt as any);
                         setShowFilterDropdown(false);
                       }}
-                      className={`w-full text-left px-4 py-3 rounded-lg font-semibold text-sm transition-colors ${timelineFilter === opt ? 'bg-green-50 text-green-700' : 'text-stone-700 hover:bg-stone-50'}`}
+                      className={`w-full text-left px-4 py-2.5 rounded-lg font-semibold text-xs transition-colors ${timelineFilter === opt ? 'bg-green-50 text-green-700 font-black' : 'text-stone-700 hover:bg-stone-50'}`}
                     >
                       {opt.replace('_', ' ')}
                     </button>
@@ -489,7 +642,7 @@ export default function SellerPortalPage() {
                 </h3>
                 
                 {/* Delivery Status Filter Pills */}
-                <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-xl">
+                <div className="flex flex-wrap items-center gap-1.5 bg-stone-100 p-1 rounded-xl">
                   <button
                     onClick={() => setDeliveryStatusFilter('ALL')}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -519,6 +672,16 @@ export default function SellerPortalPage() {
                     }`}
                   >
                     Received ({receivedCount})
+                  </button>
+                  <button
+                    onClick={() => setDeliveryStatusFilter('PATTI_CLEARED')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      deliveryStatusFilter === 'PATTI_CLEARED'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-amber-700 hover:bg-amber-50'
+                    }`}
+                  >
+                    Patti Cleared ({pattiClearedCount})
                   </button>
                 </div>
               </div>
@@ -552,11 +715,17 @@ export default function SellerPortalPage() {
                               {bill.billNo || bill.id}
                             </span>
                             <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
-                              bill.deliveryStatus === 'RECEIVED' 
-                                ? 'bg-emerald-100 text-emerald-800' 
+                              bill.deliveryStatus === 'PATTI_CLEARED' || bill.status === 'PATTI_CLEARED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : bill.deliveryStatus === 'RECEIVED' || bill.status === 'RECEIVED'
+                                ? 'bg-amber-100 text-amber-800' 
                                 : 'bg-blue-100 text-blue-800 animate-pulse'
                             }`}>
-                              {bill.deliveryStatus === 'RECEIVED' ? '✓ RECEIVED' : '🚚 IN TRANSIT'}
+                              {bill.deliveryStatus === 'PATTI_CLEARED' || bill.status === 'PATTI_CLEARED'
+                                ? '⚖️ ✓ PATTI CLEARED'
+                                : bill.deliveryStatus === 'RECEIVED' || bill.status === 'RECEIVED'
+                                ? '✓ RECEIVED'
+                                : '🚚 IN TRANSIT'}
                             </span>
                           </div>
                           <p className="text-xs text-stone-500 font-bold flex items-center gap-1">
@@ -634,7 +803,7 @@ export default function SellerPortalPage() {
                             <span>Manifest</span>
                           </button>
                           
-                          {bill.deliveryStatus !== 'RECEIVED' && (
+                          {bill.deliveryStatus !== 'RECEIVED' && bill.deliveryStatus !== 'PATTI_CLEARED' && bill.status !== 'PATTI_CLEARED' && (
                             <button 
                               type="button"
                               onClick={(e) => {
@@ -645,6 +814,34 @@ export default function SellerPortalPage() {
                             >
                               <CheckCircle className="w-4 h-4" />
                               <span>RECEIVE</span>
+                            </button>
+                          )}
+
+                          {(bill.deliveryStatus === 'RECEIVED' || bill.status === 'RECEIVED') && bill.deliveryStatus !== 'PATTI_CLEARED' && bill.status !== 'PATTI_CLEARED' && (
+                            <button 
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenPattiModal(bill);
+                              }}
+                              className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-black py-2.5 rounded-xl text-xs shadow-md shadow-amber-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <Scale className="w-4 h-4" />
+                              <span>⚖️ PATTI CLEAR</span>
+                            </button>
+                          )}
+
+                          {(bill.deliveryStatus === 'PATTI_CLEARED' || bill.status === 'PATTI_CLEARED') && (
+                            <button 
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenPrintPatti(bill);
+                              }}
+                              className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-black py-2.5 rounded-xl text-xs shadow-md shadow-emerald-700/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <FileText className="w-3.5 h-3.5 text-emerald-300" />
+                              <span>📄 Vikri Patti Slip</span>
                             </button>
                           )}
                         </div>
@@ -919,6 +1116,206 @@ export default function SellerPortalPage() {
           </div>
         </div>
       )}
+
+      {/* APMC Mandi Patti Clear Modal */}
+      {isPattiModalOpen && billForPatti && (() => {
+        const grossVal = parseFloat(billForPatti.netAmount || billForPatti.totalAmount || billForPatti.amount || 0);
+        const totalDeductionsVal = (Number(pattiDeductions.hamali) || 0) +
+          (Number(pattiDeductions.tolai) || 0) +
+          (Number(pattiDeductions.mandiTax) || 0) +
+          (Number(pattiDeductions.commission) || 0) +
+          (Number(pattiDeductions.freight) || 0) +
+          (Number(pattiDeductions.other) || 0);
+        const netPayableVal = Math.max(0, grossVal - totalDeductionsVal);
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in overflow-y-auto font-sans">
+            <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden border border-stone-200 my-auto">
+              {/* Header */}
+              <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-700 to-amber-900 text-white flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-600/50 rounded-xl">
+                    <Scale className="w-5 h-5 text-amber-200" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-black">APMC Vikri Patti Settlement (पट्टी क्लिअर)</h2>
+                    <p className="text-xs text-amber-200">Bill #{billForPatti.billNo || billForPatti.id} • {billForPatti.items || 'Agricultural Produce'}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsPattiModalOpen(false)}
+                  className="p-1.5 text-amber-200 hover:text-white rounded-lg bg-amber-800/80 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-5 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
+                {/* Gross Summary Ribbon */}
+                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 flex justify-between items-center">
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-amber-800 tracking-wider block">एकूण विक्री रक्कम (Gross Sale)</span>
+                    <span className="text-xs text-stone-600 font-bold">{billForPatti.totalWeight || 0} KG • {billForPatti.customerName || seller?.phone}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xl font-black text-amber-950">₹{grossVal.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+
+                {/* Mandi Deductions Inputs */}
+                <div>
+                  <h4 className="font-black text-stone-800 uppercase tracking-wider text-[11px] mb-2 flex items-center gap-1.5">
+                    <span>APMC Mandi Deductions (बाजार समिती वजावटी)</span>
+                  </h4>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">हमाली (Hamali ₹)</label>
+                      <input 
+                        type="number"
+                        min="0"
+                        value={pattiDeductions.hamali}
+                        onChange={e => setPattiDeductions(prev => ({ ...prev, hamali: parseFloat(e.target.value) || 0 }))}
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">तोलाई (Tolai ₹)</label>
+                      <input 
+                        type="number"
+                        min="0"
+                        value={pattiDeductions.tolai}
+                        onChange={e => setPattiDeductions(prev => ({ ...prev, tolai: parseFloat(e.target.value) || 0 }))}
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">बाजार फी (Mandi Cess ₹)</label>
+                      <input 
+                        type="number"
+                        min="0"
+                        value={pattiDeductions.mandiTax}
+                        onChange={e => setPattiDeductions(prev => ({ ...prev, mandiTax: parseFloat(e.target.value) || 0 }))}
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">आडत/कमिशन (Adat ₹)</label>
+                      <input 
+                        type="number"
+                        min="0"
+                        value={pattiDeductions.commission}
+                        onChange={e => setPattiDeductions(prev => ({ ...prev, commission: parseFloat(e.target.value) || 0 }))}
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">वाहतूक भाडे (Freight ₹)</label>
+                      <input 
+                        type="number"
+                        min="0"
+                        value={pattiDeductions.freight}
+                        onChange={e => setPattiDeductions(prev => ({ ...prev, freight: parseFloat(e.target.value) || 0 }))}
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">इतर खर्च (Other ₹)</label>
+                      <input 
+                        type="number"
+                        min="0"
+                        value={pattiDeductions.other}
+                        onChange={e => setPattiDeductions(prev => ({ ...prev, other: parseFloat(e.target.value) || 0 }))}
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Settlement Card */}
+                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-2">
+                  <div className="flex justify-between text-stone-600 font-bold">
+                    <span>एकूण विक्री रक्कम (Gross Sale):</span>
+                    <span>₹{grossVal.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between text-rose-600 font-bold">
+                    <span>एकूण APMC वजावट (Total Deductions):</span>
+                    <span>- ₹{totalDeductionsVal.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between font-black text-emerald-800 text-sm pt-2 border-t border-stone-200">
+                    <span>निव्वळ देय रक्कम (Net Payable Amount):</span>
+                    <span className="text-base font-extrabold text-emerald-700">₹{netPayableVal.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+
+                {/* Payment Disbursement Details */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">पेमेंट प्रकार (Mode)</label>
+                    <select
+                      value={pattiDeductions.paymentMode}
+                      onChange={e => setPattiDeductions(prev => ({ ...prev, paymentMode: e.target.value }))}
+                      className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                    >
+                      <option value="BANK_TRANSFER">Bank / NEFT / RTGS</option>
+                      <option value="UPI">UPI / GPay / PhonePe</option>
+                      <option value="CASH">Cash (रोख)</option>
+                      <option value="CHEQUE">Cheque (धनादेश)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">संदर्भ क्र (UTR / Ref / Cheque No)</label>
+                    <input 
+                      type="text"
+                      placeholder="e.g. UTR-982183"
+                      value={pattiDeductions.paymentRef}
+                      onChange={e => setPattiDeductions(prev => ({ ...prev, paymentRef: e.target.value }))}
+                      className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">तारीख (Clear Date)</label>
+                    <input 
+                      type="date"
+                      value={pattiDeductions.clearedDate}
+                      onChange={e => setPattiDeductions(prev => ({ ...prev, clearedDate: e.target.value }))}
+                      className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                    />
+                  </div>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={handleConfirmPattiClear}
+                    className="flex-1 py-3 bg-amber-700 hover:bg-amber-800 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-amber-700/20 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-amber-200" />
+                    <span>Confirm & Clear Patti (पट्टी क्लिअर करा)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsPattiModalOpen(false)}
+                    className="py-3 px-5 bg-stone-100 hover:bg-stone-200 font-bold rounded-xl text-stone-700 text-xs cursor-pointer"
+                  >
+                    रद्द करा (Cancel)
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Professional Tax Invoice Modal */}
       {activeReceipt && (

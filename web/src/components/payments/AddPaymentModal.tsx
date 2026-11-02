@@ -114,10 +114,11 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
         if (initialAmount === undefined) {
           if (formData.purchaseId) {
             const currentBill = fp.find((p: any) => p.id === formData.purchaseId || p.purchaseNo === formData.purchaseId);
-            const billDue = currentBill ? (Number(currentBill.dueAmount ?? currentBill.amount) || 0) : 0;
-            const suggested = netDue > 0 ? Math.min(netDue, billDue || netDue) : billDue;
-            if (suggested > 0) {
-              setFormData(prev => ({ ...prev, amount: String(suggested) }));
+            const billGross = currentBill ? Number(currentBill.totalAmount ?? currentBill.amount ?? 0) : 0;
+            const billPaid = currentBill ? Number(currentBill.paidAmount || 0) : 0;
+            const billDue = currentBill ? (currentBill.dueAmount !== undefined ? Number(currentBill.dueAmount) : Math.max(0, billGross - billPaid)) : 0;
+            if (billDue > 0) {
+              setFormData(prev => ({ ...prev, amount: String(billDue) }));
             }
           } else if (netDue > 0) {
             setFormData(prev => ({ ...prev, amount: String(netDue) }));
@@ -340,10 +341,15 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                     type="button"
                     onClick={() => {
                       const selectedBill = farmerPurchases.find((p: any) => p.id === formData.purchaseId || p.purchaseNo === formData.purchaseId);
-                      const billAmt = selectedBill ? Number(selectedBill.totalAmount ?? selectedBill.amount ?? selectedBill.netAmount ?? 0) : 0;
-                      const liveDue = farmerFinancials.netDue > 0 ? Math.min(billAmt > 0 ? billAmt : farmerFinancials.netDue, farmerFinancials.netDue) : 0;
-                      const fillVal = formData.purchaseId && liveDue > 0 ? liveDue : farmerFinancials.netDue;
-                      setFormData(prev => ({ ...prev, amount: String(fillVal > 0 ? fillVal : '') }));
+                      if (selectedBill) {
+                        const billGross = Number(selectedBill.totalAmount ?? selectedBill.amount ?? 0);
+                        const billPaid = Number(selectedBill.paidAmount || 0);
+                        const billDue = selectedBill.dueAmount !== undefined ? Number(selectedBill.dueAmount) : Math.max(0, billGross - billPaid);
+                        setFormData(prev => ({ ...prev, amount: String(billDue > 0 ? billDue : '') }));
+                      } else {
+                        const fillVal = Math.max(0, farmerFinancials.netDue);
+                        setFormData(prev => ({ ...prev, amount: String(fillVal > 0 ? fillVal : '') }));
+                      }
                     }}
                     className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-extrabold rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1"
                   >
@@ -366,23 +372,33 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
               onChange={(e) => {
                 const pId = e.target.value;
                 const selectedBill = farmerPurchases.find((p: any) => p.id === pId || p.purchaseNo === pId);
-                const billAmt = selectedBill ? Number(selectedBill.totalAmount ?? selectedBill.amount ?? selectedBill.netAmount ?? 0) : 0;
-                const liveDue = farmerFinancials.netDue > 0 ? Math.min(billAmt > 0 ? billAmt : farmerFinancials.netDue, farmerFinancials.netDue) : 0;
-                setFormData(prev => ({ 
-                  ...prev, 
-                  purchaseId: pId,
-                  amount: pId && liveDue > 0 ? String(liveDue) : prev.amount
-                }));
+                if (selectedBill) {
+                  const billGross = Number(selectedBill.totalAmount ?? selectedBill.amount ?? 0);
+                  const billPaid = Number(selectedBill.paidAmount || 0);
+                  const billDue = selectedBill.dueAmount !== undefined ? Number(selectedBill.dueAmount) : Math.max(0, billGross - billPaid);
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    purchaseId: pId,
+                    amount: billDue > 0 ? String(billDue) : prev.amount
+                  }));
+                } else {
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    purchaseId: pId,
+                    amount: farmerFinancials.netDue > 0 ? String(farmerFinancials.netDue) : prev.amount
+                  }));
+                }
               }}
               className="w-full px-3 py-2 bg-slate-50 border border-blue-200 rounded-xl text-xs font-semibold text-slate-800"
             >
               <option value="">-- Pay against General Account Balance --</option>
               {farmerPurchases.map((p: any) => {
-                const billAmt = Number(p.totalAmount ?? p.amount ?? p.netAmount ?? 0);
-                const liveBillDue = farmerFinancials.netDue > 0 ? Math.min(billAmt > 0 ? billAmt : farmerFinancials.netDue, farmerFinancials.netDue) : 0;
+                const billGross = Number(p.totalAmount ?? p.amount ?? p.netAmount ?? 0);
+                const billPaid = Number(p.paidAmount || 0);
+                const billDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, billGross - billPaid);
                 return (
                   <option key={p.id} value={p.id}>
-                    Bill #{p.purchaseNo || p.id} ({p.crop || 'Crop'} - ₹{liveBillDue.toLocaleString('en-IN')} Due)
+                    Bill #{p.purchaseNo || p.id} ({p.crop || 'Crop'} - Gross: ₹{billGross.toLocaleString('en-IN')}, Due: ₹{billDue.toLocaleString('en-IN')})
                   </option>
                 );
               })}

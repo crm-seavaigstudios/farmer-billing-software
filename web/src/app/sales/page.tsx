@@ -10,6 +10,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useTenant } from '@/context/TenantContext';
 import { shareSaleOnWhatsApp } from '@/lib/whatsapp';
 import { apiGetSales } from '@/lib/api';
+import { isDateInTimeline, TimelineFilter } from '@/lib/dateUtils';
 import {
   Tag,
   TrendingUp,
@@ -36,7 +37,7 @@ export default function SalesPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<any | null>(null);
   
-  const [timelineFilter, setTimelineFilter] = useState('ALL_TIME');
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('ALL_TIME');
 
   const loadData = async () => {
     const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
@@ -70,9 +71,10 @@ export default function SalesPage() {
 
   const openPrintModal = (row: any) => {
     const formattedBillNo = row.billNo || row.saleNo || row.id;
+    const isPatti = row.status === 'PATTI_CLEARED' || row.deliveryStatus === 'PATTI_CLEARED' || !!row.pattiDetails;
     setActiveReceipt({
-      type: 'B2B_SALE',
-      title: 'Tax Invoice / Sales Bill (कर बीजक)',
+      type: isPatti ? 'PATTI_CLEAR' : 'B2B_SALE',
+      title: isPatti ? 'APMC Mandi Vikri Patti (विक्री पट्टी)' : 'Tax Invoice / Sales Bill (कर बीजक)',
       receiptNo: formattedBillNo,
       billNo: formattedBillNo,
       date: row.date,
@@ -82,42 +84,22 @@ export default function SalesPage() {
       gradeOrItems: row.items,
       items: row.itemsData || row.itemsList,
       totalAmount: `₹${Number(row.amount || 0).toLocaleString('en-IN')}`,
-      paidAmount: row.paidAmount ? `₹${Number(row.paidAmount || 0).toLocaleString('en-IN')}` : undefined,
+      paidAmount: (row.pattiDetails?.netPayable || row.paidAmount) ? `₹${Number(row.pattiDetails?.netPayable || row.paidAmount || 0).toLocaleString('en-IN')}` : undefined,
       balanceAmount: row.dueAmount ? `₹${Number(row.dueAmount || 0).toLocaleString('en-IN')}` : undefined,
       paymentMode: row.paymentStatus || row.status,
       vehicleNo: row.vehicleNo,
       driverName: row.driverName,
       driverPhone: row.driverPhone,
+      pattiDetails: row.pattiDetails,
     });
   };
 
   const filtered = sales.filter((s) => {
-    let dateMatch = true;
-    if (timelineFilter !== 'ALL_TIME' && s.date) {
-      const pDate = new Date(s.date.split('/').reverse().join('-') || s.date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (timelineFilter === 'TODAY') {
-        dateMatch = pDate >= today;
-      } else if (timelineFilter === 'YESTERDAY') {
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        dateMatch = pDate >= yesterday && pDate < today;
-      } else if (timelineFilter === 'THIS_WEEK') {
-        const weekAgo = new Date(today);
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        dateMatch = pDate >= weekAgo;
-      } else if (timelineFilter === 'THIS_MONTH') {
-        const monthAgo = new Date(today);
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        dateMatch = pDate >= monthAgo;
-      }
-    }
-
+    const dateMatch = isDateInTimeline(s.date || s.createdAt, timelineFilter);
     const textMatch = 
       (s.customerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.id || '').toLowerCase().includes(searchQuery.toLowerCase());
+      (s.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.billNo || '').toLowerCase().includes(searchQuery.toLowerCase());
       
     return dateMatch && textMatch;
   });
@@ -217,7 +199,7 @@ export default function SalesPage() {
               <div className="flex items-center gap-2">
                 <select
                   value={timelineFilter}
-                  onChange={(e) => setTimelineFilter(e.target.value)}
+                  onChange={(e) => setTimelineFilter(e.target.value as TimelineFilter)}
                   className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                 >
                   <option value="ALL_TIME">All Time</option>
@@ -225,6 +207,7 @@ export default function SalesPage() {
                   <option value="YESTERDAY">Yesterday</option>
                   <option value="THIS_WEEK">This Week</option>
                   <option value="THIS_MONTH">This Month</option>
+                  <option value="THIS_YEAR">This Year</option>
                 </select>
                 <button className="px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer">
                   <Filter className="w-3.5 h-3.5 text-slate-400" />

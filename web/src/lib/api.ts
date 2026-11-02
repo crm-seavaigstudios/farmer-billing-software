@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { parseDateRobust, getTimelineBounds, isDateInTimeline, TimelineFilter } from './dateUtils';
+export { parseDateRobust, getTimelineBounds, isDateInTimeline, type TimelineFilter };
 
 export const getTenantId = () => {
   if (typeof window === 'undefined') return null;
@@ -70,7 +72,7 @@ export const apiGetDashboardStats = async (filterStart?: number, filterEnd?: num
 
     const inRange = (dStr: string) => {
       if (!dStr) return false;
-      const t = new Date(dStr).getTime();
+      const t = parseDateRobust(dStr).getTime();
       return t >= rangeStart && t <= rangeEnd;
     };
 
@@ -92,7 +94,7 @@ export const apiGetDashboardStats = async (filterStart?: number, filterEnd?: num
 
     const inPriorRange = (dStr: string) => {
       if (!dStr) return false;
-      const t = new Date(dStr).getTime();
+      const t = parseDateRobust(dStr).getTime();
       return t >= priorStart && t <= priorEnd;
     };
 
@@ -2558,42 +2560,8 @@ export const apiCreateExpense = async (expData: any) => {
   return formattedExp;
 };
 
-export type TimelineFilter = 'ALL_TIME' | 'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'WEEK' | 'MONTH' | 'SEASON' | 'CUSTOM';
-
 export function getTimelineDateRange(filter: TimelineFilter, customStart?: string, customEnd?: string): { start: number; end: number } {
-  const now = new Date();
-  
-  const endObj = new Date(now);
-  endObj.setHours(23, 59, 59, 999);
-  
-  let startObj = new Date(now);
-  startObj.setHours(0, 0, 0, 0);
-
-  if (filter === 'TODAY') {
-    // Start is already 00:00:00 today
-  } else if (filter === 'YESTERDAY') {
-    startObj.setDate(startObj.getDate() - 1);
-    endObj.setDate(endObj.getDate() - 1);
-    endObj.setHours(23, 59, 59, 999);
-  } else if (filter === 'WEEK' || filter === 'THIS_WEEK') {
-    const day = startObj.getDay();
-    const diff = startObj.getDate() - day + (day === 0 ? -6 : 1);
-    startObj.setDate(diff);
-  } else if (filter === 'MONTH' || filter === 'THIS_MONTH') {
-    startObj.setDate(1);
-  } else if (filter === 'SEASON') {
-    startObj.setMonth(0, 1);
-  } else if (filter === 'CUSTOM' && customStart && customEnd) {
-    startObj = new Date(customStart);
-    startObj.setHours(0, 0, 0, 0);
-    const customEndObj = new Date(customEnd);
-    customEndObj.setHours(23, 59, 59, 999);
-    return { start: startObj.getTime(), end: customEndObj.getTime() };
-  } else if (filter === 'ALL_TIME') {
-    return { start: 0, end: endObj.getTime() };
-  }
-  
-  return { start: startObj.getTime(), end: endObj.getTime() };
+  return getTimelineBounds(filter, customStart, customEnd);
 }
 
 // ----------------------------------------------------

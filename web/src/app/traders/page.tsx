@@ -31,6 +31,7 @@ import {
   apiGetTraderPurchases,
   getTenantId
 } from '@/lib/api';
+import { isDateInTimeline, TimelineFilter } from '@/lib/dateUtils';
 
 export default function TradersPage() {
   const { t, language } = useLanguage();
@@ -44,7 +45,7 @@ export default function TradersPage() {
   });
   const [activeTab, setActiveTab] = useState<'PURCHASES' | 'TRADERS'>('PURCHASES');
   const [searchQuery, setSearchQuery] = useState('');
-  const [timelineFilter, setTimelineFilter] = useState('ALL_TIME');
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('ALL_TIME');
   const [materials, setMaterials] = useState<any[]>([]);
 
   // Modals
@@ -85,28 +86,7 @@ export default function TradersPage() {
   };
 
   const filteredPurchases = purchases.filter((p) => {
-    let dateMatch = true;
-    if (timelineFilter !== 'ALL_TIME' && p.date) {
-      const pDate = new Date(p.date.split('/').reverse().join('-') || p.date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (timelineFilter === 'TODAY') {
-        dateMatch = pDate >= today;
-      } else if (timelineFilter === 'YESTERDAY') {
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        dateMatch = pDate >= yesterday && pDate < today;
-      } else if (timelineFilter === 'THIS_WEEK') {
-        const weekAgo = new Date(today);
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        dateMatch = pDate >= weekAgo;
-      } else if (timelineFilter === 'THIS_MONTH') {
-        const monthAgo = new Date(today);
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        dateMatch = pDate >= monthAgo;
-      }
-    }
+    const dateMatch = isDateInTimeline(p.date || p.createdAt, timelineFilter);
 
     const textMatch = 
       (p.traderName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -325,7 +305,7 @@ export default function TradersPage() {
             <div className="flex items-center gap-2">
               <select
                 value={timelineFilter}
-                onChange={(e) => setTimelineFilter(e.target.value)}
+                onChange={(e) => setTimelineFilter(e.target.value as TimelineFilter)}
                 className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
               >
                 <option value="ALL_TIME">All Time</option>
@@ -333,6 +313,7 @@ export default function TradersPage() {
                 <option value="YESTERDAY">Yesterday</option>
                 <option value="THIS_WEEK">This Week</option>
                 <option value="THIS_MONTH">This Month</option>
+                <option value="THIS_YEAR">This Year</option>
               </select>
               <button
                 onClick={() => setIsAddTraderOpen(true)}

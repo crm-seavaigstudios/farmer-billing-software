@@ -93,7 +93,9 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     if (isOpen) loadData();
   }, [isOpen]);
 
-  const [deductionMode, setDeductionMode] = useState<'AUTO_FIFO' | 'CUSTOM'>('AUTO_FIFO');
+  const [deductionMode, setDeductionMode] = useState<'CUSTOM' | 'AUTO_FIFO' | 'NONE'>('CUSTOM');
+  const [customAdvanceInput, setCustomAdvanceInput] = useState<string>('');
+  const [customMaterialInput, setCustomMaterialInput] = useState<string>('');
   const [farmerMaterials, setFarmerMaterials] = useState<any[]>([]);
   const [farmerAdvances, setFarmerAdvances] = useState<any[]>([]);
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
@@ -103,7 +105,8 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     if (!selectedFarmer || !isOpen) return;
     async function loadFarmerFinancials() {
       const mats = await apiGetFarmerMaterials(selectedFarmer.id);
-      setFarmerMaterials(mats || []);
+      const activeMats = mats || [];
+      setFarmerMaterials(activeMats);
       
       const allPays = await apiGetPayments();
       const advs = (allPays || []).filter(
@@ -113,6 +116,10 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
           !p.isSettled
       );
       setFarmerAdvances(advs);
+
+      // Default custom inputs to 0 or leave empty for user entry
+      setCustomAdvanceInput('');
+      setCustomMaterialInput('');
     }
     loadFarmerFinancials();
   }, [selectedFarmer, isOpen]);
@@ -129,21 +136,34 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     calculatedTotal = (quantityOrWeight / 1000) * ratePerUnit; // rate per ton
   }
 
-  // Auto vs Custom Deduction calculation
-  const customMaterialsTotal = farmerMaterials
-    .filter((m) => selectedMaterialIds.includes(m.id))
-    .reduce((acc, m) => acc + Number(m.totalPrice || 0), 0);
+  // Calculate available advance & materials
+  const availableAdvance = Math.max(0, Number(selectedFarmer?.advanceBalance || 0));
+  const availableMaterials = farmerMaterials
+    .filter(m => !m.isDeductedFromBill)
+    .reduce((acc, m) => acc + Number(m.totalAmount || m.totalPrice || 0), 0);
 
-  const customAdvancesTotal = farmerAdvances
-    .filter((adv) => selectedAdvanceIds.includes(adv.id))
-    .reduce((acc, adv) => acc + Number(adv.amount || 0), 0);
+  let actualAdvanceDeducted = 0;
+  let actualMaterialDeducted = 0;
 
-  const totalDeductionsApplied = deductionMode === 'AUTO_FIFO'
-    ? Math.min(selectedFarmer?.advanceBalance || 0, calculatedTotal)
-    : Math.min(customMaterialsTotal + customAdvancesTotal, calculatedTotal);
+  if (deductionMode === 'AUTO_FIFO') {
+    actualAdvanceDeducted = Math.min(availableAdvance, calculatedTotal);
+    actualMaterialDeducted = Math.min(availableMaterials, Math.max(0, calculatedTotal - actualAdvanceDeducted));
+  } else if (deductionMode === 'CUSTOM') {
+    const rawAdv = customAdvanceInput !== '' ? (parseFloat(customAdvanceInput) || 0) : 0;
+    actualAdvanceDeducted = Math.min(availableAdvance, Math.min(calculatedTotal, Math.max(0, rawAdv)));
 
+    const remainingForMat = Math.max(0, calculatedTotal - actualAdvanceDeducted);
+    const rawMat = customMaterialInput !== '' ? (parseFloat(customMaterialInput) || 0) : 0;
+    actualMaterialDeducted = Math.min(availableMaterials, Math.min(remainingForMat, Math.max(0, rawMat)));
+  } else {
+    // NONE
+    actualAdvanceDeducted = 0;
+    actualMaterialDeducted = 0;
+  }
+
+  const totalDeductionsApplied = actualAdvanceDeducted + actualMaterialDeducted;
   const dueAmount = Math.max(0, calculatedTotal - totalDeductionsApplied);
-  const advanceApplied = totalDeductionsApplied;
+  const advanceApplied = actualAdvanceDeducted;
 
   const filteredFarmers = farmers.filter(
     (f) =>
@@ -169,10 +189,6 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     const activeCropName = isAddingCustomCrop ? customCropName : selectedCrop;
     const activeCategory = isCustomCategoryActive ? customCategoryText : packagingCategory;
 
-    const activeAdvanceApplied = deductionMode === 'AUTO_FIFO'
-      ? Math.min(selectedFarmer?.advanceBalance || 0, calculatedTotal)
-      : customAdvancesTotal;
-
     const payload = {
       farmerId: selectedFarmer?.id || 'far-01',
       farmerName: selectedFarmer?.name || 'Farmer',
@@ -195,11 +211,18 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
       }],
       storageLocation: selectedLocation,
       isVisibleToFarmer: isVisibleToFarmer,
-      advanceApplied: activeAdvanceApplied,
-      deductedMaterialIds: deductionMode === 'CUSTOM' ? selectedMaterialIds : []
+      advanceApplied: actualAdvanceDeducted,
+      materialDeducted: actualMaterialDeducted,
+      deductedMaterialIds: selectedMaterialIds
     };
 
     const savedPurchase = await apiCreatePurchase(payload);
+
+    // If custom advance was deducted, update farmer's advance balance in DB/cache
+    if (actualAdvanceDeducted > 0 && selectedFarmer?.id) {
+      const { apiUpdateFarmerAdvance } = await import('@/lib/api');
+      await apiUpdateFarmerAdvance(selectedFarmer.id, -actualAdvanceDeducted);
+    }
 
     const newPurchase = {
       ...savedPurchase,
@@ -209,24 +232,30 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     };
 
     // Mark checked materials as deducted in DB and local cache
-    if (deductionMode === 'CUSTOM' && selectedMaterialIds.length > 0) {
-      const { apiDeductFarmerMaterials, getTenantId } = await import('@/lib/api');
-      await apiDeductFarmerMaterials(selectedMaterialIds, savedPurchase.id);
-      
-      const tenantId = getTenantId();
-      const cacheKey = tenantId ? `seavaig_material_supplies_cache_${tenantId}` : 'seavaig_material_supplies_cache';
-      const cachedMats = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
-      if (cachedMats) {
-        try {
-          const list = JSON.parse(cachedMats);
-          const updated = list.map((m: any) => {
-            if (selectedMaterialIds.includes(m.id)) {
-              return { ...m, isDeductedFromBill: true, purchaseBillId: savedPurchase.id };
-            }
-            return m;
-          });
-          localStorage.setItem(cacheKey, JSON.stringify(updated));
-        } catch {}
+    if (actualMaterialDeducted > 0 || selectedMaterialIds.length > 0) {
+      const matIdsToDeduct = selectedMaterialIds.length > 0 
+        ? selectedMaterialIds 
+        : farmerMaterials.filter(m => !m.isDeductedFromBill).map(m => m.id);
+
+      if (matIdsToDeduct.length > 0) {
+        const { apiDeductFarmerMaterials, getTenantId } = await import('@/lib/api');
+        await apiDeductFarmerMaterials(matIdsToDeduct, savedPurchase.id);
+        
+        const tenantId = getTenantId();
+        const cacheKey = tenantId ? `seavaig_material_supplies_cache_${tenantId}` : 'seavaig_material_supplies_cache';
+        const cachedMats = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
+        if (cachedMats) {
+          try {
+            const list = JSON.parse(cachedMats);
+            const updated = list.map((m: any) => {
+              if (matIdsToDeduct.includes(m.id)) {
+                return { ...m, isDeductedFromBill: true, purchaseBillId: savedPurchase.id };
+              }
+              return m;
+            });
+            localStorage.setItem(cacheKey, JSON.stringify(updated));
+          } catch {}
+        }
       }
     }
 
@@ -463,131 +492,209 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
           </div>
 
           {/* DEDUCTION ENGINE SELECTOR */}
-          <div className="space-y-2 border-t border-slate-100 pt-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700">Deduction Method (कपात पद्धत) *</label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDeductionMode('AUTO_FIFO')}
-                  className={`px-3 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
-                    deductionMode === 'AUTO_FIFO' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'
-                  }`}
-                >
-                  Auto Chronological FIFO
-                </button>
+          <div className="space-y-3 border-t border-slate-100 pt-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <label className="text-xs font-bold text-slate-800 block">Deduction Method (कपात पद्धत) *</label>
+                <span className="text-[10px] text-slate-400 font-medium">अ‍ॅडव्हान्स किंवा साहित्याची सानुकूल रक्कम कपात करा</span>
+              </div>
+              <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl">
                 <button
                   type="button"
                   onClick={() => setDeductionMode('CUSTOM')}
-                  className={`px-3 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
-                    deductionMode === 'CUSTOM' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                    deductionMode === 'CUSTOM' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  Custom Manual Selection
+                  सानुकूल (Custom)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeductionMode('AUTO_FIFO')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                    deductionMode === 'AUTO_FIFO' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  पूर्ण (Auto Max)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeductionMode('NONE')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                    deductionMode === 'NONE' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  नाही (₹0)
                 </button>
               </div>
             </div>
 
+            {/* Custom Mode Inputs */}
             {deductionMode === 'CUSTOM' && (
-              <div className="space-y-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
-                {/* Cash Advances Checklist */}
-                <div>
-                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Unsettled Cash Advances</h4>
-                  {farmerAdvances.length === 0 ? (
-                    <p className="text-[10px] text-slate-400 italic">No cash advances found for this farmer.</p>
-                  ) : (
-                    <div className="space-y-1.5 max-h-24 overflow-y-auto">
-                      {farmerAdvances.map((adv) => (
-                        <label key={adv.id} className="flex items-center gap-2 text-[10px] font-semibold text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={selectedAdvanceIds.includes(adv.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedAdvanceIds([...selectedAdvanceIds, adv.id]);
-                              } else {
-                                setSelectedAdvanceIds(selectedAdvanceIds.filter((id) => id !== adv.id));
-                              }
-                            }}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span>{adv.notes || 'Disbursed Cash Advance'} - <b>₹{Number(adv.amount || 0).toLocaleString('en-IN')}</b> ({adv.date || 'No Date'})</span>
-                        </label>
-                      ))}
+              <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl">
+                {/* 1. Cash Advance Custom Deduction */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700">
+                      रोख अ‍ॅडव्हान्स कपात (Deduct Cash Advance):
+                    </span>
+                    <span className="text-[10px] font-extrabold text-blue-700">
+                      शिल्लक अ‍ॅडव्हान्स: ₹{availableAdvance.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={Math.min(availableAdvance, calculatedTotal)}
+                        placeholder="0"
+                        value={customAdvanceInput}
+                        onChange={(e) => setCustomAdvanceInput(e.target.value)}
+                        className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-extrabold text-slate-900 focus:outline-none focus:border-blue-500"
+                      />
                     </div>
+                    {/* Quick Preset Buttons */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setCustomAdvanceInput('0')}
+                        className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold"
+                      >
+                        ₹0
+                      </button>
+                      {availableAdvance > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const half = Math.floor(Math.min(availableAdvance, calculatedTotal) / 2);
+                              setCustomAdvanceInput(String(half));
+                            }}
+                            className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold"
+                          >
+                            50%
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const maxDeduct = Math.min(availableAdvance, calculatedTotal);
+                              setCustomAdvanceInput(String(maxDeduct));
+                            }}
+                            className="px-2 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-lg text-[10px] font-bold"
+                          >
+                            Full (₹{Math.min(availableAdvance, calculatedTotal).toLocaleString('en-IN')})
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {availableAdvance > 0 && actualAdvanceDeducted > 0 && (
+                    <span className="text-[10px] font-semibold text-emerald-600 block">
+                      कपातीनंतर शिल्लक अ‍ॅडव्हान्स: ₹{(availableAdvance - actualAdvanceDeducted).toLocaleString('en-IN')}
+                    </span>
                   )}
                 </div>
 
-                {/* Material Supplies Checklist */}
-                <div className="border-t border-slate-200 pt-2">
-                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Unsettled Material Input Supplies</h4>
-                  {farmerMaterials.length === 0 ? (
-                    <p className="text-[10px] text-slate-400 italic">No material supplies issued to this farmer.</p>
-                  ) : (
-                    <div className="space-y-1.5 max-h-24 overflow-y-auto">
-                      {farmerMaterials.map((m) => (
-                        <label key={m.id} className="flex items-center gap-2 text-[10px] font-semibold text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={selectedMaterialIds.includes(m.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedMaterialIds([...selectedMaterialIds, m.id]);
-                              } else {
-                                setSelectedMaterialIds(selectedMaterialIds.filter((id) => id !== m.id));
-                              }
-                            }}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span>{m.itemName} ({m.quantity} Qty) - <b>₹{Number(m.totalPrice || 0).toLocaleString('en-IN')}</b> ({m.date || 'No Date'})</span>
-                        </label>
-                      ))}
+                {/* 2. Material Supplies Custom Deduction */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700">
+                      साहित्य बिले कपात (Deduct Materials Issued):
+                    </span>
+                    <span className="text-[10px] font-extrabold text-purple-700">
+                      एकूण साहित्य बाकी: ₹{availableMaterials.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={availableMaterials}
+                        placeholder="0"
+                        value={customMaterialInput}
+                        onChange={(e) => setCustomMaterialInput(e.target.value)}
+                        className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-extrabold text-slate-900 focus:outline-none focus:border-purple-500"
+                      />
                     </div>
+                    {/* Quick Preset Buttons */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setCustomMaterialInput('0')}
+                        className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold"
+                      >
+                        ₹0
+                      </button>
+                      {availableMaterials > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const remainingBill = Math.max(0, calculatedTotal - actualAdvanceDeducted);
+                            const maxMat = Math.min(availableMaterials, remainingBill);
+                            setCustomMaterialInput(String(maxMat));
+                          }}
+                          className="px-2 py-1 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-lg text-[10px] font-bold"
+                        >
+                          Full (₹{availableMaterials.toLocaleString('en-IN')})
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {availableMaterials > 0 && actualMaterialDeducted > 0 && (
+                    <span className="text-[10px] font-semibold text-purple-700 block">
+                      कपातीनंतर शिल्लक साहित्य बाकी: ₹{(availableMaterials - actualMaterialDeducted).toLocaleString('en-IN')}
+                    </span>
                   )}
                 </div>
               </div>
             )}
           </div>
 
-          {/* DYNAMIC CALCULATION & AUTO ADVANCE OFFSET PREVIEW */}
+          {/* DYNAMIC CALCULATION & NET BILL BREAKDOWN */}
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50/60 border border-blue-100 rounded-2xl p-4 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-700">Gross Harvest Amount:</span>
+              <span className="font-bold text-slate-700">एकूण शेतमाल रक्कम (Gross Amount):</span>
               <span className="font-extrabold text-slate-900">₹{calculatedTotal.toLocaleString('en-IN')}</span>
             </div>
 
-            {deductionMode === 'AUTO_FIFO' && selectedFarmer?.advanceBalance > 0 && (
-              <div className="flex items-center justify-between text-xs text-emerald-700 font-bold">
+            {actualAdvanceDeducted > 0 && (
+              <div className="flex items-center justify-between text-xs text-blue-700 font-bold">
                 <span className="flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                  Auto FIFO Advance Offset:
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                  वजा: रोख अ‍ॅडव्हान्स कपात (Advance Deducted):
                 </span>
-                <span>- ₹{totalDeductionsApplied.toLocaleString('en-IN')}</span>
+                <span>- ₹{actualAdvanceDeducted.toLocaleString('en-IN')}</span>
               </div>
             )}
 
-            {deductionMode === 'CUSTOM' && (customAdvancesTotal + customMaterialsTotal) > 0 && (
-              <div className="space-y-1 text-xs font-bold">
-                {customAdvancesTotal > 0 && (
-                  <div className="flex items-center justify-between text-emerald-700">
-                    <span>Applied Cash Advances:</span>
-                    <span>- ₹{customAdvancesTotal.toLocaleString('en-IN')}</span>
-                  </div>
-                )}
-                {customMaterialsTotal > 0 && (
-                  <div className="flex items-center justify-between text-rose-700">
-                    <span>Applied Material Supplies:</span>
-                    <span>- ₹{customMaterialsTotal.toLocaleString('en-IN')}</span>
-                  </div>
-                )}
+            {actualMaterialDeducted > 0 && (
+              <div className="flex items-center justify-between text-xs text-purple-700 font-bold">
+                <span className="flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                  वजा: साहित्य पुरवठा कपात (Material Deducted):
+                </span>
+                <span>- ₹{actualMaterialDeducted.toLocaleString('en-IN')}</span>
               </div>
             )}
 
             <div className="h-px bg-blue-200/50" />
 
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-blue-900 uppercase">Net Outstanding Due Bill:</span>
-              <span className="text-base font-black text-blue-700">₹{dueAmount.toLocaleString('en-IN')}</span>
+              <div>
+                <span className="text-xs font-black text-blue-900 uppercase block">
+                  शेतकऱ्याला निव्वळ देणे रक्कम (Net Due Payable):
+                </span>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  {dueAmount === 0 ? 'पूर्ण रक्कम कपातीद्वारे जमा झाली आहे' : 'शेतकऱ्याला रोख किंवा नंतर देय'}
+                </span>
+              </div>
+              <span className="text-lg font-black text-blue-700">₹{dueAmount.toLocaleString('en-IN')}</span>
             </div>
           </div>
 
