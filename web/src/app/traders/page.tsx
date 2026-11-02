@@ -18,7 +18,9 @@ import {
   Building2,
   CheckCircle2,
   History,
-  Printer
+  Printer,
+  Download,
+  Share2
 } from 'lucide-react';
 import {
   apiGetTraders,
@@ -59,6 +61,32 @@ export default function TradersPage() {
   const [historyBill, setHistoryBill] = useState<any>(null);
   const [isPrintBillModalOpen, setIsPrintBillModalOpen] = useState(false);
   const [billToPrint, setBillToPrint] = useState<any>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  const handleDownloadTraderPdf = async () => {
+    if (!billToPrint) return;
+    setIsGeneratingPdf(true);
+    try {
+      if (typeof window !== 'undefined') {
+        const html2pdfModule = await import('html2pdf.js');
+        const html2pdf = (html2pdfModule.default || html2pdfModule) as any;
+        const element = document.getElementById('receipt-print-area');
+        const invoiceNo = billToPrint.id || 'TB-001';
+        const opt = {
+          margin: [0.2, 0.2, 0.2, 0.2],
+          filename: `Trader-Supply-Receipt-${invoiceNo}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+        };
+        await html2pdf().set(opt).from(element).save();
+      }
+    } catch (err) {
+      console.error('Error generating Trader PDF:', err);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [name, setName] = useState('');
@@ -885,8 +913,8 @@ export default function TradersPage() {
 
       {/* Trader Supply Bill Print Modal */}
       {isPrintBillModalOpen && billToPrint && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in print:p-0 print:bg-white print:static print:inset-auto">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none">
             {/* Modal Header */}
             <div className="bg-slate-900 text-white p-5 flex justify-between items-center no-print">
               <div className="flex items-center gap-3">
@@ -910,7 +938,7 @@ export default function TradersPage() {
             </div>
 
             {/* Printable Content */}
-            <div className="p-6 overflow-y-auto space-y-4 text-xs font-sans">
+            <div id="receipt-print-area" className="p-6 overflow-y-auto space-y-4 text-xs font-sans print-format-a4 bg-white">
               {/* Agency & Trader Details */}
               <div className="border-b-2 border-slate-900 pb-4 flex justify-between items-start">
                 <div className="flex items-start gap-3.5">
@@ -1044,7 +1072,7 @@ export default function TradersPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="bg-slate-50 border-t border-slate-200 p-4 flex justify-end gap-2 no-print">
+            <div className="bg-slate-50 border-t border-slate-200 p-4 flex justify-end items-center gap-2 no-print">
               <button
                 onClick={() => {
                   setIsPrintBillModalOpen(false);
@@ -1055,11 +1083,20 @@ export default function TradersPage() {
                 बंद करा / Close
               </button>
               <button
+                type="button"
+                onClick={handleDownloadTraderPdf}
+                disabled={isGeneratingPdf}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-400" />
+                <span>{isGeneratingPdf ? 'डाउनलोड होत आहे...' : 'PDF डाउनलोड'}</span>
+              </button>
+              <button
                 onClick={() => window.print()}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-colors cursor-pointer active:scale-95"
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>प्रिंट पावती / Print Receipt</span>
+                <span>प्रिंट पावती / Print</span>
               </button>
             </div>
           </div>

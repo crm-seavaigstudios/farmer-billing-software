@@ -1028,13 +1028,16 @@ export const apiCreatePurchase = async (purchaseData: any) => {
   const purAmt = numPurAmt > 0 ? numPurAmt : (itemCalcTotal > 0 ? itemCalcTotal : 0);
 
   const today = new Date();
-  const mmyy = String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
+  const dd = String(today.getDate()).padStart(2, '0');
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(today.getFullYear());
+  const dateFormatted = `${dd}/${mm}/${yyyy}`;
   
-  // 1. Query highest existing serial for this tenant & month pattern
+  // 1. Query highest existing serial for this tenant & date pattern
   const { data: latestData } = await supabase
     .from('Purchase')
     .select('purchaseNo')
-    .like('purchaseNo', `PB-${mmyy}-${tenantShort}-%`)
+    .like('purchaseNo', `PB-${dateFormatted}-${tenantShort}-%`)
     .order('createdAt', { ascending: false })
     .limit(20);
 
@@ -1048,7 +1051,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     serial = Math.max(...existingSerials, 0) + 1;
   }
 
-  let billNo = `PB-${mmyy}-${tenantShort}-${String(serial).padStart(3, '0')}`;
+  let billNo = `PB-${dateFormatted}-${tenantShort}-${String(serial).padStart(3, '0')}`;
   let globalId = purchaseData.id || `pur-${tenantShort}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
   
   let validFarmerId = purchaseData.farmerId;
@@ -1130,7 +1133,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
         throw e;
       }
       serial++;
-      billNo = `PB-${mmyy}-${tenantShort}-${String(serial).padStart(3, '0')}`;
+      billNo = `PB-${dateFormatted}-${tenantShort}-${String(serial).padStart(3, '0')}`;
       globalId = `pur-${tenantShort}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
       purchaseObj.id = billNo;
       purchaseObj.dbId = globalId;
@@ -2209,11 +2212,21 @@ export const apiGetWorkers = async () => {
         return [];
       }
       const rawAttendance = getLocalCache(`seavaig_worker_attendance_${tenantId}`, []);
+      const rawPayments = getLocalCache(`seavaig_worker_payments_${tenantId}`, []);
       const mapped = data.map((w: any) => {
         const workerAtt = rawAttendance.filter((a: any) => a.workerId === w.id || a.workerCode === w.workerCode);
+        const workerPay = rawPayments.filter((p: any) => p.workerId === w.id || p.workerCode === w.workerCode);
+        
+        // Calculate advance balance and total payments
+        const advancesGiven = workerPay.filter((p: any) => p.paymentType === 'ADVANCE_PAYOUT').reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+        const advancesDeducted = workerPay.reduce((s: number, p: any) => s + (Number(p.advanceDeducted) || 0), 0);
+        const calculatedAdvanceBalance = Math.max(0, advancesGiven - advancesDeducted);
+
         return {
           ...w,
-          attendanceHistory: workerAtt.length > 0 ? workerAtt : (w.attendanceHistory || [])
+          advanceBalance: w.advanceBalance !== undefined ? w.advanceBalance : calculatedAdvanceBalance,
+          attendanceHistory: workerAtt.length > 0 ? workerAtt : (w.attendanceHistory || []),
+          paymentHistory: workerPay.length > 0 ? workerPay : (w.paymentHistory || [])
         };
       });
       setLocalCache(`seavaig_workers_cache_${tenantId}`, mapped);
@@ -2395,12 +2408,15 @@ export const apiCreatePayment = async (payData: any) => {
   const tenantShort = getTenantShort(tenantId);
   
   const today = new Date();
-  const mmyy = String(today.getMonth() + 1).padStart(2, '0') + String(today.getFullYear()).slice(2);
+  const dd = String(today.getDate()).padStart(2, '0');
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(today.getFullYear());
+  const dateFormatted = `${dd}/${mm}/${yyyy}`;
   
   const { data: latestData } = await supabase
     .from('Payment')
     .select('paymentNo')
-    .like('paymentNo', `PV-${mmyy}-${tenantShort}-%`)
+    .like('paymentNo', `PV-${dateFormatted}-${tenantShort}-%`)
     .order('createdAt', { ascending: false })
     .limit(20);
 
@@ -2414,7 +2430,7 @@ export const apiCreatePayment = async (payData: any) => {
     serial = Math.max(...existingSerials, 0) + 1;
   }
 
-  let paymentNo = payData.paymentNo || `PV-${mmyy}-${tenantShort}-${String(serial).padStart(3, '0')}`;
+  let paymentNo = payData.paymentNo || `PV-${dateFormatted}-${tenantShort}-${String(serial).padStart(3, '0')}`;
   let globalId = payData.id || `pay-${tenantShort}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
   const cleanAmount = typeof payData.amount === 'number'
@@ -2500,7 +2516,7 @@ export const apiCreatePayment = async (payData: any) => {
         break;
       }
       serial++;
-      paymentNo = `PV-${mmyy}-${tenantShort}-${String(serial).padStart(3, '0')}`;
+      paymentNo = `PV-${dateFormatted}-${tenantShort}-${String(serial).padStart(3, '0')}`;
       globalId = `pay-${tenantShort}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     }
   }

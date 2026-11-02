@@ -16,7 +16,10 @@ import {
   ChevronUp,
   ExternalLink,
   ShieldCheck,
-  Receipt
+  Receipt,
+  Scale,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { PrintReceiptModal } from '@/components/common/PrintReceiptModal';
@@ -177,6 +180,19 @@ export function CustomerDetailDrawer({ isOpen, onClose, customer }: CustomerDeta
   const totalReceivedAmt = ledgerEntries.reduce((acc, e) => acc + (e.credit || 0), 0);
   const currentOutstanding = totalSalesAmt - totalReceivedAmt;
 
+  // Seller Mandi Consignment Breakdown
+  const inTransitBills = sales.filter((s: any) => s.deliveryStatus === 'IN_TRANSIT' && s.status !== 'RECEIVED' && s.status !== 'PATTI_CLEARED');
+  const inTransitCount = inTransitBills.length;
+  const inTransitAmt = inTransitBills.reduce((acc: number, s: any) => acc + parseFloat(s.totalAmount || s.amount || 0), 0);
+
+  const receivedBills = sales.filter((s: any) => (s.deliveryStatus === 'RECEIVED' || s.status === 'RECEIVED') && s.deliveryStatus !== 'PATTI_CLEARED' && s.status !== 'PATTI_CLEARED');
+  const receivedCount = receivedBills.length;
+  const receivedAmt = receivedBills.reduce((acc: number, s: any) => acc + parseFloat(s.totalAmount || s.amount || 0), 0);
+
+  const pattiClearedBills = sales.filter((s: any) => s.deliveryStatus === 'PATTI_CLEARED' || s.status === 'PATTI_CLEARED' || s.isPattiReceived || !!s.pattiDetails);
+  const pattiClearedCount = pattiClearedBills.length;
+  const pattiClearedAmt = pattiClearedBills.reduce((acc: number, s: any) => acc + parseFloat(s.totalAmount || s.amount || 0), 0);
+
   const handleOpenPrintInvoice = (sale: any) => {
     setActiveReceipt({
       id: sale.id,
@@ -243,77 +259,118 @@ export function CustomerDetailDrawer({ isOpen, onClose, customer }: CustomerDeta
           </button>
         </div>
 
-        {/* Top KPI Summary Cards */}
-        <div className="p-5 bg-slate-50 border-b border-slate-200">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">एकूण विक्री (Total Sales)</span>
-              <span className="text-lg font-black text-slate-900 mt-0.5 block">
-                ₹{totalSalesAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+        {/* Top Seller Mandi Consignment Summary Cards */}
+        <div className="p-4 bg-slate-50 border-b border-slate-200">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            {/* 1. Total Bills */}
+            <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block flex items-center gap-1">
+                <FileText className="w-3 h-3 text-blue-600" /> एकूण बिले (Total Bills)
               </span>
-              <span className="text-[10px] text-slate-400 font-medium">{sales.length} Dispatches</span>
+              <span className="text-base font-black text-slate-900 mt-0.5 block">
+                ₹{totalSalesAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </span>
+              <span className="text-[10px] text-blue-600 font-extrabold">{sales.length} Dispatches</span>
             </div>
 
-            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">एकूण जमा (Total Paid)</span>
-              <span className="text-lg font-black text-emerald-700 mt-0.5 block">
-                ₹{totalReceivedAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+            {/* 2. In Transit */}
+            <div className="bg-white p-3 rounded-2xl border border-amber-200/80 bg-amber-50/20 shadow-2xs">
+              <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block flex items-center gap-1">
+                <Truck className="w-3 h-3 text-amber-600" /> मार्गावर (In Transit)
               </span>
-              <span className="text-[10px] text-emerald-600 font-medium">{payments.length} Payments</span>
+              <span className="text-base font-black text-amber-900 mt-0.5 block">
+                ₹{inTransitAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </span>
+              <span className="text-[10px] text-amber-700 font-extrabold">{inTransitCount} Shipments</span>
             </div>
 
-            <div className={`p-3.5 rounded-2xl border shadow-xs ${currentOutstanding > 0 ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
-              <span className={`text-[10px] font-bold uppercase tracking-wider block ${currentOutstanding > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                बाकी येणे (Outstanding)
+            {/* 3. Received / Pending Patti */}
+            <div className="bg-white p-3 rounded-2xl border border-sky-200/80 bg-sky-50/20 shadow-2xs">
+              <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wider block flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-sky-600" /> पोहोच (Mandi Received)
               </span>
-              <span className={`text-lg font-black mt-0.5 block ${currentOutstanding > 0 ? 'text-rose-700' : 'text-emerald-800'}`}>
-                ₹{Math.max(0, currentOutstanding).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+              <span className="text-base font-black text-sky-900 mt-0.5 block">
+                ₹{receivedAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
               </span>
-              <span className={`text-[10px] font-bold ${currentOutstanding > 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
+              <span className="text-[10px] text-sky-700 font-extrabold">{receivedCount} Received / Rate pending</span>
+            </div>
+
+            {/* 4. Patti Cleared */}
+            <div className="bg-white p-3 rounded-2xl border border-indigo-200/80 bg-indigo-50/20 shadow-2xs">
+              <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block flex items-center gap-1">
+                <Scale className="w-3 h-3 text-indigo-600" /> पट्टी जमा (Patti Cleared)
+              </span>
+              <span className="text-base font-black text-indigo-900 mt-0.5 block">
+                ₹{pattiClearedAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </span>
+              <span className="text-[10px] text-indigo-700 font-extrabold">{pattiClearedCount} Patti Confirmed</span>
+            </div>
+
+            {/* 5. Total Paid / Advance */}
+            <div className="bg-white p-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/20 shadow-2xs">
+              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block flex items-center gap-1">
+                <CreditCard className="w-3 h-3 text-emerald-600" /> एकूण जमा (Total Paid)
+              </span>
+              <span className="text-base font-black text-emerald-700 mt-0.5 block">
+                ₹{totalReceivedAmt.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </span>
+              <span className="text-[10px] text-emerald-600 font-extrabold">{payments.length} Payments / Advances</span>
+            </div>
+
+            {/* 6. Net Outstanding Due */}
+            <div className={`p-3 rounded-2xl border shadow-2xs ${currentOutstanding > 0 ? 'bg-rose-50/60 border-rose-200' : 'bg-emerald-50/40 border-emerald-200'}`}>
+              <span className={`text-[10px] font-bold uppercase tracking-wider block flex items-center gap-1 ${currentOutstanding > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                <AlertCircle className="w-3 h-3" /> बाकी येणे (Net Due)
+              </span>
+              <span className={`text-base font-black mt-0.5 block ${currentOutstanding > 0 ? 'text-rose-700' : 'text-emerald-800'}`}>
+                ₹{Math.max(0, currentOutstanding).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </span>
+              <span className={`text-[10px] font-bold ${currentOutstanding > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                 {currentOutstanding > 0 ? 'Payment Due' : 'All Settled ✓'}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 bg-white px-5 pt-2">
+        {/* Tab Navigation with horizontal scrolling */}
+        <div className="flex border-b border-slate-200 bg-white px-5 pt-2 overflow-x-auto whitespace-nowrap scrollbar-none shrink-0 gap-2">
           <button
             onClick={() => setActiveTab('INVOICES')}
-            className={`pb-3 px-4 text-xs font-black border-b-2 flex items-center gap-2 cursor-pointer transition-colors ${
+            className={`pb-3 px-4 text-xs font-black border-b-2 flex items-center gap-2 cursor-pointer transition-colors shrink-0 whitespace-nowrap ${
               activeTab === 'INVOICES'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <FileText className="w-4 h-4" />
+            <FileText className="w-4 h-4 shrink-0" />
             <span>वाहतूक व बिले (Dispatches & Bills)</span>
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">{sales.length}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('LEDGER')}
-            className={`pb-3 px-4 text-xs font-black border-b-2 flex items-center gap-2 cursor-pointer transition-colors ${
+            className={`pb-3 px-4 text-xs font-black border-b-2 flex items-center gap-2 cursor-pointer transition-colors shrink-0 whitespace-nowrap ${
               activeTab === 'LEDGER'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Receipt className="w-4 h-4" />
+            <Receipt className="w-4 h-4 shrink-0" />
             <span>📊 पासबुक खाते (Passbook Ledger)</span>
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-50 text-blue-700 font-bold">Latest First</span>
           </button>
 
           <button
             onClick={() => setActiveTab('PAYMENTS')}
-            className={`pb-3 px-4 text-xs font-black border-b-2 flex items-center gap-2 cursor-pointer transition-colors ${
+            className={`pb-3 px-4 text-xs font-black border-b-2 flex items-center gap-2 cursor-pointer transition-colors shrink-0 whitespace-nowrap ${
               activeTab === 'PAYMENTS'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <CreditCard className="w-4 h-4" />
+            <CreditCard className="w-4 h-4 shrink-0" />
             <span>जमा रकमा (Payments)</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-50 text-emerald-700 font-bold">{payments.length}</span>
           </button>
         </div>
 

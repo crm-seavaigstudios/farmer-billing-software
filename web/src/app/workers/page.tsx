@@ -11,13 +11,21 @@ import {
   UserPlus,
   Calendar,
   CheckCircle,
+  CheckCircle2,
   Plus,
   Search,
   Filter,
   Download,
   ChevronRight,
   X,
-  FileText
+  FileText,
+  Wallet,
+  ArrowRight,
+  IndianRupee,
+  Receipt,
+  Scale,
+  History,
+  AlertCircle
 } from 'lucide-react';
 import {
   apiGetWorkers,
@@ -59,13 +67,19 @@ export default function WorkersPage() {
   const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [hoursWorked, setHoursWorked] = useState('8');
   const [overtimeAmount, setOvertimeAmount] = useState('0');
+  const [workDescription, setWorkDescription] = useState('तोडणी व प्रतवारी (Harvesting & Sorting)');
   const [attendanceNotes, setAttendanceNotes] = useState('');
 
-  // Payment Form
+  // Payment Form & Custom Advance Deduction
   const [paymentAmount, setPaymentAmount] = useState('500');
   const [paymentType, setPaymentType] = useState('GENERAL_PAYOUT');
   const [paymentMode, setPaymentMode] = useState('CASH');
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [deductionMode, setDeductionMode] = useState<'KEEP_ADVANCE' | 'SETTLE_MAX' | 'CUSTOM'>('KEEP_ADVANCE');
+  const [customAdvanceInput, setCustomAdvanceInput] = useState('');
+
+  // Drawer Tabs
+  const [drawerTab, setDrawerTab] = useState<'ATTENDANCE' | 'PAYMENTS' | 'LEDGER'>('ATTENDANCE');
 
   const [loading, setLoading] = useState(false);
 
@@ -158,6 +172,7 @@ export default function WorkersPage() {
       shift: shiftType,
       hours: hoursToSave,
       wage: earnedThisShift,
+      workDescription: workDescription || 'General Farm Work',
       type: 'ATTENDANCE',
       notes: attendanceNotes
     };
@@ -206,33 +221,118 @@ export default function WorkersPage() {
     const tenantId = getTenantId();
     const payAmt = Number(paymentAmount) || 0;
 
-    await apiRecordWorkerPayment({
-      workerId: selectedWorker.id,
-      amount: payAmt,
-      paymentType,
-      paymentMode,
-      notes: paymentNotes,
-    });
+    const currentAdvBalance = Number(selectedWorker.advanceBalance) || 0;
+    let advanceDeducted = 0;
 
-    const updated = workers.map((w) => {
-      if (w.id === selectedWorker.id) {
-        const newPaid = (w.totalPaid || 0) + payAmt;
-        const earned = w.totalEarned || 0;
-        return {
-          ...w,
-          totalPaid: newPaid,
-          outstandingBalance: Math.max(0, earned - newPaid),
-        };
+    if (paymentType === 'ADVANCE_PAYOUT') {
+      // Disbursing advance to worker
+      const newAdvanceBalance = currentAdvBalance + payAmt;
+      const paymentRecord = {
+        workerId: selectedWorker.id,
+        workerName: selectedWorker.name,
+        workerCode: selectedWorker.workerCode,
+        amount: payAmt,
+        netDisbursed: payAmt,
+        advanceDeducted: 0,
+        paymentType: 'ADVANCE_PAYOUT',
+        paymentMode,
+        notes: paymentNotes || 'कामगारास उचल / ॲडव्हान्स वाटप',
+        date: new Date().toISOString()
+      };
+
+      await apiRecordWorkerPayment(paymentRecord);
+      await apiUpdateWorker(selectedWorker.id, { advanceBalance: newAdvanceBalance });
+
+      const updated = workers.map((w) => {
+        if (w.id === selectedWorker.id) {
+          const existingPayments = Array.isArray(w.paymentHistory) ? w.paymentHistory : [];
+          return {
+            ...w,
+            advanceBalance: newAdvanceBalance,
+            paymentHistory: [paymentRecord, ...existingPayments]
+          };
+        }
+        return w;
+      });
+
+      setWorkers(updated);
+      setSelectedWorker((prev: any) => ({
+        ...prev,
+        advanceBalance: newAdvanceBalance,
+        paymentHistory: [paymentRecord, ...(prev.paymentHistory || [])]
+      }));
+
+      if (typeof window !== 'undefined' && tenantId) {
+        localStorage.setItem(`seavaig_workers_cache_${tenantId}`, JSON.stringify(updated));
       }
-      return w;
-    });
+    } else {
+      // Disbursing regular wage payout with optional advance deduction
+      if (currentAdvBalance > 0) {
+        if (deductionMode === 'SETTLE_MAX') {
+          advanceDeducted = Math.min(currentAdvBalance, payAmt);
+        } else if (deductionMode === 'CUSTOM') {
+          advanceDeducted = Math.min(currentAdvBalance, Math.min(payAmt, Number(customAdvanceInput) || 0));
+        }
+      }
 
-    setWorkers(updated);
-    if (typeof window !== 'undefined' && tenantId) {
-      localStorage.setItem(`seavaig_workers_cache_${tenantId}`, JSON.stringify(updated));
+      const netCashPayout = Math.max(0, payAmt - advanceDeducted);
+      const newAdvanceBalance = Math.max(0, currentAdvBalance - advanceDeducted);
+      const newTotalPaid = (Number(selectedWorker.totalPaid) || 0) + payAmt;
+      const totalEarned = Number(selectedWorker.totalEarned) || 0;
+      const newOutstanding = Math.max(0, totalEarned - newTotalPaid);
+
+      const paymentRecord = {
+        workerId: selectedWorker.id,
+        workerName: selectedWorker.name,
+        workerCode: selectedWorker.workerCode,
+        amount: payAmt,
+        netDisbursed: netCashPayout,
+        advanceDeducted,
+        paymentType: 'GENERAL_PAYOUT',
+        paymentMode,
+        notes: paymentNotes || (advanceDeducted > 0 ? `मजुरी अदा (उचल कपात: ₹${advanceDeducted})` : 'मजुरी अदा'),
+        date: new Date().toISOString()
+      };
+
+      await apiRecordWorkerPayment(paymentRecord);
+      await apiUpdateWorker(selectedWorker.id, {
+        totalPaid: newTotalPaid,
+        outstandingBalance: newOutstanding,
+        advanceBalance: newAdvanceBalance
+      });
+
+      const updated = workers.map((w) => {
+        if (w.id === selectedWorker.id) {
+          const existingPayments = Array.isArray(w.paymentHistory) ? w.paymentHistory : [];
+          return {
+            ...w,
+            totalPaid: newTotalPaid,
+            outstandingBalance: newOutstanding,
+            advanceBalance: newAdvanceBalance,
+            paymentHistory: [paymentRecord, ...existingPayments]
+          };
+        }
+        return w;
+      });
+
+      setWorkers(updated);
+      setSelectedWorker((prev: any) => ({
+        ...prev,
+        totalPaid: newTotalPaid,
+        outstandingBalance: newOutstanding,
+        advanceBalance: newAdvanceBalance,
+        paymentHistory: [paymentRecord, ...(prev.paymentHistory || [])]
+      }));
+
+      if (typeof window !== 'undefined' && tenantId) {
+        localStorage.setItem(`seavaig_workers_cache_${tenantId}`, JSON.stringify(updated));
+      }
     }
+
     setLoading(false);
     setIsPaymentModalOpen(false);
+    setCustomAdvanceInput('');
+    setDeductionMode('KEEP_ADVANCE');
   };
 
   const filteredWorkers = workers.filter(
@@ -577,6 +677,30 @@ export default function WorkersPage() {
               </div>
 
               <div>
+                <label className="font-extrabold text-slate-700 block mb-1">कामाचे स्वरूप / Description of Work *</label>
+                <input
+                  type="text"
+                  required
+                  value={workDescription}
+                  onChange={(e) => setWorkDescription(e.target.value)}
+                  placeholder="उदा. तोडणी, खुरपणी, पॅकिंग, गाडी भरणे (Harvesting, Sorting, Packing)"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800"
+                />
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {['तोडणी (Harvesting)', 'खुरपणी (Weeding)', 'पॅकिंग व प्रतवारी (Sorting & Packing)', 'गाडी लोडिंग (Loading)', 'फवारणी (Spraying)'].map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => setWorkDescription(chip)}
+                      className="px-2 py-0.5 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 transition-colors cursor-pointer"
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <label className="font-extrabold text-slate-700 block mb-1">Attendance Notes / Remarks</label>
                 <input
                   type="text"
@@ -639,8 +763,36 @@ export default function WorkersPage() {
             </div>
 
             <form onSubmit={handleRecordPayment} className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-extrabold text-slate-700 block mb-1">पेमेंट प्रकार (Payment Type)</label>
+                  <select
+                    value={paymentType}
+                    onChange={(e) => setPaymentType(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                  >
+                    <option value="GENERAL_PAYOUT">मजुरी वाटप (Wage Payout)</option>
+                    <option value="ADVANCE_PAYOUT">उचल / ॲडव्हान्स (Advance Payout)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-extrabold text-slate-700 block mb-1">पेमेंट मोड (Payment Mode)</label>
+                  <select
+                    value={paymentMode}
+                    onChange={(e) => setPaymentMode(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                  >
+                    <option value="CASH">CASH (नगद)</option>
+                    <option value="UPI">UPI (GooglePay / PhonePe)</option>
+                    <option value="BANK_TRANSFER">BANK TRANSFER (बँक जमा)</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
-                <label className="font-extrabold text-slate-700 block mb-1">Payment Amount (₹)</label>
+                <label className="font-extrabold text-slate-700 block mb-1">
+                  {paymentType === 'ADVANCE_PAYOUT' ? 'दिलेली उचल रक्कम (Advance Amount ₹) *' : 'देय मजुरी रक्कम (Wage Amount ₹) *'}
+                </label>
                 <input
                   type="number"
                   value={paymentAmount}
@@ -650,40 +802,113 @@ export default function WorkersPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="font-extrabold text-slate-700 block mb-1">Payment Type</label>
-                  <select
-                    value={paymentType}
-                    onChange={(e) => setPaymentType(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
-                  >
-                    <option value="GENERAL_PAYOUT">Full Wage Payout</option>
-                    <option value="ADVANCE_PAYOUT">Advance Payment (अ‍ॅडव्हान्स)</option>
-                    <option value="PURCHASE_SETTLEMENT">Installment Settlement</option>
-                  </select>
+              {/* ADVANCE DEDUCTION COMPONENT */}
+              {paymentType === 'GENERAL_PAYOUT' && (Number(selectedWorker.advanceBalance) || 0) > 0 && (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-amber-900 text-xs flex items-center gap-1.5">
+                      <Wallet className="w-3.5 h-3.5 text-amber-700" />
+                      मजुराकडे उचल शिल्लक: ₹{Number(selectedWorker.advanceBalance || 0).toLocaleString('en-IN')}
+                    </span>
+                    <span className="text-[10px] font-bold text-amber-700 uppercase bg-amber-100 px-2 py-0.5 rounded-full">
+                      Advance Active
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDeductionMode('KEEP_ADVANCE')}
+                      className={`p-2 rounded-xl text-center border font-bold text-[10px] transition-all cursor-pointer ${
+                        deductionMode === 'KEEP_ADVANCE'
+                          ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      उचल तशीच ठेवा
+                      <span className="block text-[8px] font-normal opacity-90">(Keep Advance)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeductionMode('SETTLE_MAX')}
+                      className={`p-2 rounded-xl text-center border font-bold text-[10px] transition-all cursor-pointer ${
+                        deductionMode === 'SETTLE_MAX'
+                          ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      पूर्ण उचल कपात
+                      <span className="block text-[8px] font-normal opacity-90">(Max Settle)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeductionMode('CUSTOM')}
+                      className={`p-2 rounded-xl text-center border font-bold text-[10px] transition-all cursor-pointer ${
+                        deductionMode === 'CUSTOM'
+                          ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      कस्टम कपात
+                      <span className="block text-[8px] font-normal opacity-90">(Custom Amount)</span>
+                    </button>
+                  </div>
+
+                  {deductionMode === 'CUSTOM' && (
+                    <div className="pt-1">
+                      <label className="text-[10px] font-bold text-amber-900 block mb-1">कपात करावयाची उचल रक्कम (₹):</label>
+                      <input
+                        type="number"
+                        placeholder="उदा. 200"
+                        value={customAdvanceInput}
+                        onChange={(e) => setCustomAdvanceInput(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-amber-300 rounded-xl text-xs font-bold text-amber-900"
+                      />
+                    </div>
+                  )}
+
+                  {(() => {
+                    const gross = Number(paymentAmount) || 0;
+                    const advBal = Number(selectedWorker.advanceBalance) || 0;
+                    let toDeduct = 0;
+                    if (deductionMode === 'SETTLE_MAX') toDeduct = Math.min(advBal, gross);
+                    else if (deductionMode === 'CUSTOM') toDeduct = Math.min(advBal, Math.min(gross, Number(customAdvanceInput) || 0));
+
+                    const netPayout = Math.max(0, gross - toDeduct);
+                    const remainingAdv = Math.max(0, advBal - toDeduct);
+
+                    return (
+                      <div className="bg-white/90 rounded-xl p-2.5 border border-amber-200 text-xs space-y-1">
+                        <div className="flex justify-between text-slate-600">
+                          <span>देय मजुरी (Gross Wage):</span>
+                          <span className="font-bold">₹{gross.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="flex justify-between text-amber-700 font-bold">
+                          <span>उचल कपात (Advance Deducted):</span>
+                          <span>-₹{toDeduct.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="border-t border-amber-200 pt-1 flex justify-between font-black text-emerald-700 text-sm">
+                          <span>हातात द्यायची रक्कम (Net Cash Payout):</span>
+                          <span>₹{netPayout.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 pt-0.5">
+                          उर्वरित उचल शिल्लक राहील: ₹{remainingAdv.toLocaleString('en-IN')}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
-                <div>
-                  <label className="font-extrabold text-slate-700 block mb-1">Payment Mode</label>
-                  <select
-                    value={paymentMode}
-                    onChange={(e) => setPaymentMode(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
-                  >
-                    <option value="CASH">CASH (नगद)</option>
-                    <option value="UPI">UPI (GooglePay / PhonePe)</option>
-                    <option value="BANK_TRANSFER">BANK TRANSFER</option>
-                  </select>
-                </div>
-              </div>
+              )}
 
               <div>
-                <label className="font-extrabold text-slate-700 block mb-1">Description / Reason Notes</label>
+                <label className="font-extrabold text-slate-700 block mb-1">तपशील व नोंद (Notes / Remarks)</label>
                 <input
                   type="text"
                   value={paymentNotes}
                   onChange={(e) => setPaymentNotes(e.target.value)}
-                  placeholder="e.g. Weekly wage disbursement for harvest season..."
+                  placeholder="उदा. आठवडा मजुरी किंवा घरगुती कामासाठी उचल..."
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
                 />
               </div>
@@ -709,63 +934,345 @@ export default function WorkersPage() {
         </div>
       )}
 
-      {/* Worker Detail / Attendance History Drawer */}
+      {/* Worker Detail / Complete History & Passbook Drawer */}
       {isWorkerDetailOpen && selectedWorker && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div 
             className="absolute inset-0 bg-slate-900/50 backdrop-blur-2xs transition-opacity"
             onClick={() => setIsWorkerDetailOpen(false)}
           ></div>
-          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="relative w-full max-w-xl bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right">
+            
+            {/* Header */}
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div>
-                <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
-                  {selectedWorker.workerCode}
-                </span>
-                <h2 className="text-lg font-black text-slate-900 mt-1">{selectedWorker.name}</h2>
-                <div className="text-xs text-slate-500 font-semibold">{selectedWorker.role} • ₹{selectedWorker.dailyRate}/day</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black text-purple-300 bg-purple-900/60 border border-purple-700/50 px-2 py-0.5 rounded">
+                    {selectedWorker.workerCode}
+                  </span>
+                  <span className="text-xs font-bold text-slate-400">📞 {selectedWorker.phone || 'No phone'}</span>
+                </div>
+                <h2 className="text-lg font-black text-white mt-1">{selectedWorker.name}</h2>
+                <div className="text-xs text-slate-300 font-semibold mt-0.5">
+                  {selectedWorker.role} • दैनंदिन दर: ₹{selectedWorker.dailyRate}/दिवस (₹{selectedWorker.dailyRate}/day)
+                </div>
               </div>
-              <button onClick={() => setIsWorkerDetailOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg bg-slate-50">
+              <button 
+                onClick={() => setIsWorkerDetailOpen(false)} 
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
-            <div className="flex border-b border-slate-200">
-              <button className="flex-1 py-3 text-xs font-black text-blue-600 border-b-2 border-blue-600">
-                Attendance History
+
+            {/* 4 Financial KPI Summary Cards */}
+            <div className="p-4 bg-slate-50 border-b border-slate-200 shrink-0">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="bg-white p-2.5 rounded-2xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">एकूण कमाई</span>
+                  <span className="text-base font-black text-slate-900 mt-0.5 block">
+                    ₹{(Number(selectedWorker.totalEarned) || 0).toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-[9px] text-blue-600 font-bold">हजेरी हिशोब</span>
+                </div>
+
+                <div className="bg-white p-2.5 rounded-2xl border border-emerald-200/80 bg-emerald-50/20 shadow-2xs">
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">अदा मजुरी</span>
+                  <span className="text-base font-black text-emerald-700 mt-0.5 block">
+                    ₹{(Number(selectedWorker.totalPaid) || 0).toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-[9px] text-emerald-600 font-bold">एकूण दिलेली</span>
+                </div>
+
+                <div className={`p-2.5 rounded-2xl border shadow-2xs ${(Number(selectedWorker.advanceBalance) || 0) > 0 ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-slate-200'}`}>
+                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">उचल शिल्लक</span>
+                  <span className="text-base font-black mt-0.5 block text-amber-800">
+                    ₹{(Number(selectedWorker.advanceBalance) || 0).toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-[9px] text-amber-600 font-bold">कपातीस पात्र</span>
+                </div>
+
+                <div className={`p-2.5 rounded-2xl border shadow-2xs ${(Number(selectedWorker.outstandingBalance) || 0) > 0 ? 'bg-rose-50/60 border-rose-200' : 'bg-emerald-50/40 border-emerald-200'}`}>
+                  <span className="text-[10px] font-bold uppercase tracking-wider block text-rose-700">शिल्लक देय</span>
+                  <span className="text-base font-black mt-0.5 block text-rose-800">
+                    ₹{(Number(selectedWorker.outstandingBalance) || 0).toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-[9px] font-bold text-rose-600">उर्वरित देय</span>
+                </div>
+              </div>
+
+              {/* Quick Action Buttons in Drawer */}
+              <div className="flex gap-2 mt-3 pt-2 border-t border-slate-200/80">
+                <button
+                  type="button"
+                  onClick={() => setIsAttendanceModalOpen(true)}
+                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>+ हजेरी व काम</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentType('ADVANCE_PAYOUT');
+                    setPaymentAmount('500');
+                    setIsPaymentModalOpen(true);
+                  }}
+                  className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Wallet className="w-3.5 h-3.5" />
+                  <span>+ उचल द्या (Advance)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentType('GENERAL_PAYOUT');
+                    setPaymentAmount(String(selectedWorker.outstandingBalance || selectedWorker.dailyRate || 500));
+                    setIsPaymentModalOpen(true);
+                  }}
+                  className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <DollarSign className="w-3.5 h-3.5" />
+                  <span>+ मजुरी अदा (Pay)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Tab Navigation with horizontal scrolling */}
+            <div className="flex border-b border-slate-200 bg-white px-4 pt-2 overflow-x-auto whitespace-nowrap scrollbar-none shrink-0 gap-2">
+              <button
+                onClick={() => setDrawerTab('ATTENDANCE')}
+                className={`pb-3 px-3 text-xs font-black border-b-2 flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 whitespace-nowrap ${
+                  drawerTab === 'ATTENDANCE'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                <span>दिनवार हजेरी व काम</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-50 text-blue-700 font-bold">
+                  {(selectedWorker.attendanceHistory || []).length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setDrawerTab('PAYMENTS')}
+                className={`pb-3 px-3 text-xs font-black border-b-2 flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 whitespace-nowrap ${
+                  drawerTab === 'PAYMENTS'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Wallet className="w-3.5 h-3.5 shrink-0" />
+                <span>पेमेंट व उचल इतिहास</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-50 text-emerald-700 font-bold">
+                  {(selectedWorker.paymentHistory || []).length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setDrawerTab('LEDGER')}
+                className={`pb-3 px-3 text-xs font-black border-b-2 flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 whitespace-nowrap ${
+                  drawerTab === 'LEDGER'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Receipt className="w-3.5 h-3.5 shrink-0" />
+                <span>पासबुक लेजर (Ledger)</span>
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50">
-              {(!selectedWorker.attendanceHistory || selectedWorker.attendanceHistory.length === 0) ? (
-                <div className="text-center py-10">
-                  <Clock className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                  <p className="text-sm font-bold text-slate-400">No attendance records found.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {selectedWorker.attendanceHistory.map((record: any, idx: number) => (
-                    <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex items-center justify-between">
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase">{record.date}</div>
-                        <div className="text-sm font-extrabold text-slate-800 mt-0.5">
-                          {record.shift === 'FULL_DAY' && 'Full Day (8 hrs)'}
-                          {record.shift === 'HALF_DAY' && 'Half Day (4 hrs)'}
-                          {record.shift === 'HOURS' && `${record.hours} Hours`}
-                          {record.shift === 'OVERTIME' && `Overtime (${record.hours} hrs)`}
-                        </div>
-                        {record.notes && (
-                          <div className="text-[10px] text-slate-500 mt-1 font-medium bg-slate-50 px-2 py-0.5 rounded inline-block">
-                            {record.notes}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[10px] font-bold text-emerald-600 uppercase">Wage Earned</div>
-                        <div className="text-base font-black text-slate-900">₹{(record.wage || 0).toLocaleString('en-IN')}</div>
-                      </div>
+            {/* Tab Contents */}
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 space-y-3">
+              {/* TAB 1: ATTENDANCE & WORK */}
+              {drawerTab === 'ATTENDANCE' && (
+                <div>
+                  {(!selectedWorker.attendanceHistory || selectedWorker.attendanceHistory.length === 0) ? (
+                    <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 border-dashed">
+                      <Clock className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                      <p className="text-sm font-bold text-slate-500">कोणतीही हजेरी नोंद आढळली नाही</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Click "+ हजेरी व काम" above to record daily work.</p>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="space-y-2.5">
+                      {selectedWorker.attendanceHistory.map((record: any, idx: number) => (
+                        <div key={idx} className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-lg">
+                                {record.date}
+                              </span>
+                              <span className="text-xs font-extrabold text-slate-800">
+                                {record.shift === 'FULL_DAY' && 'Full Day (8 तास)'}
+                                {record.shift === 'HALF_DAY' && 'Half Day (4 तास)'}
+                                {record.shift === 'HOURS' && `${record.hours} तास`}
+                                {record.shift === 'OVERTIME' && `ओव्हरटाईम (${record.hours} तास)`}
+                              </span>
+                            </div>
+
+                            <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                              <span className="text-purple-600">🔨</span>
+                              <span>{record.workDescription || record.notes || 'शेतातील सर्वसाधारण काम (Farm Labor)'}</span>
+                            </div>
+
+                            {record.notes && record.workDescription && record.notes !== record.workDescription && (
+                              <div className="text-[10px] text-slate-400 font-medium italic">
+                                टीप: {record.notes}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="text-right">
+                            <span className="text-[10px] font-extrabold text-emerald-600 uppercase block">कमाई (Earned)</span>
+                            <span className="text-base font-black text-slate-900 block mt-0.5">
+                              +₹{(Number(record.wage) || 0).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 2: PAYMENTS & ADVANCES */}
+              {drawerTab === 'PAYMENTS' && (
+                <div>
+                  {(!selectedWorker.paymentHistory || selectedWorker.paymentHistory.length === 0) ? (
+                    <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 border-dashed">
+                      <Wallet className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                      <p className="text-sm font-bold text-slate-500">कोणताही पेमेंट किंवा उचल इतिहास आढळला नाही</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Click "+ मजुरी अदा" or "+ उचल द्या" above.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {selectedWorker.paymentHistory.map((p: any, idx: number) => {
+                        const isAdvance = p.paymentType === 'ADVANCE_PAYOUT';
+                        return (
+                          <div key={idx} className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg border ${
+                                  isAdvance 
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200' 
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                }`}>
+                                  {isAdvance ? 'उचल (Advance Given)' : 'मजुरी वाटप (Wage Payout)'}
+                                </span>
+                                <span className="text-[10px] font-bold text-slate-400">
+                                  {p.date ? new Date(p.date).toLocaleDateString('en-IN') : 'N/A'}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-extrabold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                                {p.paymentMode || 'CASH'}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between items-baseline pt-1">
+                              <div>
+                                <div className="text-xs font-extrabold text-slate-800">{p.notes || (isAdvance ? 'Advance Taken' : 'Wage Disbursed')}</div>
+                                {p.advanceDeducted > 0 && (
+                                  <div className="text-[10px] font-bold text-amber-700 mt-0.5">
+                                    कपात केलेली उचल: -₹{Number(p.advanceDeducted).toLocaleString('en-IN')}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <span className="text-base font-black text-emerald-700">
+                                  ₹{(Number(p.netDisbursed || p.amount) || 0).toLocaleString('en-IN')}
+                                </span>
+                                {p.netDisbursed !== undefined && p.netDisbursed !== p.amount && (
+                                  <span className="text-[9px] text-slate-400 block font-bold">
+                                    (Gross: ₹{Number(p.amount).toLocaleString('en-IN')})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: COMBINED CHRONOLOGICAL LEDGER */}
+              {drawerTab === 'LEDGER' && (
+                <div>
+                  {(() => {
+                    const attRecords = (selectedWorker.attendanceHistory || []).map((a: any) => ({
+                      id: a.id || `att-${a.date}`,
+                      date: a.date,
+                      timestamp: new Date(a.date).getTime() || 0,
+                      type: 'ATTENDANCE',
+                      title: `हजेरी: ${a.workDescription || a.notes || 'काम'}`,
+                      sub: `${a.shift === 'FULL_DAY' ? 'Full Day' : a.shift} (${a.hours || 8} hrs)`,
+                      credit: Number(a.wage) || 0,
+                      debit: 0
+                    }));
+
+                    const payRecords = (selectedWorker.paymentHistory || []).map((p: any) => ({
+                      id: p.id || `pay-${p.date}`,
+                      date: p.date ? new Date(p.date).toISOString().slice(0, 10) : 'N/A',
+                      timestamp: p.date ? new Date(p.date).getTime() : 0,
+                      type: p.paymentType === 'ADVANCE_PAYOUT' ? 'ADVANCE' : 'PAYOUT',
+                      title: p.paymentType === 'ADVANCE_PAYOUT' ? 'उचल दिली (Advance Given)' : 'मजुरी दिली (Wage Paid)',
+                      sub: p.notes || p.paymentMode || '',
+                      credit: 0,
+                      debit: Number(p.amount) || 0
+                    }));
+
+                    const combined = [...attRecords, ...payRecords].sort((a, b) => b.timestamp - a.timestamp);
+
+                    if (combined.length === 0) {
+                      return (
+                        <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 border-dashed">
+                          <Receipt className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                          <p className="text-sm font-bold text-slate-500">कोणतीही लेजर नोंद नाही (No Ledger Records)</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-2">
+                        {combined.map((item, idx) => (
+                          <div key={idx} className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-slate-400">{item.date}</span>
+                                <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${
+                                  item.type === 'ATTENDANCE'
+                                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                    : item.type === 'ADVANCE'
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                }`}>
+                                  {item.type === 'ATTENDANCE' ? 'काम/हजेरी' : item.type === 'ADVANCE' ? 'उचल' : 'मजुरी पेमेंट'}
+                                </span>
+                              </div>
+                              <div className="text-xs font-black text-slate-800">{item.title}</div>
+                              {item.sub && <div className="text-[10px] text-slate-400 font-medium">{item.sub}</div>}
+                            </div>
+
+                            <div className="text-right">
+                              {item.credit > 0 ? (
+                                <div>
+                                  <span className="text-[9px] font-bold text-blue-600 block">कमाई (+Credit)</span>
+                                  <span className="text-sm font-black text-blue-700">+₹{item.credit.toLocaleString('en-IN')}</span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="text-[9px] font-bold text-emerald-600 block">वाटप (-Debit)</span>
+                                  <span className="text-sm font-black text-emerald-700">-₹{item.debit.toLocaleString('en-IN')}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
