@@ -48,6 +48,8 @@ export default function SellerPortalPage() {
   // APMC Mandi Patti Clear Modal State
   const [isPattiModalOpen, setIsPattiModalOpen] = useState(false);
   const [billForPatti, setBillForPatti] = useState<any | null>(null);
+  const [editablePattiItems, setEditablePattiItems] = useState<any[]>([]);
+  const [pattiBargainingNotes, setPattiBargainingNotes] = useState('');
   const [pattiDeductions, setPattiDeductions] = useState({
     hamali: 150,
     tolai: 50,
@@ -249,28 +251,42 @@ export default function SellerPortalPage() {
   };
 
   const handleOpenPattiModal = (bill: any) => {
-    const grossAmt = parseFloat(bill.netAmount || bill.totalAmount || bill.amount || 0);
+    let itemsList = Array.isArray(bill.itemsData) ? [...bill.itemsData] : [];
+    if (itemsList.length === 0 && bill.items) {
+      itemsList = [{
+        srNo: 1,
+        cropName: bill.items,
+        weightKg: Number(bill.totalWeight || 0),
+        ratePerKg: parseFloat(bill.totalWeight || 0) > 0 ? Math.round(parseFloat(bill.amount || 0) / parseFloat(bill.totalWeight || 1)) : 0,
+        unit: 'KG',
+        totalAmount: parseFloat(bill.amount || 0)
+      }];
+    }
+    setEditablePattiItems(itemsList);
+    setPattiBargainingNotes(bill.pattiBargainingNotes || '');
+
+    const grossAmt = itemsList.reduce((acc, i) => acc + (Number(i.weightKg || i.weight || 0) * Number(i.ratePerKg || i.rate || 0)), 0) || parseFloat(bill.netAmount || bill.totalAmount || bill.amount || 0);
     const estCommission = Math.round(grossAmt * 0.05); // standard 5% APMC commission
     const estCess = Math.round(grossAmt * 0.0105); // 1.05% APMC cess
     setBillForPatti(bill);
     setPattiDeductions({
-      hamali: 150,
-      tolai: 50,
-      mandiTax: estCess,
-      commission: estCommission,
-      freight: 0,
-      other: 0,
-      paymentMode: 'BANK_TRANSFER',
-      paymentRef: '',
-      clearedDate: new Date().toISOString().slice(0, 10),
+      hamali: bill.pattiDetails?.hamali ?? 150,
+      tolai: bill.pattiDetails?.tolai ?? 50,
+      mandiTax: bill.pattiDetails?.mandiTax ?? estCess,
+      commission: bill.pattiDetails?.commission ?? estCommission,
+      freight: bill.pattiDetails?.freight ?? 0,
+      other: bill.pattiDetails?.other ?? 0,
+      paymentMode: bill.pattiDetails?.paymentMode ?? 'BANK_TRANSFER',
+      paymentRef: bill.pattiDetails?.paymentRef ?? '',
+      clearedDate: bill.pattiDetails?.clearedDate ?? new Date().toISOString().slice(0, 10),
     });
     setIsPattiModalOpen(true);
   };
 
-  const handleConfirmPattiClear = async () => {
+  const handleConfirmPattiClear = async (isFinalLock: boolean = true) => {
     if (!billForPatti) return;
     try {
-      const grossAmt = parseFloat(billForPatti.netAmount || billForPatti.totalAmount || billForPatti.amount || 0);
+      const grossAmt = editablePattiItems.reduce((acc, i) => acc + (Number(i.weightKg || i.weight || 0) * Number(i.ratePerKg || i.rate || 0)), 0) || parseFloat(billForPatti.netAmount || billForPatti.totalAmount || billForPatti.amount || 0);
       const totalDeductions = (Number(pattiDeductions.hamali) || 0) +
         (Number(pattiDeductions.tolai) || 0) +
         (Number(pattiDeductions.mandiTax) || 0) +
@@ -278,7 +294,9 @@ export default function SellerPortalPage() {
         (Number(pattiDeductions.freight) || 0) +
         (Number(pattiDeductions.other) || 0);
 
-      const netPayable = Math.max(0, grossAmt - totalDeductions);
+      const netPattiAmount = Math.max(0, grossAmt - totalDeductions);
+      const advancePaidEarlier = Number(billForPatti.sellerPattiAdvance || 0);
+      const netPayable = Math.max(0, netPattiAmount - advancePaidEarlier);
 
       const pattiDetails = {
         hamali: Number(pattiDeductions.hamali) || 0,
@@ -288,30 +306,46 @@ export default function SellerPortalPage() {
         freight: Number(pattiDeductions.freight) || 0,
         other: Number(pattiDeductions.other) || 0,
         totalDeductions,
+        grossAmt,
+        advancePaidEarlier,
         netPayable,
+        isFinalLock,
         clearedDate: pattiDeductions.clearedDate,
         paymentMode: pattiDeductions.paymentMode,
         paymentRef: pattiDeductions.paymentRef,
+        notes: pattiBargainingNotes
       };
 
       const existingHistory = Array.isArray(billForPatti.paymentHistory) ? billForPatti.paymentHistory : [];
-      const newPaymentEntry = {
-        date: pattiDeductions.clearedDate,
-        amount: netPayable,
-        mode: pattiDeductions.paymentMode,
-        ref: pattiDeductions.paymentRef,
-        type: 'PATTI_CLEAR',
-        notes: `APMC Vikri Patti Cleared (Deductions: ₹${totalDeductions})`
-      };
-      const updatedHistory = [...existingHistory, newPaymentEntry];
+      let updatedHistory = existingHistory;
+
+      if (isFinalLock) {
+        const newPaymentEntry = {
+          date: pattiDeductions.clearedDate,
+          amount: netPayable,
+          mode: pattiDeductions.paymentMode,
+          ref: pattiDeductions.paymentRef,
+          type: 'PATTI_CLEAR',
+          notes: `APMC Vikri Patti Cleared (Gross: ₹${grossAmt}, Deductions: ₹${totalDeductions}, Advance Deducted: ₹${advancePaidEarlier})`
+        };
+        updatedHistory = [...existingHistory, newPaymentEntry];
+      }
+
+      const totalPaidFinal = advancePaidEarlier + (isFinalLock ? netPayable : 0);
+      const dueFinal = Math.max(0, netPattiAmount - totalPaidFinal);
 
       const patchPayload = {
-        status: 'PATTI_CLEARED',
-        deliveryStatus: 'PATTI_CLEARED',
-        paymentStatus: 'PAID',
-        paidAmount: netPayable,
-        dueAmount: 0,
+        amount: grossAmt,
+        itemsData: editablePattiItems,
+        pattiBargainingNotes,
         pattiDetails,
+        pattiRateLock: isFinalLock,
+        pattiStatus: isFinalLock ? 'CONFIRMED' : 'PATTI_DRAFT',
+        status: isFinalLock ? 'PATTI_CLEARED' : (billForPatti.status || 'RECEIVED'),
+        deliveryStatus: isFinalLock ? 'PATTI_CLEARED' : 'RECEIVED',
+        paymentStatus: isFinalLock ? (dueFinal === 0 ? 'PAID' : 'PARTIAL') : billForPatti.paymentStatus,
+        paidAmount: isFinalLock ? totalPaidFinal : billForPatti.paidAmount,
+        dueAmount: isFinalLock ? dueFinal : billForPatti.dueAmount,
         paymentHistory: updatedHistory,
       };
 
@@ -343,8 +377,10 @@ export default function SellerPortalPage() {
 
       setIsPattiModalOpen(false);
 
-      // Open print receipt modal with Vikri Patti
-      handleOpenPrintPatti(updatedBill);
+      if (isFinalLock) {
+        // Open print receipt modal with Vikri Patti
+        handleOpenPrintPatti(updatedBill);
+      }
     } catch (err) {
       console.error('Error clearing APMC Patti:', err);
       alert('Error clearing Patti. Please check database permissions or try again.');
@@ -1119,14 +1155,18 @@ export default function SellerPortalPage() {
 
       {/* APMC Mandi Patti Clear Modal */}
       {isPattiModalOpen && billForPatti && (() => {
-        const grossVal = parseFloat(billForPatti.netAmount || billForPatti.totalAmount || billForPatti.amount || 0);
+        const isLocked = billForPatti.pattiRateLock === true;
+        const grossVal = editablePattiItems.reduce((acc, i) => acc + (Number(i.weightKg || i.weight || 0) * Number(i.ratePerKg || i.rate || 0)), 0) || parseFloat(billForPatti.netAmount || billForPatti.totalAmount || billForPatti.amount || 0);
         const totalDeductionsVal = (Number(pattiDeductions.hamali) || 0) +
           (Number(pattiDeductions.tolai) || 0) +
           (Number(pattiDeductions.mandiTax) || 0) +
           (Number(pattiDeductions.commission) || 0) +
           (Number(pattiDeductions.freight) || 0) +
           (Number(pattiDeductions.other) || 0);
-        const netPayableVal = Math.max(0, grossVal - totalDeductionsVal);
+
+        const netPattiVal = Math.max(0, grossVal - totalDeductionsVal);
+        const advancePaidEarlier = Number(billForPatti.sellerPattiAdvance || 0);
+        const netPayableVal = Math.max(0, netPattiVal - advancePaidEarlier);
 
         return (
           <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in overflow-y-auto font-sans">
@@ -1138,8 +1178,19 @@ export default function SellerPortalPage() {
                     <Scale className="w-5 h-5 text-amber-200" />
                   </div>
                   <div>
-                    <h2 className="text-base font-black">APMC Vikri Patti Settlement (पट्टी क्लिअर)</h2>
-                    <p className="text-xs text-amber-200">Bill #{billForPatti.billNo || billForPatti.id} • {billForPatti.items || 'Agricultural Produce'}</p>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-black">APMC Vikri Patti Settlement (पट्टी हिशोब)</h2>
+                      {isLocked ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500 text-white flex items-center gap-1">
+                          🔒 LOCKED
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-400 text-amber-950 flex items-center gap-1">
+                          ✏️ DRAFT / EDITABLE
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-amber-200">Bill #{billForPatti.billNo || billForPatti.id} • {billForPatti.customerName || seller?.phone}</p>
                   </div>
                 </div>
                 <button 
@@ -1152,8 +1203,75 @@ export default function SellerPortalPage() {
 
               {/* Body */}
               <div className="p-5 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
+                {isLocked && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2 text-rose-800 font-bold text-xs">
+                    <span>🔒 ही पट्टी पक्की करून कायमस्वरूपी लॉक करण्यात आली आहे. दर व वजावटी आता बदलता येणार नाहीत.</span>
+                  </div>
+                )}
+
+                {/* EDITABLE CROP LINE ITEMS & RATES */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-black text-stone-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <span>माल व दर तपशील (Produce & Patti Rates)</span>
+                    </h4>
+                    {!isLocked && (
+                      <span className="text-[10px] text-amber-700 font-extrabold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                        दर व वजन बदलता येईल (Editable)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    {editablePattiItems.map((item, idx) => (
+                      <div key={idx} className="p-3 bg-stone-50 border border-stone-200/80 rounded-2xl grid grid-cols-12 gap-2 items-center">
+                        <div className="col-span-5">
+                          <span className="text-[10px] text-stone-400 block font-bold">Crop / Grade</span>
+                          <span className="font-black text-stone-900 block truncate">{item.cropName || item.name || 'Crop'}</span>
+                        </div>
+                        <div className="col-span-3">
+                          <span className="text-[10px] text-stone-400 block font-bold">वजन ({item.unit || 'KG'})</span>
+                          {isLocked ? (
+                            <span className="font-black text-stone-900">{item.weightKg || item.weight}</span>
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.weightKg ?? item.weight ?? ''}
+                              onChange={(e) => {
+                                const updated = [...editablePattiItems];
+                                updated[idx].weightKg = parseFloat(e.target.value) || 0;
+                                setEditablePattiItems(updated);
+                              }}
+                              className="w-full px-2 py-1 bg-white border border-stone-300 rounded-lg font-bold text-stone-900 text-xs"
+                            />
+                          )}
+                        </div>
+                        <div className="col-span-4">
+                          <span className="text-[10px] text-stone-400 block font-bold">दर / {item.unit || 'KG'} (₹)</span>
+                          {isLocked ? (
+                            <span className="font-black text-stone-900">₹{item.ratePerKg ?? item.rate}</span>
+                          ) : (
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.ratePerKg ?? item.rate ?? ''}
+                              onChange={(e) => {
+                                const updated = [...editablePattiItems];
+                                updated[idx].ratePerKg = parseFloat(e.target.value) || 0;
+                                setEditablePattiItems(updated);
+                              }}
+                              className="w-full px-2 py-1 bg-white border border-amber-300 rounded-lg font-black text-amber-900 text-xs focus:ring-1 focus:ring-amber-500"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Gross Summary Ribbon */}
-                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 flex justify-between items-center">
+                <div className="bg-amber-50 p-3.5 rounded-2xl border border-amber-200 flex justify-between items-center">
                   <div>
                     <span className="text-[10px] font-black uppercase text-amber-800 tracking-wider block">एकूण विक्री रक्कम (Gross Sale)</span>
                     <span className="text-xs text-stone-600 font-bold">{billForPatti.totalWeight || 0} KG • {billForPatti.customerName || seller?.phone}</span>
@@ -1175,9 +1293,10 @@ export default function SellerPortalPage() {
                       <input 
                         type="number"
                         min="0"
+                        disabled={isLocked}
                         value={pattiDeductions.hamali}
                         onChange={e => setPattiDeductions(prev => ({ ...prev, hamali: parseFloat(e.target.value) || 0 }))}
-                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600 disabled:opacity-60"
                       />
                     </div>
 
@@ -1186,9 +1305,10 @@ export default function SellerPortalPage() {
                       <input 
                         type="number"
                         min="0"
+                        disabled={isLocked}
                         value={pattiDeductions.tolai}
                         onChange={e => setPattiDeductions(prev => ({ ...prev, tolai: parseFloat(e.target.value) || 0 }))}
-                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600 disabled:opacity-60"
                       />
                     </div>
 
@@ -1197,9 +1317,10 @@ export default function SellerPortalPage() {
                       <input 
                         type="number"
                         min="0"
+                        disabled={isLocked}
                         value={pattiDeductions.mandiTax}
                         onChange={e => setPattiDeductions(prev => ({ ...prev, mandiTax: parseFloat(e.target.value) || 0 }))}
-                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600 disabled:opacity-60"
                       />
                     </div>
 
@@ -1208,9 +1329,10 @@ export default function SellerPortalPage() {
                       <input 
                         type="number"
                         min="0"
+                        disabled={isLocked}
                         value={pattiDeductions.commission}
                         onChange={e => setPattiDeductions(prev => ({ ...prev, commission: parseFloat(e.target.value) || 0 }))}
-                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600 disabled:opacity-60"
                       />
                     </div>
 
@@ -1219,9 +1341,10 @@ export default function SellerPortalPage() {
                       <input 
                         type="number"
                         min="0"
+                        disabled={isLocked}
                         value={pattiDeductions.freight}
                         onChange={e => setPattiDeductions(prev => ({ ...prev, freight: parseFloat(e.target.value) || 0 }))}
-                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600 disabled:opacity-60"
                       />
                     </div>
 
@@ -1230,15 +1353,31 @@ export default function SellerPortalPage() {
                       <input 
                         type="number"
                         min="0"
+                        disabled={isLocked}
                         value={pattiDeductions.other}
                         onChange={e => setPattiDeductions(prev => ({ ...prev, other: parseFloat(e.target.value) || 0 }))}
-                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600 disabled:opacity-60"
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Live Settlement Card */}
+                {/* Bargaining Discussion Notes */}
+                <div>
+                  <label className="font-bold text-stone-700 block mb-1 text-[11px]">
+                    दर चर्चा / घासाघीस नोंद (Discussion / Bargaining Notes):
+                  </label>
+                  <textarea
+                    rows={2}
+                    disabled={isLocked}
+                    placeholder="उदा. फोनवर बोलून प्रति किलो ₹३४० दर फायनल झाला..."
+                    value={pattiBargainingNotes}
+                    onChange={(e) => setPattiBargainingNotes(e.target.value)}
+                    className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-semibold text-stone-800 text-xs outline-none focus:border-amber-600 disabled:opacity-60"
+                  />
+                </div>
+
+                {/* Live Settlement Card with Advance Deduction */}
                 <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-2">
                   <div className="flex justify-between text-stone-600 font-bold">
                     <span>एकूण विक्री रक्कम (Gross Sale):</span>
@@ -1248,67 +1387,101 @@ export default function SellerPortalPage() {
                     <span>एकूण APMC वजावट (Total Deductions):</span>
                     <span>- ₹{totalDeductionsVal.toLocaleString('en-IN')}</span>
                   </div>
+                  {advancePaidEarlier > 0 && (
+                    <div className="flex justify-between text-indigo-700 font-bold bg-indigo-50/60 p-2 rounded-xl border border-indigo-100">
+                      <span>या पट्टीसाठी मिळालेला अ‍ॅडव्हान्स (Advance Paid Earlier):</span>
+                      <span>- ₹{advancePaidEarlier.toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-black text-emerald-800 text-sm pt-2 border-t border-stone-200">
-                    <span>निव्वळ देय रक्कम (Net Payable Amount):</span>
+                    <span>निव्वळ देय / बाकी रक्कम (Net Due from Seller):</span>
                     <span className="text-base font-extrabold text-emerald-700">₹{netPayableVal.toLocaleString('en-IN')}</span>
                   </div>
+                  {advancePaidEarlier > 0 && netPayableVal === 0 && (
+                    <div className="p-2 bg-emerald-100/70 border border-emerald-200 text-emerald-800 rounded-xl font-black text-[11px] text-center">
+                      ✓ अ‍ॅडव्हान्स मधून बिल पूर्ण सेटल झाले (Bill Fully Settle by Advance)
+                    </div>
+                  )}
                 </div>
 
                 {/* Payment Disbursement Details */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">पेमेंट प्रकार (Mode)</label>
-                    <select
-                      value={pattiDeductions.paymentMode}
-                      onChange={e => setPattiDeductions(prev => ({ ...prev, paymentMode: e.target.value }))}
-                      className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
-                    >
-                      <option value="BANK_TRANSFER">Bank / NEFT / RTGS</option>
-                      <option value="UPI">UPI / GPay / PhonePe</option>
-                      <option value="CASH">Cash (रोख)</option>
-                      <option value="CHEQUE">Cheque (धनादेश)</option>
-                    </select>
-                  </div>
+                {!isLocked && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">पेमेंट प्रकार (Mode)</label>
+                      <select
+                        value={pattiDeductions.paymentMode}
+                        onChange={e => setPattiDeductions(prev => ({ ...prev, paymentMode: e.target.value }))}
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                      >
+                        <option value="BANK_TRANSFER">Bank / NEFT / RTGS</option>
+                        <option value="UPI">UPI / GPay / PhonePe</option>
+                        <option value="CASH">Cash (रोख)</option>
+                        <option value="CHEQUE">Cheque (धनादेश)</option>
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">संदर्भ क्र (UTR / Ref / Cheque No)</label>
-                    <input 
-                      type="text"
-                      placeholder="e.g. UTR-982183"
-                      value={pattiDeductions.paymentRef}
-                      onChange={e => setPattiDeductions(prev => ({ ...prev, paymentRef: e.target.value }))}
-                      className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
-                    />
-                  </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">संदर्भ क्र (UTR / Ref / Cheque No)</label>
+                      <input 
+                        type="text"
+                        placeholder="e.g. UTR-982183"
+                        value={pattiDeductions.paymentRef}
+                        onChange={e => setPattiDeductions(prev => ({ ...prev, paymentRef: e.target.value }))}
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">तारीख (Clear Date)</label>
-                    <input 
-                      type="date"
-                      value={pattiDeductions.clearedDate}
-                      onChange={e => setPattiDeductions(prev => ({ ...prev, clearedDate: e.target.value }))}
-                      className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
-                    />
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">तारीख (Clear Date)</label>
+                      <input 
+                        type="date"
+                        value={pattiDeductions.clearedDate}
+                        onChange={e => setPattiDeductions(prev => ({ ...prev, clearedDate: e.target.value }))}
+                        className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 outline-none focus:border-amber-600"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Footer Buttons */}
                 <div className="pt-2 flex flex-col sm:flex-row gap-2">
-                  <button
-                    type="button"
-                    onClick={handleConfirmPattiClear}
-                    className="flex-1 py-3 bg-amber-700 hover:bg-amber-800 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-amber-700/20 cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-amber-200" />
-                    <span>Confirm & Clear Patti (पट्टी क्लिअर करा)</span>
-                  </button>
+                  {!isLocked ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmPattiClear(false)}
+                        className="flex-1 py-3 bg-stone-700 hover:bg-stone-800 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                      >
+                        <span>💾 कच्ची पट्टी सेव्ह करा (Save Draft)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmPattiClear(true)}
+                        className="flex-1 py-3 bg-amber-700 hover:bg-amber-800 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-amber-700/20 cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-4 h-4 text-amber-200" />
+                        <span>🔒 पक्की पट्टी लॉक करा (Confirm & Lock)</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenPrintPatti(billForPatti)}
+                      className="flex-1 py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4 text-emerald-200" />
+                      <span>📄 प्रिंट विक्री पट्टी (Print Patti Slip)</span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
                     onClick={() => setIsPattiModalOpen(false)}
                     className="py-3 px-5 bg-stone-100 hover:bg-stone-200 font-bold rounded-xl text-stone-700 text-xs cursor-pointer"
                   >
-                    रद्द करा (Cancel)
+                    बंद करा (Close)
                   </button>
                 </div>
               </div>

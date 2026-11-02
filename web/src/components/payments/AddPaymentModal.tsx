@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, Receipt, Calculator, ArrowRight } from 'lucide-react';
+import { X, ShieldCheck, Receipt, Calculator, ArrowRight, Wallet } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import {
   apiCreatePayment,
@@ -9,6 +9,9 @@ import {
   apiGetPurchases,
   apiGetPayments,
   apiGetFarmerMaterials,
+  apiUpdateFarmerAdvance,
+  apiDeductFarmerMaterials,
+  apiGetPurchaseDetails,
   isFarmerMatch,
   getTenantId
 } from '@/lib/api';
@@ -44,6 +47,10 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
     notes: '',
   });
   const [farmerPurchases, setFarmerPurchases] = useState<any[]>([]);
+  const [farmerMaterials, setFarmerMaterials] = useState<any[]>([]);
+  const [deductionMode, setDeductionMode] = useState<'KEEP_ADVANCE' | 'CUSTOM' | 'SETTLE_MAX'>('KEEP_ADVANCE');
+  const [customAdvanceInput, setCustomAdvanceInput] = useState<string>('');
+  const [customMaterialInput, setCustomMaterialInput] = useState<string>('');
   const [farmerFinancials, setFarmerFinancials] = useState({
     totalPurchases: 0,
     totalPaid: 0,
@@ -54,6 +61,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   useEffect(() => {
     if (!formData.farmerId) {
       setFarmerPurchases([]);
+      setFarmerMaterials([]);
       setFarmerFinancials({ totalPurchases: 0, totalPaid: 0, totalMaterials: 0, netDue: 0 });
       return;
     }
@@ -74,6 +82,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
         // Unpaid or partial purchases
         const pendingPurchases = fp.filter((p: any) => p.paymentStatus !== 'PAID');
         setFarmerPurchases(pendingPurchases);
+        setFarmerMaterials(fmat);
 
         let totPurchases = 0;
         let totPaid = 0;
@@ -177,17 +186,56 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
 
   if (!isOpen) return null;
 
+  const selectedFarmer = farmersList.find((f) => f.id === formData.farmerId);
+  const availableAdvance = Math.max(0, Number(selectedFarmer?.advanceBalance || 0));
+  const availableMaterials = farmerMaterials
+    .filter((m) => !m.isDeductedFromBill)
+    .reduce((acc, m) => acc + Number(m.totalAmount || m.totalPrice || 0), 0);
+
+  const selectedBill = farmerPurchases.find((p: any) => p.id === formData.purchaseId || p.purchaseNo === formData.purchaseId);
+  const billGross = selectedBill ? Number(selectedBill.totalAmount ?? selectedBill.amount ?? 0) : 0;
+  const billPaid = selectedBill ? Number(selectedBill.paidAmount || 0) : 0;
+  const billDue = selectedBill ? (selectedBill.dueAmount !== undefined ? Number(selectedBill.dueAmount) : Math.max(0, billGross - billPaid)) : 0;
+  const grossAmountToSettle = selectedBill ? billDue : Math.max(0, farmerFinancials.netDue);
+
+  let actualAdvanceDeducted = 0;
+  let actualMaterialDeducted = 0;
+
+  if (formData.paymentType !== 'ADVANCE_PAYOUT') {
+    if (deductionMode === 'SETTLE_MAX') {
+      actualAdvanceDeducted = Math.min(availableAdvance, grossAmountToSettle);
+      actualMaterialDeducted = Math.min(availableMaterials, Math.max(0, grossAmountToSettle - actualAdvanceDeducted));
+    } else if (deductionMode === 'CUSTOM') {
+      const rawAdv = customAdvanceInput !== '' ? (parseFloat(customAdvanceInput) || 0) : 0;
+      actualAdvanceDeducted = Math.min(availableAdvance, Math.min(grossAmountToSettle, Math.max(0, rawAdv)));
+      const remainingForMat = Math.max(0, grossAmountToSettle - actualAdvanceDeducted);
+      const rawMat = customMaterialInput !== '' ? (parseFloat(customMaterialInput) || 0) : 0;
+      actualMaterialDeducted = Math.min(availableMaterials, Math.min(remainingForMat, Math.max(0, rawMat)));
+    }
+  }
+
+  const totalDeductionsApplied = actualAdvanceDeducted + actualMaterialDeducted;
+  const suggestedNetPayout = Math.max(0, grossAmountToSettle - totalDeductionsApplied);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
     setLoading(true);
-    const numericAmount = Number(formData.amount) || 0;
+    const numericDisbursed = Number(formData.amount) || 0;
+    const isAdvancePayout = formData.paymentType === 'ADVANCE_PAYOUT';
+
+    const advDeducted = isAdvancePayout ? 0 : actualAdvanceDeducted;
+    const matDeducted = isAdvancePayout ? 0 : actualMaterialDeducted;
+    const totalSettled = numericDisbursed + advDeducted + matDeducted;
 
     const payload = {
       farmerId: formData.farmerId,
       purchaseId: formData.purchaseId || undefined,
       paymentType: formData.paymentType,
-      amount: numericAmount,
+      amount: numericDisbursed,
+      advanceDeducted: advDeducted,
+      materialDeducted: matDeducted,
+      totalSettled: totalSettled,
       paymentMode: formData.paymentMode,
       notes: formData.notes,
     };
@@ -196,18 +244,37 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
       await apiCreatePayment(payload);
 
       if (formData.farmerId) {
-        await apiUpdateFarmerBalance(formData.farmerId, numericAmount, -numericAmount, 'PAYMENT');
-        if (formData.paymentType === 'ADVANCE_PAYOUT') {
-          const { apiUpdateFarmerAdvance } = await import('@/lib/api');
-          await apiUpdateFarmerAdvance(formData.farmerId, numericAmount);
+        if (isAdvancePayout) {
+          await apiUpdateFarmerBalance(formData.farmerId, numericDisbursed, -numericDisbursed, 'PAYMENT');
+          await apiUpdateFarmerAdvance(formData.farmerId, numericDisbursed);
+        } else {
+          // Bill Settlement or General Payout
+          await apiUpdateFarmerBalance(formData.farmerId, totalSettled, -totalSettled, 'PAYMENT');
+          if (advDeducted > 0) {
+            await apiUpdateFarmerAdvance(formData.farmerId, -advDeducted);
+          }
+          if (matDeducted > 0) {
+            const unDeducted = farmerMaterials.filter(m => !m.isDeductedFromBill);
+            let matAcc = 0;
+            const matIds: string[] = [];
+            for (const m of unDeducted) {
+              if (matAcc < matDeducted) {
+                matIds.push(m.id);
+                matAcc += Number(m.totalAmount || m.totalPrice || 0);
+              }
+            }
+            if (matIds.length > 0) {
+              await apiDeductFarmerMaterials(matIds, formData.purchaseId || 'PAYMENT-SETTLEMENT');
+            }
+          }
         }
       }
+
       if (formData.purchaseId) {
-        const { apiGetPurchaseDetails } = await import('@/lib/api');
         const purchase = await apiGetPurchaseDetails(formData.purchaseId);
         if (purchase) {
-          const newPaid = (purchase.paidAmount || 0) + numericAmount;
-          const newDue = Math.max(0, (purchase.dueAmount || 0) - numericAmount);
+          const newPaid = (purchase.paidAmount || 0) + totalSettled;
+          const newDue = Math.max(0, (purchase.dueAmount || 0) - totalSettled);
           await apiUpdatePurchase(formData.purchaseId, {
             paidAmount: newPaid,
             dueAmount: newDue,
@@ -221,7 +288,10 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
         farmerName: formData.farmerName,
         phone: formData.phone,
         village: formData.village,
-        amount: `₹${numericAmount.toLocaleString('en-IN')}`,
+        amount: `₹${numericDisbursed.toLocaleString('en-IN')}`,
+        advanceDeducted: advDeducted,
+        materialDeducted: matDeducted,
+        totalSettled: totalSettled,
         method: `${formData.paymentMode} (${formData.paymentType})`,
         status: 'COMPLETED',
         date: new Date().toISOString().slice(0, 10),
@@ -409,6 +479,231 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
               )}
             </select>
           </div>
+
+          {/* ADVANCE & MATERIAL DEDUCTION COMPONENT */}
+          {formData.paymentType !== 'ADVANCE_PAYOUT' && (availableAdvance > 0 || availableMaterials > 0) && (
+            <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-3.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                    <Wallet className="w-3.5 h-3.5 text-blue-600" />
+                    {language === 'mr' ? 'अ‍ॅडव्हान्स / साहित्य कपात पर्याय' : 'Advance & Material Deduction Mode'}
+                  </h4>
+                  <p className="text-[10px] font-semibold text-slate-400">
+                    {language === 'mr' ? 'या बिलामधून अ‍ॅडव्हान्स किंवा साहित्य कपात करायचे का?' : 'Choose whether to deduct previous advance or material from this payout'}
+                  </p>
+                </div>
+
+                <div className="flex items-center bg-white border border-slate-200 p-0.5 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeductionMode('KEEP_ADVANCE');
+                      setFormData(prev => ({ ...prev, amount: String(grossAmountToSettle) }));
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                      deductionMode === 'KEEP_ADVANCE' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {language === 'mr' ? 'शिल्लक ठेवा' : 'Keep Advance'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeductionMode('CUSTOM');
+                      const defaultAdv = Math.min(availableAdvance, grossAmountToSettle);
+                      setCustomAdvanceInput(String(defaultAdv));
+                      const rem = Math.max(0, grossAmountToSettle - defaultAdv);
+                      setFormData(prev => ({ ...prev, amount: String(rem) }));
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                      deductionMode === 'CUSTOM' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {language === 'mr' ? 'सानुकूल कपात' : 'Custom'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeductionMode('SETTLE_MAX');
+                      const adv = Math.min(availableAdvance, grossAmountToSettle);
+                      const rem = Math.max(0, grossAmountToSettle - adv);
+                      const mat = Math.min(availableMaterials, rem);
+                      const net = Math.max(0, rem - mat);
+                      setFormData(prev => ({ ...prev, amount: String(net) }));
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                      deductionMode === 'SETTLE_MAX' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {language === 'mr' ? 'कमाल कपात' : 'Max Deduct'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Deduction Inputs */}
+              {deductionMode === 'CUSTOM' && (
+                <div className="space-y-3 pt-2 border-t border-slate-200/80">
+                  {/* Cash Advance */}
+                  {availableAdvance > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-slate-700">
+                          {language === 'mr' ? 'रोख अ‍ॅडव्हान्स कपात:' : 'Deduct Cash Advance:'}
+                        </span>
+                        <span className="font-extrabold text-blue-700">
+                          {language === 'mr' ? 'उपलब्ध अ‍ॅडव्हान्स:' : 'Available:'} ₹{availableAdvance.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max={Math.min(availableAdvance, grossAmountToSettle)}
+                            value={customAdvanceInput}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCustomAdvanceInput(val);
+                              const numAdv = Math.min(availableAdvance, Math.min(grossAmountToSettle, parseFloat(val) || 0));
+                              const numMat = actualMaterialDeducted;
+                              setFormData(prev => ({ ...prev, amount: String(Math.max(0, grossAmountToSettle - numAdv - numMat)) }));
+                            }}
+                            className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-800"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomAdvanceInput('0');
+                              setFormData(prev => ({ ...prev, amount: String(Math.max(0, grossAmountToSettle - actualMaterialDeducted)) }));
+                            }}
+                            className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold cursor-pointer"
+                          >
+                            ₹0
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const half = Math.floor(Math.min(availableAdvance, grossAmountToSettle) / 2);
+                              setCustomAdvanceInput(String(half));
+                              setFormData(prev => ({ ...prev, amount: String(Math.max(0, grossAmountToSettle - half - actualMaterialDeducted)) }));
+                            }}
+                            className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold cursor-pointer"
+                          >
+                            50%
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const full = Math.min(availableAdvance, grossAmountToSettle);
+                              setCustomAdvanceInput(String(full));
+                              setFormData(prev => ({ ...prev, amount: String(Math.max(0, grossAmountToSettle - full - actualMaterialDeducted)) }));
+                            }}
+                            className="px-2 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-lg text-[10px] font-bold cursor-pointer"
+                          >
+                            Full
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Material Supplies */}
+                  {availableMaterials > 0 && (
+                    <div className="space-y-1 pt-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-slate-700">
+                          {language === 'mr' ? 'साहित्य बिले कपात:' : 'Deduct Material Issued:'}
+                        </span>
+                        <span className="font-extrabold text-purple-700">
+                          {language === 'mr' ? 'उपलब्ध साहित्य:' : 'Available:'} ₹{availableMaterials.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max={availableMaterials}
+                            value={customMaterialInput}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCustomMaterialInput(val);
+                              const numMat = Math.min(availableMaterials, parseFloat(val) || 0);
+                              const numAdv = actualAdvanceDeducted;
+                              setFormData(prev => ({ ...prev, amount: String(Math.max(0, grossAmountToSettle - numAdv - numMat)) }));
+                            }}
+                            className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-800"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomMaterialInput('0');
+                              setFormData(prev => ({ ...prev, amount: String(Math.max(0, grossAmountToSettle - actualAdvanceDeducted)) }));
+                            }}
+                            className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold cursor-pointer"
+                          >
+                            ₹0
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const maxPossible = Math.max(0, grossAmountToSettle - actualAdvanceDeducted);
+                              const half = Math.floor(Math.min(availableMaterials, maxPossible) / 2);
+                              setCustomMaterialInput(String(half));
+                              setFormData(prev => ({ ...prev, amount: String(Math.max(0, grossAmountToSettle - actualAdvanceDeducted - half)) }));
+                            }}
+                            className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-[10px] font-bold cursor-pointer"
+                          >
+                            50%
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const maxPossible = Math.max(0, grossAmountToSettle - actualAdvanceDeducted);
+                              const full = Math.min(availableMaterials, maxPossible);
+                              setCustomMaterialInput(String(full));
+                              setFormData(prev => ({ ...prev, amount: String(Math.max(0, grossAmountToSettle - actualAdvanceDeducted - full)) }));
+                            }}
+                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-lg text-[10px] font-bold cursor-pointer"
+                          >
+                            Full
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Live Net Disbursed Breakdown Card */}
+              {totalDeductionsApplied > 0 && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200/80 rounded-xl flex items-center justify-between text-xs">
+                  <div>
+                    <span className="font-extrabold text-emerald-800 block">
+                      {language === 'mr' ? 'कपात नंतर प्रत्यक्ष देय (Net Disbursed):' : 'Net Disbursed Payout After Deductions:'}
+                    </span>
+                    <span className="text-[10px] text-emerald-600 font-medium">
+                      ₹{grossAmountToSettle.toLocaleString('en-IN')} (एकूण) - ₹{actualAdvanceDeducted.toLocaleString('en-IN')} (अ‍ॅडव्हान्स) - ₹{actualMaterialDeducted.toLocaleString('en-IN')} (साहित्य)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, amount: String(suggestedNetPayout) }))}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-lg shadow-xs cursor-pointer"
+                  >
+                    ₹{suggestedNetPayout.toLocaleString('en-IN')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

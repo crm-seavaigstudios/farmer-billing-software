@@ -6,10 +6,11 @@ import { Header } from '@/components/layout/Header';
 import { PrintReceiptModal, ReceiptData } from '@/components/common/PrintReceiptModal';
 import { AddLogisticsSaleModal } from '@/components/sales/AddLogisticsSaleModal';
 import { UpdateSalePaymentModal } from '@/components/sales/UpdateSalePaymentModal';
+import { PattiSettlementModal } from '@/components/sales/PattiSettlementModal';
 import { useLanguage } from '@/context/LanguageContext';
 import { useTenant } from '@/context/TenantContext';
 import { shareSaleOnWhatsApp } from '@/lib/whatsapp';
-import { apiGetSales } from '@/lib/api';
+import { apiGetSales, apiUpdateSale, getTenantId } from '@/lib/api';
 import { isDateInTimeline, TimelineFilter } from '@/lib/dateUtils';
 import {
   Tag,
@@ -25,7 +26,11 @@ import {
   MessageCircle,
   Truck,
   IndianRupee,
-  CreditCard
+  CreditCard,
+  Scale,
+  Lock,
+  CheckCircle2,
+  Calendar
 } from 'lucide-react';
 
 export default function SalesPage() {
@@ -36,8 +41,10 @@ export default function SalesPage() {
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<any | null>(null);
+  const [selectedSaleForPatti, setSelectedSaleForPatti] = useState<any | null>(null);
   
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('ALL_TIME');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'IN_TRANSIT' | 'RECEIVED' | 'PATTI_PENDING' | 'PATTI_CLEARED' | 'UNPAID'>('ALL');
 
   const loadData = async () => {
     const cached = typeof window !== 'undefined' ? localStorage.getItem('seavaig_sales_cache') : null;
@@ -60,6 +67,40 @@ export default function SalesPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const updateSaleInStateAndCache = (updatedSale: any) => {
+    const updated = sales.map(s => s.id === updatedSale.id ? updatedSale : s);
+    setSales(updated);
+    const tenantId = getTenantId();
+    const cacheKey = tenantId ? `seavaig_sales_cache_${tenantId}` : 'seavaig_sales_cache';
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(cacheKey, JSON.stringify(updated));
+      localStorage.setItem('seavaig_sales_cache', JSON.stringify(updated));
+    }
+  };
+
+  const handleTogglePattiReceived = async (sale: any) => {
+    const nextVal = !sale.isPattiReceived;
+    const patch = {
+      isPattiReceived: nextVal,
+      pattiStatus: nextVal ? (sale.isRateFixedNow ? 'CONFIRMED' : 'PATTI_RECEIVED') : 'RATE_PENDING',
+    };
+    const updatedSale = { ...sale, ...patch };
+    updateSaleInStateAndCache(updatedSale);
+    await apiUpdateSale(sale.id, patch);
+  };
+
+  const handleToggleRateFixed = async (sale: any) => {
+    const nextVal = !sale.isRateFixedNow;
+    const patch = {
+      isRateFixedNow: nextVal,
+      rateBasis: nextVal ? 'FIXED' : 'PATTI_BASIS',
+      pattiStatus: nextVal ? 'CONFIRMED' : (sale.isPattiReceived ? 'PATTI_RECEIVED' : 'RATE_PENDING')
+    };
+    const updatedSale = { ...sale, ...patch };
+    updateSaleInStateAndCache(updatedSale);
+    await apiUpdateSale(sale.id, patch);
+  };
 
   const handleAddSale = (newSale: any) => {
     const updated = [newSale, ...sales];
@@ -99,9 +140,30 @@ export default function SalesPage() {
     const textMatch = 
       (s.customerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (s.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.billNo || '').toLowerCase().includes(searchQuery.toLowerCase());
+      (s.billNo || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.items || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.vehicleNo || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.driverName || '').toLowerCase().includes(searchQuery.toLowerCase());
       
-    return dateMatch && textMatch;
+    if (!dateMatch || !textMatch) return false;
+
+    if (statusFilter === 'IN_TRANSIT') {
+      return s.deliveryStatus === 'IN_TRANSIT' && s.status !== 'PATTI_CLEARED';
+    }
+    if (statusFilter === 'RECEIVED') {
+      return (s.deliveryStatus === 'RECEIVED' || s.status === 'RECEIVED') && s.status !== 'PATTI_CLEARED';
+    }
+    if (statusFilter === 'PATTI_PENDING') {
+      return !s.isPattiReceived || s.pattiStatus === 'RATE_PENDING' || s.pattiStatus === 'PATTI_DRAFT';
+    }
+    if (statusFilter === 'PATTI_CLEARED') {
+      return s.status === 'PATTI_CLEARED' || s.deliveryStatus === 'PATTI_CLEARED' || s.pattiRateLock;
+    }
+    if (statusFilter === 'UNPAID') {
+      return s.paymentStatus !== 'PAID';
+    }
+
+    return true;
   });
 
   const totalSalesVal = filtered.reduce((acc: number, s: any) => acc + (Number(s.amount) || 0), 0);
@@ -184,6 +246,80 @@ export default function SalesPage() {
 
           {/* Table */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-subtle space-y-4">
+            {/* Quick Status Filter Tabs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setStatusFilter('ALL')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                  statusFilter === 'ALL'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                सर्व विक्री (All - {sales.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('IN_TRANSIT')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                  statusFilter === 'IN_TRANSIT'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <Truck className="w-3.5 h-3.5" />
+                <span>मार्गात (In Transit)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('RECEIVED')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                  statusFilter === 'RECEIVED'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>पोहचले (Received)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('PATTI_PENDING')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                  statusFilter === 'PATTI_PENDING'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                }`}
+              >
+                <Hourglass className="w-3.5 h-3.5" />
+                <span>पट्टी बाकी (Patti Pending)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('PATTI_CLEARED')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                  statusFilter === 'PATTI_CLEARED'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                }`}
+              >
+                <Scale className="w-3.5 h-3.5" />
+                <span>पट्टी क्लिअर (Patti Cleared)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('UNPAID')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                  statusFilter === 'UNPAID'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100'
+                }`}
+              >
+                <span>बाकी बिले (Unpaid Due)</span>
+              </button>
+            </div>
+
             <div className="flex flex-col md:flex-row items-center justify-between gap-3">
               <div className="relative w-full sm:w-80">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
@@ -191,7 +327,7 @@ export default function SalesPage() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t.searchPlaceholder}
+                  placeholder="खरेदीदार/दलाल, बिल क्र., माल, गाडी किंवा ड्रायव्हर शोधा..."
                   className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
@@ -202,18 +338,14 @@ export default function SalesPage() {
                   onChange={(e) => setTimelineFilter(e.target.value as TimelineFilter)}
                   className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                 >
-                  <option value="ALL_TIME">All Time</option>
-                  <option value="TODAY">Today</option>
-                  <option value="YESTERDAY">Yesterday</option>
-                  <option value="THIS_WEEK">This Week</option>
-                  <option value="THIS_MONTH">This Month</option>
-                  <option value="THIS_YEAR">This Year</option>
+                  <option value="ALL_TIME">All Time (एकूण)</option>
+                  <option value="TODAY">Today (आज)</option>
+                  <option value="YESTERDAY">Yesterday (काल)</option>
+                  <option value="THIS_WEEK">This Week (या आठवड्यात)</option>
+                  <option value="THIS_MONTH">This Month (या महिन्यात)</option>
+                  <option value="THIS_YEAR">This Year (या वर्षात)</option>
                 </select>
-                <button className="px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer">
-                  <Filter className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Filter Status</span>
-                </button>
-                <button className="bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                <button className="bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer">
                   <Download className="w-3.5 h-3.5 text-slate-400" />
                   <span>Export Sales</span>
                 </button>
@@ -225,9 +357,9 @@ export default function SalesPage() {
                 <thead>
                   <tr className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-3">
                     <th className="py-3 px-3">INVOICE NO</th>
-                    <th className="py-3 px-3">CUSTOMER NAME</th>
-                    <th className="py-3 px-3">ORDER DETAILS</th>
-                    <th className="py-3 px-3 text-right">TOTAL AMOUNT</th>
+                    <th className="py-3 px-3">CUSTOMER / SELLER</th>
+                    <th className="py-3 px-3">ORDER & PATTI STATUS</th>
+                    <th className="py-3 px-3 text-right">TOTAL / DUE</th>
                     <th className="py-3 px-3 text-center">STATUS</th>
                     <th className="py-3 px-3 text-right">DATE</th>
                     <th className="py-3 px-3 text-center">{t.actions}</th>
@@ -236,10 +368,52 @@ export default function SalesPage() {
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map((row) => (
                     <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-3 font-bold text-blue-600">{row.billNo || row.saleNo || row.id}</td>
-                      <td className="py-3 px-3 font-bold text-slate-900">{row.customerName}</td>
                       <td className="py-3 px-3">
-                        <div className="text-slate-600 font-medium">{row.items}</div>
+                        <div className="font-black text-blue-600">{row.billNo || row.saleNo || row.id}</div>
+                        <div className="text-[10px] text-slate-400 font-medium">{row.vehicleNo || 'Vehicle N/A'}</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="font-black text-slate-900">{row.customerName}</div>
+                        <div className="text-[10px] text-slate-400">{row.phone || row.address || ''}</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="text-slate-700 font-semibold">{row.items}</div>
+                        
+                        {/* 1-Click Interactive Patti & Rate Toggles */}
+                        <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                          <label onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5 cursor-pointer bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200 hover:bg-slate-100">
+                            <input
+                              type="checkbox"
+                              checked={!!row.isPattiReceived}
+                              onChange={() => handleTogglePattiReceived(row)}
+                              className="w-3.5 h-3.5 text-blue-600 rounded"
+                            />
+                            <span className={`text-[10px] font-extrabold ${row.isPattiReceived ? 'text-blue-700' : 'text-slate-500'}`}>
+                              {row.isPattiReceived ? '✓ पट्टी मिळाली' : ' पट्टी बाकी'}
+                            </span>
+                          </label>
+
+                          <label onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5 cursor-pointer bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200 hover:bg-slate-100">
+                            <input
+                              type="checkbox"
+                              checked={row.isRateFixedNow !== false}
+                              onChange={() => handleToggleRateFixed(row)}
+                              className="w-3.5 h-3.5 text-amber-600 rounded"
+                            />
+                            <span className={`text-[10px] font-extrabold ${row.isRateFixedNow !== false ? 'text-emerald-700' : 'text-amber-700'}`}>
+                              {row.isRateFixedNow !== false ? '✓ दर निश्चित' : '📑 दर बाकी (Patti Basis)'}
+                            </span>
+                          </label>
+                        </div>
+
+                        {/* Seller Advance for this specific patti */}
+                        {Number(row.sellerPattiAdvance) > 0 && (
+                          <div className="mt-1 text-[9px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-flex items-center gap-1">
+                            <IndianRupee className="w-2.5 h-2.5" />
+                            <span>या पट्टीचा अ‍ॅडव्हान्स: ₹{Number(row.sellerPattiAdvance).toLocaleString('en-IN')}</span>
+                          </div>
+                        )}
+
                         {row.farmerBatches && row.farmerBatches.length > 0 && (
                           <div className="text-[9px] text-emerald-700 font-black mt-1 flex items-center gap-1 flex-wrap">
                             <span className="mr-0.5">🌾 Origin Batches:</span>
@@ -256,7 +430,14 @@ export default function SalesPage() {
                           </div>
                         )}
                       </td>
-                      <td className="py-3 px-3 text-right font-black text-slate-900">₹{Number(row.amount || 0).toLocaleString('en-IN')}</td>
+                      <td className="py-3 px-3 text-right">
+                        <div className="font-black text-slate-900">₹{Number(row.amount || 0).toLocaleString('en-IN')}</div>
+                        {Number(row.dueAmount) > 0 && (
+                          <div className="text-[10px] font-extrabold text-rose-600">
+                            बाकी: ₹{Number(row.dueAmount).toLocaleString('en-IN')}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3 px-3 text-center">
                         <div className="flex flex-col items-center gap-1">
                           <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
@@ -269,17 +450,29 @@ export default function SalesPage() {
                             {row.status}
                           </span>
                           <span className={`px-2 py-0.5 rounded text-[9px] font-black ${
-                            row.status === 'RECEIVED' || row.deliveryStatus === 'RECEIVED'
+                            row.status === 'PATTI_CLEARED' || row.deliveryStatus === 'PATTI_CLEARED'
+                              ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                              : row.status === 'RECEIVED' || row.deliveryStatus === 'RECEIVED'
                               ? 'bg-emerald-100 text-emerald-800'
                               : 'bg-blue-50 text-blue-700 border border-blue-100'
                           }`}>
-                            {(row.status === 'RECEIVED' || row.deliveryStatus === 'RECEIVED') ? '✓ RECEIVED' : '🚚 IN TRANSIT'}
+                            {row.status === 'PATTI_CLEARED' || row.deliveryStatus === 'PATTI_CLEARED'
+                              ? '⚖️ PATTI CLEARED'
+                              : (row.status === 'RECEIVED' || row.deliveryStatus === 'RECEIVED') ? '✓ RECEIVED' : '🚚 IN TRANSIT'}
                           </span>
                         </div>
                       </td>
                       <td className="py-3 px-3 text-right text-slate-400 text-[11px]">{row.date}</td>
                       <td className="py-3 px-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                        <div className="flex items-center justify-center gap-1 flex-wrap">
+                          <button
+                            onClick={() => setSelectedSaleForPatti(row)}
+                            className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
+                            title="APMC Patti Settlement"
+                          >
+                            <Scale className="w-3 h-3 text-amber-700" />
+                            <span>{row.pattiRateLock ? 'Patti View' : 'पट्टी हिशोब'}</span>
+                          </button>
                           <button
                             onClick={() => setSelectedSaleForPayment(row)}
                             className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
@@ -297,8 +490,8 @@ export default function SalesPage() {
                           </button>
                           <button
                             onClick={() => openPrintModal(row)}
-                            className="p-1 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-100"
-                            title="Print Invoice"
+                            className="p-1 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                            title="Print Invoice / Patti"
                           >
                             <Printer className="w-3.5 h-3.5" />
                           </button>
@@ -335,6 +528,18 @@ export default function SalesPage() {
           onClose={() => setSelectedSaleForPayment(null)}
           onSuccess={() => {
             setSelectedSaleForPayment(null);
+            loadData();
+          }}
+        />
+      )}
+
+      {selectedSaleForPatti && (
+        <PattiSettlementModal
+          isOpen={!!selectedSaleForPatti}
+          sale={selectedSaleForPatti}
+          onClose={() => setSelectedSaleForPatti(null)}
+          onSuccess={() => {
+            setSelectedSaleForPatti(null);
             loadData();
           }}
         />

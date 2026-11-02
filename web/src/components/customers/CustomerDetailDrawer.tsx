@@ -210,6 +210,8 @@ export function CustomerDetailDrawer({ isOpen, onClose, customer }: CustomerDeta
     });
   };
 
+  if (!isOpen || !customer) return null;
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-2xs flex justify-end animate-in fade-in">
       <div className="bg-white w-full max-w-2xl h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">

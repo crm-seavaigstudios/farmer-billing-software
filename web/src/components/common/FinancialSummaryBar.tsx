@@ -22,6 +22,7 @@ interface FinancialSummaryBarProps {
   totalUnpaid: number;
   unpaidFarmersCount: number;
   totalFarmers: number;
+  initialTimeline?: TimelineFilter;
   onTimelineChange: (filter: TimelineFilter, startDate?: string, endDate?: string) => void;
   onCategoryClick: (category: 'PURCHASED' | 'PAID' | 'UNPAID' | 'FARMERS') => void;
 }
@@ -33,10 +34,11 @@ export const FinancialSummaryBar: React.FC<FinancialSummaryBarProps> = ({
   totalUnpaid,
   unpaidFarmersCount,
   totalFarmers,
+  initialTimeline = 'ALL_TIME',
   onTimelineChange,
   onCategoryClick,
 }) => {
-  const [activeTimeline, setActiveTimeline] = useState<TimelineFilter>('MONTH');
+  const [activeTimeline, setActiveTimeline] = useState<TimelineFilter>(initialTimeline);
   const [showCustomDates, setShowCustomDates] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -68,6 +70,16 @@ export const FinancialSummaryBar: React.FC<FinancialSummaryBarProps> = ({
 
         {/* Timeline Buttons */}
         <div className="flex flex-wrap items-center gap-1.5 bg-slate-900/80 p-1 rounded-xl border border-slate-700/60">
+          <button
+            type="button"
+            onClick={() => handleSelectTimeline('ALL_TIME')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeTimeline === 'ALL_TIME' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            All Time (एकूण)
+          </button>
+
           <button
             type="button"
             onClick={() => handleSelectTimeline('TODAY')}

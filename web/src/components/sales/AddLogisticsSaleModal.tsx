@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { X, Truck, Calendar, Clock, Download, Plus, Search, CheckCircle2, Factory, Trash2, ShieldCheck, Camera, PenTool } from 'lucide-react';
+import { X, Truck, Calendar, Clock, Download, Plus, Search, CheckCircle2, Factory, Trash2, ShieldCheck, Camera, PenTool, Scale, IndianRupee } from 'lucide-react';
 import { apiCreateSale, apiGetCustomers, apiGetPurchases, apiGetSales, apiUploadImage, getTenantId } from '@/lib/api';
 
 interface AddLogisticsSaleModalProps {
@@ -43,6 +43,16 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
   const [amountPaidNow, setAmountPaidNow] = useState<number | ''>('');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  // Patti & Rate Checkboxes
+  const [isRateFixedNow, setIsRateFixedNow] = useState(true);
+  const [isPattiReceived, setIsPattiReceived] = useState(false);
+  const [isPaymentReceivedInFull, setIsPaymentReceivedInFull] = useState(false);
+
+  // Bill-specific Seller Advance
+  const [sellerPattiAdvance, setSellerPattiAdvance] = useState<number | ''>('');
+  const [sellerAdvanceMode, setSellerAdvanceMode] = useState<'UPI' | 'CASH' | 'BANK_TRANSFER'>('UPI');
+  const [sellerAdvanceRef, setSellerAdvanceRef] = useState('');
 
   const compressImage = async (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
@@ -170,14 +180,33 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
     try {
       const targetCust = customers.find((c) => c.id === selectedCustomerId) || customers[0];
       
-      const paidAmount = Number(amountPaidNow) || 0;
-      const dueAmount = totalBillAmount - paidAmount;
+      const advanceGiven = Number(sellerPattiAdvance) || 0;
+      let paidAmount = Number(amountPaidNow) || advanceGiven;
+      if (isPaymentReceivedInFull) {
+        paidAmount = totalBillAmount;
+      }
+      const dueAmount = Math.max(0, totalBillAmount - paidAmount);
       const paymentStatus = dueAmount <= 0 ? 'PAID' : (paidAmount > 0 ? 'PARTIAL' : 'UNPAID');
-      const paymentHistory = paidAmount > 0 ? [{
-        date: new Date().toISOString(),
-        amount: paidAmount,
-        mode: 'CASH'
-      }] : [];
+
+      const paymentHistory: any[] = [];
+      if (advanceGiven > 0) {
+        paymentHistory.push({
+          date: new Date().toISOString(),
+          amount: advanceGiven,
+          mode: sellerAdvanceMode,
+          ref: sellerAdvanceRef,
+          type: 'SELLER_PATTI_ADVANCE',
+          notes: `Seller advance for this patti (${sellerAdvanceMode} Ref: ${sellerAdvanceRef || 'N/A'})`
+        });
+      }
+      if (paidAmount > advanceGiven) {
+        paymentHistory.push({
+          date: new Date().toISOString(),
+          amount: paidAmount - advanceGiven,
+          mode: 'CASH',
+          type: 'DISPATCH_PAYMENT'
+        });
+      }
 
       const tenantId = getTenantId() || 'dattakrupa';
       const d = new Date();
@@ -255,6 +284,14 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
         farmerBatches: selectedPurchaseIds,
         date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
         photoUrl: vehiclePhotoUrl,
+        isRateFixedNow,
+        rateBasis: isRateFixedNow ? 'FIXED' : 'PATTI_BASIS',
+        isPattiReceived,
+        pattiStatus: isPattiReceived ? (isRateFixedNow ? 'CONFIRMED' : 'PATTI_RECEIVED') : (isRateFixedNow ? 'CONFIRMED' : 'RATE_PENDING'),
+        sellerPattiAdvance: advanceGiven,
+        sellerAdvanceMode,
+        sellerAdvanceRef,
+        pattiRateLock: false,
       };
 
       await apiCreateSale(newSale);
@@ -494,6 +531,143 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* RATE SETTLEMENT BASIS & PATTI CHECKBOXES */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <Scale className="w-4 h-4 text-blue-600" />
+                  दर निश्चिती पद्धत (Rate Settlement Basis)
+                </span>
+                <p className="text-[10px] text-slate-500 font-medium">
+                  दर आत्ताच ठरला आहे की विक्री पट्टी आल्यावर नंतर ठरणार आहे?
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                  isRateFixedNow ? 'bg-blue-600 text-white border-blue-600 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}>
+                  <input
+                    type="radio"
+                    name="rateBasis"
+                    checked={isRateFixedNow}
+                    onChange={() => setIsRateFixedNow(true)}
+                    className="hidden"
+                  />
+                  <span>✓ दर आत्ताच ठरला (Fixed Rate)</span>
+                </label>
+
+                <label className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                  !isRateFixedNow ? 'bg-amber-500 text-white border-amber-500 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}>
+                  <input
+                    type="radio"
+                    name="rateBasis"
+                    checked={!isRateFixedNow}
+                    onChange={() => setIsRateFixedNow(false)}
+                    className="hidden"
+                  />
+                  <span>📑 पट्टी बेसिस (Patti Basis - Rate Decided Later)</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Quick 1-click Checkboxes */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-200">
+              <label className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200 cursor-pointer hover:bg-blue-50/40 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={isPattiReceived}
+                  onChange={(e) => setIsPattiReceived(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">विक्री पट्टी मिळाली (Patti Received)</span>
+                  <span className="text-[10px] text-slate-400">दलाल/मार्केट कडून पट्टी पोहचली आहे</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200 cursor-pointer hover:bg-emerald-50/40 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={isPaymentReceivedInFull}
+                  onChange={(e) => {
+                    setIsPaymentReceivedInFull(e.target.checked);
+                    if (e.target.checked) {
+                      setAmountPaidNow(totalBillAmount);
+                    }
+                  }}
+                  className="w-4 h-4 text-emerald-600 rounded"
+                />
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">पेमेंट पूर्ण मिळाले (Payment Received)</span>
+                  <span className="text-[10px] text-slate-400">बिल पूर्ण जमा झाले (Full Settlement)</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* BILL-SPECIFIC SELLER ADVANCE RECEIVED */}
+          <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <IndianRupee className="w-4 h-4 text-indigo-700" />
+                <span className="text-xs font-black text-indigo-950">
+                  या पट्टीसाठी मिळालेला अ‍ॅडव्हान्स (Seller Advance for this Specific Patti)
+                </span>
+              </div>
+              <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
+                Auto-Deducts on Patti Clear
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] font-bold text-indigo-800 block mb-0.5">अ‍ॅडव्हान्स रक्कम (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={sellerPattiAdvance}
+                  onChange={(e) => setSellerPattiAdvance(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-xl text-xs font-black text-indigo-950"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-indigo-800 block mb-0.5">पेमेंट पद्धत (Mode)</label>
+                <select
+                  value={sellerAdvanceMode}
+                  onChange={(e) => setSellerAdvanceMode(e.target.value as any)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-indigo-950"
+                >
+                  <option value="UPI">UPI / GPay / PhonePe</option>
+                  <option value="BANK_TRANSFER">Bank Transfer (IMPS/NEFT)</option>
+                  <option value="CASH">Cash (रोख)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-indigo-800 block mb-0.5">UTR / संदर्भ क्रमांक (Ref No)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. UTR3849204"
+                  value={sellerAdvanceRef}
+                  onChange={(e) => setSellerAdvanceRef(e.target.value)}
+                  className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-xl text-xs font-semibold text-slate-800"
+                />
+              </div>
+            </div>
+
+            {Number(sellerPattiAdvance) > 0 && (
+              <div className="text-[10px] font-bold text-indigo-700 flex items-center justify-between pt-1 border-t border-indigo-200/60">
+                <span>पट्टी क्लिअर होताच हा ₹{Number(sellerPattiAdvance).toLocaleString('en-IN')} अ‍ॅडव्हान्स आपोआप वजा होईल.</span>
+                <span>शिल्लक बाकी: ₹{Math.max(0, totalBillAmount - Number(sellerPattiAdvance)).toLocaleString('en-IN')}</span>
+              </div>
+            )}
           </div>
 
           {/* Line Items Bill Book Table */}

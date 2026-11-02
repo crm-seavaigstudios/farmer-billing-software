@@ -12,6 +12,7 @@ import { FinancialSummaryBar, TimelineFilter } from '@/components/common/Financi
 import { FarmerCategoryModal } from '@/components/farmers/FarmerCategoryModal';
 import { useLanguage } from '@/context/LanguageContext';
 import { apiGetFarmers, apiGetPurchases, apiGetPayments, apiGetAllFarmerMaterials, apiUpdateFarmer, apiDeleteFarmer, isFarmerMatch, getTenantId } from '@/lib/api';
+import { isDateInTimeline } from '@/lib/dateUtils';
 import {
   Users,
   Search,
@@ -116,12 +117,25 @@ export default function FarmersPage() {
     setFarmers(updated);
   };
 
-  // Dynamic Financial Metrics Calculation
+  // Dynamic Financial Metrics Calculation with Universal Timeline Engine
   let displayPurchased = 0;
   let displayPaid = 0;
   let displayPaidCount = 0;
   let displayUnpaid = 0;
   let displayUnpaidCount = 0;
+  let timelineActiveFarmers = farmers;
+
+  const filteredPurchases = purchases.filter(p => {
+    return isDateInTimeline(p.purchaseDate || p.date || p.createdAt, timelineFilter.filter, timelineFilter.start, timelineFilter.end);
+  });
+
+  const filteredPayments = payments.filter(p => {
+    return isDateInTimeline(p.paymentDate || p.date || p.createdAt, timelineFilter.filter, timelineFilter.start, timelineFilter.end) && p.paymentType !== 'ADVANCE_PAYOUT';
+  });
+
+  const activeFarmerIdsInTimeline = new Set<string>();
+  filteredPurchases.forEach(p => { if (p.farmerId) activeFarmerIdsInTimeline.add(p.farmerId); });
+  filteredPayments.forEach(p => { if (p.farmerId) activeFarmerIdsInTimeline.add(p.farmerId); });
 
   if (timelineFilter.filter === 'ALL_TIME') {
     displayPurchased = farmers.reduce((acc, f) => acc + (f.totalPurchase || 0), 0);
@@ -129,40 +143,24 @@ export default function FarmersPage() {
     displayPaidCount = farmers.filter((f) => (f.totalPaid || 0) > 0).length;
     displayUnpaid = farmers.reduce((acc, f) => acc + (f.outstandingAmount || 0), 0);
     displayUnpaidCount = farmers.filter((f) => (f.outstandingAmount || 0) > 0).length;
+    timelineActiveFarmers = farmers;
   } else {
-    // Filter purchases and payments by date range
-    const startObj = timelineFilter.start ? new Date(timelineFilter.start) : new Date(0);
-    startObj.setHours(0,0,0,0);
-    const endObj = timelineFilter.end ? new Date(timelineFilter.end) : new Date();
-    endObj.setHours(23,59,59,999);
-    
-    const start = startObj.getTime();
-    const end = endObj.getTime();
-
-    const filteredPurchases = purchases.filter(p => {
-      const dateVal = p.date || p.purchaseDate || p.createdAt;
-      const t = dateVal ? new Date(dateVal).getTime() : 0;
-      return t >= start && t <= end;
-    });
-
-    const filteredPayments = payments.filter(p => {
-      const dateVal = p.paymentDate || p.date || p.createdAt;
-      const t = dateVal ? new Date(dateVal).getTime() : 0;
-      return t >= start && t <= end && p.paymentType !== 'ADVANCE_PAYOUT';
-    });
-
     displayPurchased = filteredPurchases.reduce((acc, p) => acc + Number(p.totalAmount ?? p.amount ?? p.netAmount ?? 0), 0);
     displayPaid = filteredPayments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
-    
-    const paidFarmerIds = new Set(filteredPayments.map(p => p.farmerId));
-    displayPaidCount = paidFarmerIds.size;
-    
-    // For unpaid, we'd need a more complex calculation, but for now we just show overall unpaid
-    displayUnpaid = farmers.reduce((acc, f) => acc + (f.outstandingAmount || 0), 0);
-    displayUnpaidCount = farmers.filter((f) => (f.outstandingAmount || 0) > 0).length;
+    displayPaidCount = new Set(filteredPayments.map(p => p.farmerId).filter(Boolean)).size;
+
+    const unpaidPurchases = filteredPurchases.filter(p => Number(p.dueAmount ?? p.amount ?? 0) > 0 && p.paymentStatus !== 'PAID');
+    displayUnpaid = unpaidPurchases.reduce((acc, p) => acc + Number(p.dueAmount ?? p.amount ?? 0), 0);
+    displayUnpaidCount = new Set(unpaidPurchases.map(p => p.farmerId).filter(Boolean)).size;
+
+    timelineActiveFarmers = farmers.filter(f => 
+      activeFarmerIdsInTimeline.has(f.id) || 
+      activeFarmerIdsInTimeline.has(f.farmerIdCode) ||
+      isDateInTimeline(f.createdAt, timelineFilter.filter, timelineFilter.start, timelineFilter.end)
+    );
   }
 
-  const totalFarmers = farmers.length;
+  const totalFarmers = timelineFilter.filter === 'ALL_TIME' ? farmers.length : timelineActiveFarmers.length;
 
   const handleTimelineChange = (filter: TimelineFilter, startDate?: string, endDate?: string) => {
     setTimelineFilter({ filter, start: startDate, end: endDate });
@@ -171,22 +169,22 @@ export default function FarmersPage() {
   const handleCategoryClick = (category: 'PURCHASED' | 'PAID' | 'UNPAID' | 'FARMERS') => {
     setCategoryType(category as any);
     if (category === 'PURCHASED') {
-      setCategoryModalTitle(`All Farmers Purchases (${totalFarmers} Farmers)`);
-      setCategoryModalFarmers(farmers.filter((f) => (f.totalPurchase || 0) > 0));
+      setCategoryModalTitle(`Purchases (${totalFarmers} Farmers)`);
+      setCategoryModalFarmers(timelineActiveFarmers.filter((f) => (f.totalPurchase || 0) > 0 || activeFarmerIdsInTimeline.has(f.id)));
     } else if (category === 'PAID') {
       setCategoryModalTitle(`Fully / Partially Paid Farmers (${displayPaidCount} Farmers)`);
-      setCategoryModalFarmers(farmers.filter((f) => (f.totalPaid || 0) > 0));
+      setCategoryModalFarmers(timelineActiveFarmers.filter((f) => (f.totalPaid || 0) > 0 || filteredPayments.some(p => p.farmerId === f.id)));
     } else if (category === 'UNPAID') {
       setCategoryModalTitle(`Farmers with Unpaid Bills (${displayUnpaidCount} Farmers)`);
-      setCategoryModalFarmers(farmers.filter((f) => (f.outstandingAmount || 0) > 0));
+      setCategoryModalFarmers(timelineActiveFarmers.filter((f) => (f.outstandingAmount || 0) > 0));
     } else if (category === 'FARMERS') {
-      setCategoryModalTitle(`All Active Farmers (${totalFarmers} Farmers)`);
-      setCategoryModalFarmers(farmers);
+      setCategoryModalTitle(`Active Farmers (${totalFarmers} Farmers)`);
+      setCategoryModalFarmers(timelineActiveFarmers);
     }
     setIsCategoryModalOpen(true);
   };
 
-  const filteredFarmers = farmers.filter(
+  const filteredFarmers = timelineActiveFarmers.filter(
     (f) =>
       (f.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (f.farmerIdCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
