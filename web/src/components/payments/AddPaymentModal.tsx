@@ -502,9 +502,10 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                         const billGross = Number(selectedBill.totalAmount ?? selectedBill.amount ?? 0);
                         const billPaid = Number(selectedBill.paidAmount || 0);
                         const billDue = selectedBill.dueAmount !== undefined ? Number(selectedBill.dueAmount) : Math.max(0, billGross - billPaid);
-                        setFormData(prev => ({ ...prev, amount: String(billDue > 0 ? billDue : '0') }));
+                        const netPayable = Math.max(0, billDue - totalDeductionsApplied);
+                        setFormData(prev => ({ ...prev, amount: String(netPayable) }));
                       } else {
-                        const fillVal = Math.max(0, farmerFinancials.netDue);
+                        const fillVal = Math.max(0, farmerFinancials.netDue - totalDeductionsApplied);
                         setFormData(prev => ({ ...prev, amount: String(fillVal > 0 ? fillVal : '0') }));
                       }
                     }}
@@ -546,10 +547,26 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                   const billGross = Number(selectedBill.totalAmount ?? selectedBill.amount ?? 0);
                   const billPaid = Number(selectedBill.paidAmount || 0);
                   const billDue = selectedBill.dueAmount !== undefined ? Number(selectedBill.dueAmount) : Math.max(0, billGross - billPaid);
+                  
+                  // Calculate net payout taking into account current deduction mode
+                  let activeAdvDeduction = 0;
+                  let activeMatDeduction = 0;
+                  if (deductionMode === 'SETTLE_MAX') {
+                    activeAdvDeduction = Math.min(availableAdvance, billDue);
+                    activeMatDeduction = Math.min(availableMaterials, Math.max(0, billDue - activeAdvDeduction));
+                  } else if (deductionMode === 'CUSTOM') {
+                    const rawAdv = customAdvanceInput !== '' ? (parseFloat(customAdvanceInput) || 0) : 0;
+                    activeAdvDeduction = Math.min(availableAdvance, Math.min(billDue, Math.max(0, rawAdv)));
+                    const rem = Math.max(0, billDue - activeAdvDeduction);
+                    const rawMat = customMaterialInput !== '' ? (parseFloat(customMaterialInput) || 0) : 0;
+                    activeMatDeduction = Math.min(availableMaterials, Math.min(rem, Math.max(0, rawMat)));
+                  }
+                  const netPayable = Math.max(0, billDue - activeAdvDeduction - activeMatDeduction);
+
                   setFormData(prev => ({ 
                     ...prev, 
                     purchaseId: pId,
-                    amount: billDue > 0 ? String(billDue) : '0'
+                    amount: String(netPayable)
                   }));
                 } else {
                   setFormData(prev => ({ 
@@ -570,9 +587,11 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                 const billGross = Number(p.totalAmount ?? p.amount ?? p.netAmount ?? 0);
                 const billPaid = Number(p.paidAmount || 0);
                 const billDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, billGross - billPaid);
+                const netWithAdv = Math.max(0, billDue - availableAdvance);
+                const hasAdvanceDiscount = availableAdvance > 0 && billDue > netWithAdv;
                 return (
                   <option key={p.id} value={p.id}>
-                    📄 {language === 'mr' ? 'फक्त बिल' : 'Specific Bill'} #{p.purchaseNo || p.id} ({p.crop || 'Crop'} - {language === 'mr' ? 'बाकी' : 'Due'}: ₹{billDue.toLocaleString('en-IN')})
+                    📄 {language === 'mr' ? 'फक्त बिल' : 'Specific Bill'} #{p.purchaseNo || p.id} ({p.crop || 'Crop'} - {language === 'mr' ? 'बिल बाकी' : 'Bill Due'}: ₹{billDue.toLocaleString('en-IN')}{hasAdvanceDiscount ? ` | ${language === 'mr' ? 'निव्वळ देणे' : 'Net Due'}: ₹${netWithAdv.toLocaleString('en-IN')}` : ''})
                   </option>
                 );
               })}
