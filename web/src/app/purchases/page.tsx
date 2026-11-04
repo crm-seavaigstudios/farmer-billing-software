@@ -204,6 +204,21 @@ export default function PurchasesPage() {
         });
 
         const finalPurchases = cleaned.map((p: any) => {
+          // If the bill has explicit paidAmount and dueAmount recorded in DB, preserve them!
+          const hasExplicitDue = p.dueAmount !== undefined && p.dueAmount !== null && !isNaN(Number(p.dueAmount));
+          const hasExplicitPaid = p.paidAmount !== undefined && p.paidAmount !== null && !isNaN(Number(p.paidAmount));
+          if (hasExplicitDue && hasExplicitPaid) {
+            const cleanDue = Math.max(0, Number(p.dueAmount));
+            const cleanPaid = Math.max(0, Number(p.paidAmount));
+            const status = p.paymentStatus || (cleanDue <= 0 ? 'PAID' : (cleanPaid > 0 ? 'PARTIAL' : 'UNPAID'));
+            return {
+              ...p,
+              paidAmount: cleanPaid,
+              dueAmount: cleanDue,
+              paymentStatus: status,
+            };
+          }
+
           const fifo = fifoResultMap[p.id];
           if (fifo) {
             return {

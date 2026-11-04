@@ -233,9 +233,19 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
 
     // Mark checked materials as deducted in DB and local cache
     if (actualMaterialDeducted > 0 || selectedMaterialIds.length > 0) {
-      const matIdsToDeduct = selectedMaterialIds.length > 0 
-        ? selectedMaterialIds 
-        : farmerMaterials.filter(m => !m.isDeductedFromBill).map(m => m.id);
+      let matIdsToDeduct: string[] = [];
+      if (selectedMaterialIds.length > 0) {
+        matIdsToDeduct = selectedMaterialIds;
+      } else if (actualMaterialDeducted > 0) {
+        let acc = 0;
+        const unDeducted = farmerMaterials.filter(m => !m.isDeductedFromBill);
+        for (const m of unDeducted) {
+          if (acc < actualMaterialDeducted) {
+            matIdsToDeduct.push(m.id);
+            acc += Number(m.totalAmount || m.totalPrice || 0);
+          }
+        }
+      }
 
       if (matIdsToDeduct.length > 0) {
         const { apiDeductFarmerMaterials, getTenantId } = await import('@/lib/api');

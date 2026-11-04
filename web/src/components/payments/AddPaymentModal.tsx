@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, Receipt, Calculator, ArrowRight, Wallet } from 'lucide-react';
+import { X, ShieldCheck, Receipt, Calculator, ArrowRight, Wallet, CheckCircle } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import {
   apiCreatePayment,
@@ -48,6 +48,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   });
   const [farmerPurchases, setFarmerPurchases] = useState<any[]>([]);
   const [farmerMaterials, setFarmerMaterials] = useState<any[]>([]);
+  const [liveAdvance, setLiveAdvance] = useState<number>(0);
   const [deductionMode, setDeductionMode] = useState<'KEEP_ADVANCE' | 'CUSTOM' | 'SETTLE_MAX'>('KEEP_ADVANCE');
   const [customAdvanceInput, setCustomAdvanceInput] = useState<string>('');
   const [customMaterialInput, setCustomMaterialInput] = useState<string>('');
@@ -62,13 +63,16 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
     if (!formData.farmerId) {
       setFarmerPurchases([]);
       setFarmerMaterials([]);
+      setLiveAdvance(0);
       setFarmerFinancials({ totalPurchases: 0, totalPaid: 0, totalMaterials: 0, netDue: 0 });
       return;
     }
 
     async function loadFarmerHistory() {
       try {
-        const foundFarmer = farmersList.find((f) => f.id === formData.farmerId) || { id: formData.farmerId };
+        const foundFarmer = farmersList.find((f) => isFarmerMatch(f, { id: formData.farmerId })) || 
+                            farmersList.find((f) => f.id === formData.farmerId) || 
+                            { id: formData.farmerId };
         const [allPurchases, allPayments, allMaterials] = await Promise.all([
           apiGetPurchases(),
           apiGetPayments(),
@@ -79,8 +83,14 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
         const fpay = Array.isArray(allPayments) ? allPayments.filter((p: any) => isFarmerMatch(p, foundFarmer)) : [];
         const fmat = Array.isArray(allMaterials) ? allMaterials : [];
 
-        // Unpaid or partial purchases
-        const pendingPurchases = fp.filter((p: any) => p.paymentStatus !== 'PAID');
+        // Unpaid or partial purchases with positive pending due
+        const pendingPurchases = fp.filter((p: any) => {
+          if (p.paymentStatus === 'PAID') return false;
+          const billGross = Number(p.totalAmount ?? p.amount ?? p.netAmount ?? 0);
+          const billPaid = Number(p.paidAmount || 0);
+          const billDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, billGross - billPaid);
+          return billDue > 0;
+        });
         setFarmerPurchases(pendingPurchases);
         setFarmerMaterials(fmat);
 
@@ -119,6 +129,23 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
           netDue: netDue,
         });
 
+        // Compute live available advance from vouchers, overpayments, and DB record
+        let advanceVouchersTotal = 0;
+        fpay.forEach((pay: any) => {
+          const isAdv = pay.paymentType === 'ADVANCE_PAYOUT' || 
+                        pay.paymentType === 'ADVANCE' || 
+                        (typeof pay.notes === 'string' && pay.notes.toLowerCase().includes('advance'));
+          if (isAdv) {
+            const amt = typeof pay.amount === 'number' ? pay.amount : parseFloat(String(pay.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+            advanceVouchersTotal += amt;
+          }
+        });
+
+        const dbFarmerAdvance = Math.max(0, Number(foundFarmer?.advanceBalance || 0));
+        const overpaymentAdvance = Math.max(0, totPaid - totPurchases);
+        const computedAdvance = Math.max(dbFarmerAdvance, advanceVouchersTotal, overpaymentAdvance);
+        setLiveAdvance(computedAdvance);
+
         // Auto pre-fill amount if not explicitly provided
         if (initialAmount === undefined) {
           if (formData.purchaseId) {
@@ -128,9 +155,13 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
             const billDue = currentBill ? (currentBill.dueAmount !== undefined ? Number(currentBill.dueAmount) : Math.max(0, billGross - billPaid)) : 0;
             if (billDue > 0) {
               setFormData(prev => ({ ...prev, amount: String(billDue) }));
+            } else {
+              setFormData(prev => ({ ...prev, amount: '0' }));
             }
           } else if (netDue > 0) {
             setFormData(prev => ({ ...prev, amount: String(netDue) }));
+          } else {
+            setFormData(prev => ({ ...prev, amount: '0' }));
           }
         }
       } catch (err) {
@@ -186,8 +217,8 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
 
   if (!isOpen) return null;
 
-  const selectedFarmer = farmersList.find((f) => f.id === formData.farmerId);
-  const availableAdvance = Math.max(0, Number(selectedFarmer?.advanceBalance || 0));
+  const selectedFarmer = farmersList.find((f) => isFarmerMatch(f, { id: formData.farmerId })) || farmersList.find((f) => f.id === formData.farmerId);
+  const availableAdvance = Math.max(liveAdvance, Math.max(0, Number(selectedFarmer?.advanceBalance || 0)));
   const availableMaterials = farmerMaterials
     .filter((m) => !m.isDeductedFromBill)
     .reduce((acc, m) => acc + Number(m.totalAmount || m.totalPrice || 0), 0);
@@ -281,6 +312,41 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
             paymentStatus: newDue === 0 ? 'PAID' : 'PARTIAL'
           });
         }
+      } else if (!isAdvancePayout && totalSettled > 0) {
+        // Synchronous Multi-Bill Settlement: Clear all pending bills of the farmer sequentially
+        let remainingPool = totalSettled;
+        const sortedBills = [...farmerPurchases].sort((a: any, b: any) => {
+          const tA = new Date(a.createdAt || a.date || 0).getTime();
+          const tB = new Date(b.createdAt || b.date || 0).getTime();
+          return tA - tB;
+        });
+
+        for (const bill of sortedBills) {
+          if (remainingPool <= 0) break;
+          const billGross = Number(bill.totalAmount ?? bill.amount ?? 0);
+          const currentPaid = Number(bill.paidAmount || 0);
+          const currentDue = bill.dueAmount !== undefined ? Number(bill.dueAmount) : Math.max(0, billGross - currentPaid);
+
+          if (currentDue > 0) {
+            const settleThisBill = Math.min(currentDue, remainingPool);
+            const newPaid = currentPaid + settleThisBill;
+            const newDue = Math.max(0, currentDue - settleThisBill);
+            const newStatus = newDue <= 0 ? 'PAID' : 'PARTIAL';
+            remainingPool -= settleThisBill;
+
+            await apiUpdatePurchase(bill.id || bill.purchaseNo, {
+              paidAmount: newPaid,
+              dueAmount: newDue,
+              paymentStatus: newStatus
+            });
+          }
+        }
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('purchases_changed'));
+        window.dispatchEvent(new Event('payments_changed'));
+        window.dispatchEvent(new Event('farmers_changed'));
       }
 
       const newPayment = {
@@ -398,16 +464,36 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-1 border-t border-slate-200/80">
+              <div 
+                onClick={() => {
+                  if (farmerFinancials.netDue <= 0) {
+                    setFormData(prev => ({ ...prev, amount: '0' }));
+                  }
+                }}
+                className={`flex items-center justify-between pt-1 border-t border-slate-200/80 ${farmerFinancials.netDue <= 0 ? 'cursor-pointer hover:bg-slate-100/70 p-1.5 rounded-xl transition-all' : ''}`}
+                title={farmerFinancials.netDue <= 0 ? (language === 'mr' ? 'क्लिक करून रक्कम ० (शून्य) करा' : 'Click to set payment amount to ₹0') : undefined}
+              >
                 <div className="text-xs">
                   <span className="font-bold text-slate-500">
-                    {farmerFinancials.netDue > 0 ? (language === 'mr' ? 'एकूण बाकी देणे (Net Due):' : 'Net Due to Farmer:') : (language === 'mr' ? 'अ‍ॅडव्हान्स शिल्लक:' : 'Advance Balance:')}
+                    {farmerFinancials.netDue > 0 
+                      ? (language === 'mr' ? 'एकूण बाकी देणे (Net Due):' : 'Net Due to Farmer:') 
+                      : (language === 'mr' ? 'अ‍ॅडव्हान्स शिल्लक / चालू बाकी:' : 'Advance / Current Due:')}
                   </span>
-                  <span className={`ml-1.5 font-black text-xs ${farmerFinancials.netDue > 0 ? 'text-rose-600' : 'text-indigo-600'}`}>
-                    ₹{Math.abs(farmerFinancials.netDue).toLocaleString('en-IN')}
-                  </span>
+                  {farmerFinancials.netDue > 0 ? (
+                    <span className="ml-1.5 font-black text-xs text-rose-600">
+                      ₹{farmerFinancials.netDue.toLocaleString('en-IN')}
+                    </span>
+                  ) : (
+                    <span className="ml-1.5 font-black text-xs text-emerald-600">
+                      ₹0 {farmerFinancials.netDue < 0 && (
+                        <span className="text-[10px] text-indigo-600 font-bold ml-1">
+                          ({language === 'mr' ? 'शिल्लक अ‍ॅडव्हान्स:' : 'Advance Balance:'} ₹{Math.abs(farmerFinancials.netDue).toLocaleString('en-IN')})
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </div>
-                {farmerFinancials.netDue > 0 && (
+                {farmerFinancials.netDue > 0 ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -416,16 +502,29 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                         const billGross = Number(selectedBill.totalAmount ?? selectedBill.amount ?? 0);
                         const billPaid = Number(selectedBill.paidAmount || 0);
                         const billDue = selectedBill.dueAmount !== undefined ? Number(selectedBill.dueAmount) : Math.max(0, billGross - billPaid);
-                        setFormData(prev => ({ ...prev, amount: String(billDue > 0 ? billDue : '') }));
+                        setFormData(prev => ({ ...prev, amount: String(billDue > 0 ? billDue : '0') }));
                       } else {
                         const fillVal = Math.max(0, farmerFinancials.netDue);
-                        setFormData(prev => ({ ...prev, amount: String(fillVal > 0 ? fillVal : '') }));
+                        setFormData(prev => ({ ...prev, amount: String(fillVal > 0 ? fillVal : '0') }));
                       }
                     }}
                     className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-extrabold rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1"
                   >
                     <span>बाकी भरा (Fill Due)</span>
                     <ArrowRight className="w-3 h-3" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFormData(prev => ({ ...prev, amount: '0' }));
+                    }}
+                    className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-black rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
+                    title={language === 'mr' ? 'रक्कम शून्य (०) करा' : 'Set amount to ₹0'}
+                  >
+                    <CheckCircle className="w-3 h-3 text-emerald-600" />
+                    <span>{language === 'mr' ? 'बाकी शून्य (₹0 करा)' : 'Zero Due (Set ₹0)'}</span>
                   </button>
                 )}
               </div>
@@ -450,26 +549,30 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                   setFormData(prev => ({ 
                     ...prev, 
                     purchaseId: pId,
-                    amount: billDue > 0 ? String(billDue) : prev.amount
+                    amount: billDue > 0 ? String(billDue) : '0'
                   }));
                 } else {
                   setFormData(prev => ({ 
                     ...prev, 
-                    purchaseId: pId,
-                    amount: farmerFinancials.netDue > 0 ? String(farmerFinancials.netDue) : prev.amount
+                    purchaseId: '',
+                    amount: farmerFinancials.netDue > 0 ? String(farmerFinancials.netDue) : '0'
                   }));
                 }
               }}
               className="w-full px-3 py-2 bg-slate-50 border border-blue-200 rounded-xl text-xs font-semibold text-slate-800"
             >
-              <option value="">-- Pay against General Account Balance --</option>
+              <option value="">
+                {language === 'mr' 
+                  ? `✨ सर्व शिल्लक बिले (एकत्रित सर्व बिle क्लिअर करा) - एकूण बाकी: ₹${Math.max(0, farmerFinancials.netDue).toLocaleString('en-IN')}` 
+                  : `✨ All Pending Bills (Auto-Clear All Dues) - Total Due: ₹${Math.max(0, farmerFinancials.netDue).toLocaleString('en-IN')}`}
+              </option>
               {farmerPurchases.map((p: any) => {
                 const billGross = Number(p.totalAmount ?? p.amount ?? p.netAmount ?? 0);
                 const billPaid = Number(p.paidAmount || 0);
                 const billDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, billGross - billPaid);
                 return (
                   <option key={p.id} value={p.id}>
-                    Bill #{p.purchaseNo || p.id} ({p.crop || 'Crop'} - Gross: ₹{billGross.toLocaleString('en-IN')}, Due: ₹{billDue.toLocaleString('en-IN')})
+                    📄 {language === 'mr' ? 'फक्त बिल' : 'Specific Bill'} #{p.purchaseNo || p.id} ({p.crop || 'Crop'} - {language === 'mr' ? 'बाकी' : 'Due'}: ₹{billDue.toLocaleString('en-IN')})
                   </option>
                 );
               })}
