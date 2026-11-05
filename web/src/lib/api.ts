@@ -12,6 +12,28 @@ export const getTenantId = () => {
   }
 };
 
+// One-time automatic client cache purge for clean production launch
+const PROD_CLEAN_VERSION = 'seavaig_prod_clean_v1';
+if (typeof window !== 'undefined') {
+  try {
+    if (localStorage.getItem('seavaig_clean_ver') !== PROD_CLEAN_VERSION) {
+      const activeTenant = localStorage.getItem('active_tenant');
+      const userLang = localStorage.getItem('seavaig_crm_user_language');
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('seavaig_') || k.startsWith('cleared_'))) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+      if (activeTenant) localStorage.setItem('active_tenant', activeTenant);
+      if (userLang) localStorage.setItem('seavaig_crm_user_language', userLang);
+      localStorage.setItem('seavaig_clean_ver', PROD_CLEAN_VERSION);
+    }
+  } catch {}
+}
+
 // Helper for local browser persistent fallback when Supabase table isn't present
 function getLocalCache(key: string, defaultVal: any[] = []): any[] {
   if (typeof window === 'undefined') return defaultVal;
