@@ -124,12 +124,16 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
       const fp = (allPurs || []).filter((p: any) => isFarmerMatch(p, selectedFarmer));
       const totalAdvGiven = advs.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
       const totalAdvDeductedInBills = fp.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0);
-      const remAdv = Math.max(0, totalAdvGiven - totalAdvDeductedInBills);
-      setRunningAdvance(remAdv > 0 ? remAdv : Math.max(0, Number(selectedFarmer?.advanceBalance || 0)));
+      const remAdv = totalAdvGiven > 0 
+        ? Math.max(0, totalAdvGiven - totalAdvDeductedInBills)
+        : Math.max(0, Number(selectedFarmer?.advanceBalance || 0));
+      setRunningAdvance(remAdv);
 
       const totalMatIssued = activeMats.reduce((sum: number, m: any) => sum + Number(m.totalAmount || m.totalPrice || 0), 0);
       const totalMatDeductedInBills = fp.reduce((sum: number, p: any) => sum + (Number(p.materialDeducted) || 0), 0);
-      const remMat = Math.max(0, totalMatIssued - totalMatDeductedInBills);
+      const remMat = totalMatIssued > 0 
+        ? Math.max(0, totalMatIssued - totalMatDeductedInBills)
+        : 0;
       setRunningMaterials(remMat);
 
       // Default custom inputs to 0 or leave empty for user entry
@@ -152,10 +156,8 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
   }
 
   // Calculate available advance & materials reflecting true running balances
-  const availableAdvance = runningAdvance > 0 ? runningAdvance : Math.max(0, Number(selectedFarmer?.advanceBalance || 0));
-  const availableMaterials = runningMaterials > 0 ? runningMaterials : farmerMaterials
-    .filter(m => !m.isDeductedFromBill)
-    .reduce((acc, m) => acc + Number(m.totalAmount || m.totalPrice || 0), 0);
+  const availableAdvance = runningAdvance;
+  const availableMaterials = runningMaterials;
 
   let actualAdvanceDeducted = 0;
   let actualMaterialDeducted = 0;
@@ -232,12 +234,6 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     };
 
     const savedPurchase = await apiCreatePurchase(payload);
-
-    // If custom advance was deducted, update farmer's advance balance in DB/cache
-    if (actualAdvanceDeducted > 0 && selectedFarmer?.id) {
-      const { apiUpdateFarmerAdvance } = await import('@/lib/api');
-      await apiUpdateFarmerAdvance(selectedFarmer.id, -actualAdvanceDeducted);
-    }
 
     const newPurchase = {
       ...savedPurchase,

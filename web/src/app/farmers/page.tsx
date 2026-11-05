@@ -326,7 +326,9 @@ export default function FarmersPage() {
                       let activeBillsCount = 0;
 
                       if (netBalance > 0) {
-                        let remainingSettlementPool = totalPaid + totalMaterials;
+                        const advanceAlreadyApplied = farmerPurchases.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0);
+                        const materialAlreadyDeducted = farmerPurchases.reduce((sum: number, p: any) => sum + (Number(p.materialDeducted) || 0), 0);
+                        let remainingSettlementPool = Math.max(0, totalPaid - advanceAlreadyApplied) + Math.max(0, totalMaterials - materialAlreadyDeducted);
                         // Oldest to newest
                         const sorted = [...farmerPurchases].sort((a, b) => {
                           const ta = new Date(a.date || a.createdAt || 0).getTime();
@@ -342,8 +344,12 @@ export default function FarmersPage() {
                           const parsed = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
                           const billAmt = parsed > 0 ? parsed : calcVal;
 
-                          const allocatedPaid = Math.min(billAmt, Math.max(0, remainingSettlementPool));
-                          remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaid);
+                          const directDeductions = Number(p.advanceApplied || 0) + Number(p.materialDeducted || 0);
+                          const remainingBillAmt = Math.max(0, billAmt - directDeductions);
+
+                          const allocatedPaidFromPool = Math.min(remainingBillAmt, Math.max(0, remainingSettlementPool));
+                          remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaidFromPool);
+                          const allocatedPaid = directDeductions + allocatedPaidFromPool;
                           const allocatedDue = Math.max(0, billAmt - allocatedPaid);
 
                           if (allocatedDue > 0) {

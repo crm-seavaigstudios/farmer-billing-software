@@ -157,15 +157,17 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
             const billGross = currentBill ? Number(currentBill.totalAmount ?? currentBill.amount ?? 0) : 0;
             const billPaid = currentBill ? Number(currentBill.paidAmount || 0) : 0;
             const billDue = currentBill ? (currentBill.dueAmount !== undefined ? Number(currentBill.dueAmount) : Math.max(0, billGross - billPaid)) : 0;
-            if (billDue > 0) {
-              setFormData(prev => ({ ...prev, amount: String(billDue) }));
-            } else {
-              setFormData(prev => ({ ...prev, amount: '0' }));
-            }
-          } else if (netDue > 0) {
-            setFormData(prev => ({ ...prev, amount: String(netDue) }));
+            const billNetPayable = Math.max(0, billDue - computedAdvance);
+            setFormData(prev => ({ ...prev, amount: String(billNetPayable > 0 ? billNetPayable : '0') }));
           } else {
-            setFormData(prev => ({ ...prev, amount: '0' }));
+            const runningDueSum = pendingPurchases.reduce((sum: number, p: any) => {
+              const bAmt = Number(p.totalAmount ?? p.amount ?? 0);
+              const bPaid = Number(p.paidAmount || 0);
+              const bDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, bAmt - bPaid);
+              return sum + bDue;
+            }, 0);
+            const runningNet = Math.max(0, runningDueSum - computedAdvance);
+            setFormData(prev => ({ ...prev, amount: String(runningNet > 0 ? runningNet : '0') }));
           }
         }
       } catch (err) {
@@ -239,7 +241,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   const billGross = selectedBill ? Number(selectedBill.totalAmount ?? selectedBill.amount ?? 0) : 0;
   const billPaid = selectedBill ? Number(selectedBill.paidAmount || 0) : 0;
   const billDue = selectedBill ? (selectedBill.dueAmount !== undefined ? Number(selectedBill.dueAmount) : Math.max(0, billGross - billPaid)) : 0;
-  const grossAmountToSettle = selectedBill ? billDue : Math.max(0, farmerFinancials.netDue);
+  const grossAmountToSettle = selectedBill ? billDue : runningPurchasesDue;
 
   let actualAdvanceDeducted = 0;
   let actualMaterialDeducted = 0;

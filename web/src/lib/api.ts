@@ -818,13 +818,15 @@ export const apiGetPurchases = async () => {
           rate: rateStr,
           amount: finalAmount,
           totalAmount: finalAmount,
-          paidAmount: parseFloat(p.paidAmount || 0) || 0,
-          dueAmount: parseFloat(p.dueAmount !== undefined ? p.dueAmount : finalAmount) || 0,
+          paidAmount: Math.max(parseFloat(p.paidAmount || 0) || 0, (Number(p.advanceApplied || (p.storageLocation?.match(/\[DED:ADV=([0-9.]+)/)?.[1] || 0)) + Number(p.materialDeducted || (p.storageLocation?.match(/:MTL=([0-9.]+)/)?.[1] || 0)))),
+          dueAmount: p.dueAmount !== undefined && p.dueAmount !== null ? Math.min(parseFloat(p.dueAmount), Math.max(0, finalAmount - Math.max(parseFloat(p.paidAmount || 0) || 0, (Number(p.advanceApplied || (p.storageLocation?.match(/\[DED:ADV=([0-9.]+)/)?.[1] || 0)) + Number(p.materialDeducted || (p.storageLocation?.match(/:MTL=([0-9.]+)/)?.[1] || 0)))))) : Math.max(0, finalAmount - Math.max(parseFloat(p.paidAmount || 0) || 0, (Number(p.advanceApplied || (p.storageLocation?.match(/\[DED:ADV=([0-9.]+)/)?.[1] || 0)) + Number(p.materialDeducted || (p.storageLocation?.match(/:MTL=([0-9.]+)/)?.[1] || 0))))),
           paymentStatus: p.paymentStatus || (finalAmount > 0 && parseFloat(p.paidAmount || 0) >= finalAmount ? 'PAID' : 'UNPAID'),
           date: p.date || (p.purchaseDate ? p.purchaseDate.split('T')[0] : new Date(p.createdAt || Date.now()).toLocaleDateString('en-IN')),
           purchaseDate: p.purchaseDate || p.createdAt || p.date || null,
           storageLocation: p.storageLocation || '',
           isVisibleToFarmer: isVisibleToFarmer,
+          advanceApplied: Number(p.advanceApplied || (p.storageLocation?.match(/\[DED:ADV=([0-9.]+)/)?.[1] || 0)),
+          materialDeducted: Number(p.materialDeducted || (p.storageLocation?.match(/:MTL=([0-9.]+)/)?.[1] || 0)),
           items: pItems,
         };
       });
@@ -1078,8 +1080,11 @@ export const apiCreatePurchase = async (purchaseData: any) => {
 
   const unitStr = item?.unit || 'KG';
   const isVis = purchaseData.isVisibleToFarmer !== false;
+  const advApplied = Number(purchaseData.advanceApplied || 0);
+  const matDeducted = Number(purchaseData.materialDeducted || 0);
+  const dedTag = (advApplied > 0 || matDeducted > 0) ? ` [DED:ADV=${advApplied}:MTL=${matDeducted}]` : '';
   const baseLoc = (purchaseData.storageLocation || '').replace(/\s*\[(VISIBLE_TO_FARMER|HIDDEN_FROM_FARMER)\]/g, '').trim();
-  const taggedLoc = `${baseLoc} [${isVis ? 'VISIBLE_TO_FARMER' : 'HIDDEN_FROM_FARMER'}]`.trim();
+  const taggedLoc = `${baseLoc} [${isVis ? 'VISIBLE_TO_FARMER' : 'HIDDEN_FROM_FARMER'}]${dedTag}`.trim();
 
   const purchaseObj = {
     id: billNo,
@@ -1097,6 +1102,8 @@ export const apiCreatePurchase = async (purchaseData: any) => {
     totalAmount: purAmt,
     paidAmount: Number(purchaseData.paidAmount || 0),
     dueAmount: Number(purchaseData.dueAmount !== undefined ? purchaseData.dueAmount : purAmt),
+    advanceApplied: advApplied,
+    materialDeducted: matDeducted,
     paymentStatus: purchaseData.paymentStatus || (purAmt > 0 && Number(purchaseData.paidAmount || 0) >= purAmt ? 'PAID' : 'UNPAID'),
     date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     createdAt: new Date().toISOString(),

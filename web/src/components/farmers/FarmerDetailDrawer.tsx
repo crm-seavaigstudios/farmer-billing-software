@@ -260,7 +260,9 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
 
         // FIFO Bill Settlement: Allocate total debits (Cash + Materials) across bills from oldest to newest
         const sortedPurchasesOldest = [...fp].sort((a, b) => getPreciseTimestamp(a) - getPreciseTimestamp(b));
-        let remainingSettlementPool = totalPaid + totalMaterial;
+        const advanceAlreadyApplied = fp.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0);
+        const materialAlreadyDeducted = fp.reduce((sum: number, p: any) => sum + (Number(p.materialDeducted) || 0), 0);
+        let remainingSettlementPool = Math.max(0, totalPaid - advanceAlreadyApplied) + Math.max(0, totalMaterial - materialAlreadyDeducted);
         const calculatedFifoMap: Record<string, { allocatedPaid: number; allocatedDue: number; status: 'PAID' | 'PARTIAL' | 'UNPAID' }> = {};
         let activePurchasesSum = 0;
         let activePaidSum = 0;
@@ -275,8 +277,12 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           const parsed = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
           const billAmt = parsed > 0 ? parsed : calcVal;
 
-          const allocatedPaid = Math.min(billAmt, Math.max(0, remainingSettlementPool));
-          remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaid);
+          const directDeductions = Number(p.advanceApplied || 0) + Number(p.materialDeducted || 0);
+          const remainingBillAmt = Math.max(0, billAmt - directDeductions);
+
+          const allocatedPaidFromPool = Math.min(remainingBillAmt, Math.max(0, remainingSettlementPool));
+          remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaidFromPool);
+          const allocatedPaid = directDeductions + allocatedPaidFromPool;
           const allocatedDue = Math.max(0, billAmt - allocatedPaid);
           const status: 'PAID' | 'PARTIAL' | 'UNPAID' = allocatedDue <= 0 ? 'PAID' : (allocatedPaid > 0 ? 'PARTIAL' : 'UNPAID');
 

@@ -185,18 +185,28 @@ export default function PurchasesPage() {
             return sum + Number(m.totalAmount || m.totalPrice || m.amount || (qty * price) || 0);
           }, 0);
 
-          let remainingSettlementPool = totalPaid + totalMaterial;
+          const advanceAlreadyAppliedOnBills = fPurchases.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0);
+          const materialAlreadyDeductedOnBills = fPurchases.reduce((sum: number, p: any) => sum + (Number(p.materialDeducted) || 0), 0);
+          const unallocatedPayments = Math.max(0, totalPaid - advanceAlreadyAppliedOnBills);
+          const unallocatedMaterials = Math.max(0, totalMaterial - materialAlreadyDeductedOnBills);
+          let remainingSettlementPool = unallocatedPayments + unallocatedMaterials;
           const sorted = [...fPurchases].sort((a, b) => getTimestamp(a) - getTimestamp(b));
 
           sorted.forEach((p) => {
             const billAmt = Number(p.amount || 0);
-            const allocatedPaid = Math.min(billAmt, Math.max(0, remainingSettlementPool));
+            const billAdv = Number(p.advanceApplied || 0);
+            const billMat = Number(p.materialDeducted || 0);
+            const directDeductions = billAdv + billMat;
+            const remainingBillAmt = Math.max(0, billAmt - directDeductions);
+
+            const allocatedPaid = Math.min(remainingBillAmt, Math.max(0, remainingSettlementPool));
             remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaid);
-            const allocatedDue = Math.max(0, billAmt - allocatedPaid);
-            const status = allocatedDue <= 0 ? 'PAID' : (allocatedPaid > 0 ? 'PARTIAL' : 'UNPAID');
+            const totalAllocatedPaid = directDeductions + allocatedPaid;
+            const allocatedDue = Math.max(0, billAmt - totalAllocatedPaid);
+            const status = allocatedDue <= 0 ? 'PAID' : (totalAllocatedPaid > 0 ? 'PARTIAL' : 'UNPAID');
 
             fifoResultMap[p.id] = {
-              paidAmount: allocatedPaid,
+              paidAmount: totalAllocatedPaid,
               dueAmount: allocatedDue,
               paymentStatus: status,
             };
