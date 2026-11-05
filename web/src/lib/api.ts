@@ -218,7 +218,10 @@ export const apiGetFarmers = async () => {
         const totalDebits = computedPaid + computedMaterials;
         const netBalance = computedPurchases - totalDebits;
         // Pure cash/bank advance: payments made minus purchases (never add materials here!)
-        const advanceBal = Math.max(0, computedPaid - computedPurchases);
+        const advancePayments = farmerPayments.filter((p: any) => p.paymentType === 'ADVANCE_PAYOUT' || p.paymentType === 'ADVANCE' || String(p.notes || '').toLowerCase().includes('advance') || p.isAdvance);
+        const totalAdvGiven = advancePayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        const totalAdvDeducted = farmerPurchases.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0) + farmerPayments.reduce((sum: number, p: any) => sum + (Number(p.advanceDeducted) || 0), 0);
+        const advanceBal = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : (computedPaid - computedPurchases));
         const due = Math.max(0, netBalance);
 
         // Auto-heal Supabase record asynchronously if out of sync
@@ -980,7 +983,10 @@ export const apiUpdateFarmerBalance = async (
       const totalDebits = computedPaid + computedMaterials;
       const netBalance = computedPurchases - totalDebits;
       // Pure cash/bank advance: payments made minus purchases (never add materials here!)
-      const advanceBal = Math.max(0, computedPaid - computedPurchases);
+      const advancePayments = farmerPayments.filter((p: any) => p.paymentType === 'ADVANCE_PAYOUT' || p.paymentType === 'ADVANCE' || String(p.notes || '').toLowerCase().includes('advance') || p.isAdvance);
+      const totalAdvGiven = advancePayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+      const totalAdvDeducted = farmerPurchases.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0) + farmerPayments.reduce((sum: number, p: any) => sum + (Number(p.advanceDeducted) || 0), 0);
+      const advanceBal = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : (computedPaid - computedPurchases));
       const due = Math.max(0, netBalance);
 
       // Update Supabase

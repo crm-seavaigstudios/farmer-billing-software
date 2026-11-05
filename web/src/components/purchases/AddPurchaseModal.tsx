@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, ShoppingBag, Calculator, ShieldCheck, Plus, Sparkles, Search, Check, ChevronDown } from 'lucide-react';
-import { apiGetCrops, apiCreateCrop, apiGetFarmers, apiCreatePurchase, apiGetFarmerMaterials, apiGetPayments, apiGetLocations, getTenantId } from '@/lib/api';
+import { apiGetCrops, apiCreateCrop, apiGetFarmers, apiCreatePurchase, apiGetFarmerMaterials, apiGetPayments, apiGetPurchases, isFarmerMatch, apiGetLocations, getTenantId } from '@/lib/api';
 interface AddPurchaseModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -98,24 +98,39 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
   const [customMaterialInput, setCustomMaterialInput] = useState<string>('');
   const [farmerMaterials, setFarmerMaterials] = useState<any[]>([]);
   const [farmerAdvances, setFarmerAdvances] = useState<any[]>([]);
+  const [runningAdvance, setRunningAdvance] = useState<number>(0);
+  const [runningMaterials, setRunningMaterials] = useState<number>(0);
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
   const [selectedAdvanceIds, setSelectedAdvanceIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!selectedFarmer || !isOpen) return;
     async function loadFarmerFinancials() {
-      const mats = await apiGetFarmerMaterials(selectedFarmer.id);
+      const [mats, allPays, allPurs] = await Promise.all([
+        apiGetFarmerMaterials(selectedFarmer.id),
+        apiGetPayments(),
+        apiGetPurchases(),
+      ]);
       const activeMats = mats || [];
       setFarmerMaterials(activeMats);
       
-      const allPays = await apiGetPayments();
       const advs = (allPays || []).filter(
         (p: any) =>
-          (p.farmerId === selectedFarmer.id || p.farmerName === selectedFarmer.name) &&
-          (p.paymentType === 'ADVANCE_PAYOUT' || p.paymentType === 'ADVANCE' || String(p.notes || '').toLowerCase().includes('advance')) &&
-          !p.isSettled
+          isFarmerMatch(p, selectedFarmer) &&
+          (p.paymentType === 'ADVANCE_PAYOUT' || p.paymentType === 'ADVANCE' || String(p.notes || '').toLowerCase().includes('advance') || p.isAdvance)
       );
       setFarmerAdvances(advs);
+
+      const fp = (allPurs || []).filter((p: any) => isFarmerMatch(p, selectedFarmer));
+      const totalAdvGiven = advs.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+      const totalAdvDeductedInBills = fp.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0);
+      const remAdv = Math.max(0, totalAdvGiven - totalAdvDeductedInBills);
+      setRunningAdvance(remAdv > 0 ? remAdv : Math.max(0, Number(selectedFarmer?.advanceBalance || 0)));
+
+      const totalMatIssued = activeMats.reduce((sum: number, m: any) => sum + Number(m.totalAmount || m.totalPrice || 0), 0);
+      const totalMatDeductedInBills = fp.reduce((sum: number, p: any) => sum + (Number(p.materialDeducted) || 0), 0);
+      const remMat = Math.max(0, totalMatIssued - totalMatDeductedInBills);
+      setRunningMaterials(remMat);
 
       // Default custom inputs to 0 or leave empty for user entry
       setCustomAdvanceInput('');
@@ -136,9 +151,9 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     calculatedTotal = (quantityOrWeight / 1000) * ratePerUnit; // rate per ton
   }
 
-  // Calculate available advance & materials
-  const availableAdvance = Math.max(0, Number(selectedFarmer?.advanceBalance || 0));
-  const availableMaterials = farmerMaterials
+  // Calculate available advance & materials reflecting true running balances
+  const availableAdvance = runningAdvance > 0 ? runningAdvance : Math.max(0, Number(selectedFarmer?.advanceBalance || 0));
+  const availableMaterials = runningMaterials > 0 ? runningMaterials : farmerMaterials
     .filter(m => !m.isDeductedFromBill)
     .reduce((acc, m) => acc + Number(m.totalAmount || m.totalPrice || 0), 0);
 

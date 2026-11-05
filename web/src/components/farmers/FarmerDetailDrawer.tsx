@@ -346,6 +346,41 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
   const activeOrLifetimeTotals = kpiViewMode === 'ACTIVE' ? activeTotals : lifetimeTotals;
   const totals = activeOrLifetimeTotals;
 
+  const advancePayments = payments.filter((p: any) => 
+    p.paymentType === 'ADVANCE' || 
+    p.paymentType === 'ADVANCE_PAYOUT' || 
+    String(p.notes || '').toLowerCase().includes('advance') || 
+    String(p.method || '').toLowerCase().includes('advance') ||
+    p.isAdvance
+  );
+  const totalAdvGiven = advancePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const totalAdvDeducted = purchases.reduce((sum, p) => sum + (Number(p.advanceApplied || p.advanceDeducted || 0)), 0) +
+    payments.reduce((sum, p) => sum + (Number(p.advanceDeducted || 0)), 0);
+  const remainingAdvance = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : Number(farmer?.advanceBalance || 0));
+
+  const totalMatIssued = materials.reduce((sum, m) => {
+    const qty = Number(m.quantity || 1);
+    const price = Number(m.unitPrice || 0);
+    const calcVal = qty * price;
+    const rawAmt = m.totalAmount ?? m.totalPrice ?? m.amount ?? calcVal ?? 0;
+    const parsedAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+    return sum + (parsedAmt > 0 ? parsedAmt : calcVal);
+  }, 0);
+
+  const totalMatDeducted = materials.filter((m: any) => m.isDeductedFromBill).reduce((sum, m) => {
+    const qty = Number(m.quantity || 1);
+    const price = Number(m.unitPrice || 0);
+    const calcVal = qty * price;
+    const rawAmt = m.totalAmount ?? m.totalPrice ?? m.amount ?? calcVal ?? 0;
+    const parsedAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+    return sum + (parsedAmt > 0 ? parsedAmt : calcVal);
+  }, 0) + purchases.reduce((sum, p) => sum + (Number(p.materialDeducted || 0)), 0);
+
+  const remainingMatDue = Math.max(0, totalMatIssued - totalMatDeducted);
+
+  const billPayouts = payments.filter((p: any) => !advancePayments.some((adv: any) => adv.id === p.id));
+  const totalBillPayouts = billPayouts.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
   const statementData: StatementData = {
     farmerId: farmer?.id || farmer?.farmerIdCode || 'FAR-10001',
     farmerName: farmer?.name || 'Farmer',
@@ -356,7 +391,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     ifsc: farmer?.ifsc || '',
     totalPurchases: `₹${lifetimeTotals.purchase.toLocaleString('en-IN')}`,
     totalPaid: `₹${lifetimeTotals.paid.toLocaleString('en-IN')}`,
-    advanceGiven: `₹${lifetimeTotals.material.toLocaleString('en-IN')}`,
+    advanceGiven: `₹${totalAdvGiven.toLocaleString('en-IN')}`,
     netBalance: `₹${lifetimeTotals.outstanding.toLocaleString('en-IN')}`,
     transactions: realTransactions,
   };
@@ -429,7 +464,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs">
             {/* 1. Total Purchases */}
             <div className="bg-blue-50/80 border border-blue-100 rounded-2xl p-3 shadow-2xs">
               <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider block">
@@ -449,40 +484,53 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
               </span>
             </div>
 
-            {/* 2. Total Paid */}
+            {/* 2. Total Bill Payouts */}
             <div className="bg-emerald-50/80 border border-emerald-100 rounded-2xl p-3 shadow-2xs">
               <span className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider block">
                 {language === 'mr' 
-                  ? (kpiViewMode === 'ACTIVE' ? 'भरणा / जमा' : 'एकूण भरणा') 
-                  : (kpiViewMode === 'ACTIVE' ? 'Paid / Advance' : 'Total Paid Out')}
+                  ? (kpiViewMode === 'ACTIVE' ? 'बिलांचा भरणा' : 'एकूण भरणा') 
+                  : (kpiViewMode === 'ACTIVE' ? 'Bill Payouts' : 'Total Paid Out')}
               </span>
               <span className="text-base font-black text-emerald-700 mt-1 block">
-                ₹{totals.paid.toLocaleString('en-IN')}
+                ₹{totalBillPayouts.toLocaleString('en-IN')}
               </span>
               <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
                 {kpiViewMode === 'ACTIVE' && lifetimeTotals.outstanding <= 0 ? (
                   <span className="text-emerald-600 font-bold">Settled</span>
                 ) : (
-                  `${payments.length} ${language === 'mr' ? 'पेमेंट्स' : 'payments'}`
+                  `${billPayouts.length} ${language === 'mr' ? 'पेमेंट्स' : 'payments'}`
                 )}
               </span>
             </div>
 
-            {/* 3. Material Supplies */}
+            {/* 3. Pure Advance */}
+            <div className="bg-indigo-50/80 border border-indigo-100 rounded-2xl p-3 shadow-2xs">
+              <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block">
+                {language === 'mr' ? 'रोख अ‍ॅडव्हान्स' : 'Cash Advance'}
+              </span>
+              <span className="text-base font-black text-indigo-700 mt-1 block">
+                ₹{totalAdvGiven.toLocaleString('en-IN')}
+              </span>
+              <span className="text-[10px] text-indigo-600 font-semibold mt-0.5 block">
+                {language === 'mr' ? 'शिल्लक' : 'Rem'}: ₹{remainingAdvance.toLocaleString('en-IN')}
+              </span>
+            </div>
+
+            {/* 4. Material Supplies */}
             <div className="bg-purple-50/80 border border-purple-100 rounded-2xl p-3 shadow-2xs">
               <span className="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider block">
                 {language === 'mr' ? 'साहित्य पुरवठा' : 'Materials Given'}
               </span>
               <span className="text-base font-black text-purple-700 mt-1 block">
-                ₹{totals.material.toLocaleString('en-IN')}
+                ₹{totalMatIssued.toLocaleString('en-IN')}
               </span>
-              <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
-                {materials.length} {language === 'mr' ? 'साहित्य नोंदी' : 'items'}
+              <span className="text-[10px] text-purple-600 font-semibold mt-0.5 block">
+                {language === 'mr' ? 'कपात बाकी' : 'Due'}: ₹{remainingMatDue.toLocaleString('en-IN')}
               </span>
             </div>
 
-            {/* 4. Net Outstanding / Advance */}
-            <div className={`rounded-2xl p-3 shadow-2xs border ${
+            {/* 5. Net Outstanding / Advance */}
+            <div className={`col-span-2 sm:col-span-1 rounded-2xl p-3 shadow-2xs border ${
               lifetimeTotals.outstanding > 0 
                 ? 'bg-rose-50/80 border-rose-100' 
                 : lifetimeTotals.outstanding < 0 
@@ -789,14 +837,24 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
 
                 return (
                   <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3">
-                        <span className="text-[10px] font-semibold text-indigo-500 uppercase block">Total Advance Issued (एकूण उचल)</span>
-                        <span className="text-base font-black text-indigo-700 mt-0.5 block">₹{totalAdvanceGiven.toLocaleString('en-IN')}</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-2.5">
+                        <span className="text-[10px] font-semibold text-indigo-500 uppercase block">
+                          {language === 'mr' ? 'एकूण उचल दिली' : 'Total Issued'}
+                        </span>
+                        <span className="text-sm font-black text-indigo-700 mt-0.5 block">₹{totalAdvGiven.toLocaleString('en-IN')}</span>
                       </div>
-                      <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-3">
-                        <span className="text-[10px] font-semibold text-blue-500 uppercase block">Remaining Advance (शिल्लक अ‍ॅडव्हान्स)</span>
-                        <span className="text-base font-black text-blue-700 mt-0.5 block">₹{currentAdvanceBal.toLocaleString('en-IN')}</span>
+                      <div className="bg-amber-50/70 border border-amber-100 rounded-xl p-2.5">
+                        <span className="text-[10px] font-semibold text-amber-600 uppercase block">
+                          {language === 'mr' ? 'बिलांतून कपात' : 'Deducted on Bills'}
+                        </span>
+                        <span className="text-sm font-black text-amber-700 mt-0.5 block">₹{totalAdvDeducted.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-2.5">
+                        <span className="text-[10px] font-semibold text-emerald-600 uppercase block">
+                          {language === 'mr' ? 'शिल्लक अ‍ॅडव्हान्स' : 'Remaining Balance'}
+                        </span>
+                        <span className="text-sm font-black text-emerald-700 mt-0.5 block">₹{remainingAdvance.toLocaleString('en-IN')}</span>
                       </div>
                     </div>
 
@@ -852,15 +910,33 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           )}
 
           {activeTab === 'MATERIALS' && (
-            <div className="space-y-3 text-xs">
+            <div className="space-y-4 text-xs">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-purple-50/70 border border-purple-100 rounded-xl p-2.5">
+                  <span className="text-[10px] font-semibold text-purple-600 uppercase block">
+                    {language === 'mr' ? 'एकूण साहित्य दिले' : 'Total Issued'}
+                  </span>
+                  <span className="text-sm font-black text-purple-700 mt-0.5 block">₹{totalMatIssued.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="bg-amber-50/70 border border-amber-100 rounded-xl p-2.5">
+                  <span className="text-[10px] font-semibold text-amber-600 uppercase block">
+                    {language === 'mr' ? 'बिलांतून कपात' : 'Deducted on Bills'}
+                  </span>
+                  <span className="text-sm font-black text-amber-700 mt-0.5 block">₹{totalMatDeducted.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="bg-rose-50/70 border border-rose-100 rounded-xl p-2.5">
+                  <span className="text-[10px] font-semibold text-rose-600 uppercase block">
+                    {language === 'mr' ? 'कपात शिल्लक बाकी' : 'Remaining Due'}
+                  </span>
+                  <span className="text-sm font-black text-rose-700 mt-0.5 block">₹{remainingMatDue.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
               <div className="flex justify-between items-center">
                 <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
                   {language === 'mr' ? 'साहित्य पुरवठा नोंदी' : 'Material Supplies Issued'} ({materials.length})
                 </h3>
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-500">
-                    {language === 'mr' ? 'एकूण नावे' : 'Total'}: <span className="font-black text-purple-700">₹{totals.material.toLocaleString('en-IN')}</span>
-                  </span>
                   {onOpenMaterialModal && (
                     <button
                       onClick={() => onOpenMaterialModal(farmer.id)}

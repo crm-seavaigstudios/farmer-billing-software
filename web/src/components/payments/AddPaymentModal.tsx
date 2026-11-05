@@ -129,21 +129,25 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
           netDue: netDue,
         });
 
-        // Compute live available advance from vouchers, overpayments, and DB record
+        // Compute live available advance after deducting past bill deductions
         let advanceVouchersTotal = 0;
         fpay.forEach((pay: any) => {
           const isAdv = pay.paymentType === 'ADVANCE_PAYOUT' || 
                         pay.paymentType === 'ADVANCE' || 
-                        (typeof pay.notes === 'string' && pay.notes.toLowerCase().includes('advance'));
+                        (typeof pay.notes === 'string' && pay.notes.toLowerCase().includes('advance')) ||
+                        pay.isAdvance;
           if (isAdv) {
             const amt = typeof pay.amount === 'number' ? pay.amount : parseFloat(String(pay.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
             advanceVouchersTotal += amt;
           }
         });
 
+        const totalAdvDeductedOnBills = fp.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied || p.advanceDeducted || 0)), 0) +
+          fpay.reduce((sum: number, pay: any) => sum + (Number(pay.advanceDeducted || 0)), 0);
+        const remainingAdvanceVouchers = Math.max(0, advanceVouchersTotal - totalAdvDeductedOnBills);
         const dbFarmerAdvance = Math.max(0, Number(foundFarmer?.advanceBalance || 0));
         const overpaymentAdvance = Math.max(0, totPaid - totPurchases);
-        const computedAdvance = Math.max(dbFarmerAdvance, advanceVouchersTotal, overpaymentAdvance);
+        const computedAdvance = advanceVouchersTotal > 0 ? remainingAdvanceVouchers : Math.max(dbFarmerAdvance, overpaymentAdvance);
         setLiveAdvance(computedAdvance);
 
         // Auto pre-fill amount if not explicitly provided
@@ -222,6 +226,14 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   const availableMaterials = farmerMaterials
     .filter((m) => !m.isDeductedFromBill)
     .reduce((acc, m) => acc + Number(m.totalAmount || m.totalPrice || 0), 0);
+
+  const runningPurchasesDue = farmerPurchases.reduce((sum, p) => {
+    const bAmt = Number(p.totalAmount ?? p.amount ?? 0);
+    const bPaid = Number(p.paidAmount || 0);
+    const bDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, bAmt - bPaid);
+    return sum + bDue;
+  }, 0);
+  const runningNetDue = Math.max(0, runningPurchasesDue - availableAdvance);
 
   const selectedBill = farmerPurchases.find((p: any) => p.id === formData.purchaseId || p.purchaseNo === formData.purchaseId);
   const billGross = selectedBill ? Number(selectedBill.totalAmount ?? selectedBill.amount ?? 0) : 0;
@@ -451,61 +463,66 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
               
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-white border border-slate-200/60 rounded-xl p-2 shadow-2xs">
-                  <span className="text-[10px] text-slate-400 block font-semibold">खरेदी (Purchases)</span>
-                  <span className="font-black text-slate-900 text-xs">₹{farmerFinancials.totalPurchases.toLocaleString('en-IN')}</span>
+                  <span className="text-[10px] text-slate-400 block font-semibold">
+                    {language === 'mr' ? 'चालू बिले बाकी' : 'Active Bills Due'}
+                  </span>
+                  <span className="font-black text-slate-900 text-xs">₹{runningPurchasesDue.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="bg-white border border-purple-100 rounded-xl p-2 shadow-2xs">
-                  <span className="text-[10px] text-purple-600 block font-semibold">साहित्य नावे (Materials)</span>
-                  <span className="font-black text-purple-700 text-xs">-₹{farmerFinancials.totalMaterials.toLocaleString('en-IN')}</span>
+                  <span className="text-[10px] text-purple-600 block font-semibold">
+                    {language === 'mr' ? 'शिल्लक साहित्य' : 'Material Balance'}
+                  </span>
+                  <span className="font-black text-purple-700 text-xs">₹{availableMaterials.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="bg-white border border-emerald-100 rounded-xl p-2 shadow-2xs">
-                  <span className="text-[10px] text-emerald-600 block font-semibold">भरणा/उचल (Paid)</span>
-                  <span className="font-black text-emerald-700 text-xs">-₹{farmerFinancials.totalPaid.toLocaleString('en-IN')}</span>
+                  <span className="text-[10px] text-emerald-600 block font-semibold">
+                    {language === 'mr' ? 'उपलब्ध अ‍ॅडव्हान्स' : 'Available Advance'}
+                  </span>
+                  <span className="font-black text-emerald-700 text-xs">₹{availableAdvance.toLocaleString('en-IN')}</span>
                 </div>
               </div>
 
               <div 
                 onClick={() => {
-                  if (farmerFinancials.netDue <= 0) {
+                  if (runningNetDue <= 0) {
                     setFormData(prev => ({ ...prev, amount: '0' }));
                   }
                 }}
-                className={`flex items-center justify-between pt-1 border-t border-slate-200/80 ${farmerFinancials.netDue <= 0 ? 'cursor-pointer hover:bg-slate-100/70 p-1.5 rounded-xl transition-all' : ''}`}
-                title={farmerFinancials.netDue <= 0 ? (language === 'mr' ? 'क्लिक करून रक्कम ० (शून्य) करा' : 'Click to set payment amount to ₹0') : undefined}
+                className={`flex items-center justify-between pt-1 border-t border-slate-200/80 ${runningNetDue <= 0 ? 'cursor-pointer hover:bg-slate-100/70 p-1.5 rounded-xl transition-all' : ''}`}
+                title={runningNetDue <= 0 ? (language === 'mr' ? 'क्लिक करून रक्कम ० (शून्य) करा' : 'Click to set payment amount to ₹0') : undefined}
               >
                 <div className="text-xs">
                   <span className="font-bold text-slate-500">
-                    {farmerFinancials.netDue > 0 
+                    {runningNetDue > 0 
                       ? (language === 'mr' ? 'एकूण बाकी देणे (Net Due):' : 'Net Due to Farmer:') 
                       : (language === 'mr' ? 'अ‍ॅडव्हान्स शिल्लक / चालू बाकी:' : 'Advance / Current Due:')}
                   </span>
-                  {farmerFinancials.netDue > 0 ? (
+                  {runningNetDue > 0 ? (
                     <span className="ml-1.5 font-black text-xs text-rose-600">
-                      ₹{farmerFinancials.netDue.toLocaleString('en-IN')}
+                      ₹{runningNetDue.toLocaleString('en-IN')}
                     </span>
                   ) : (
                     <span className="ml-1.5 font-black text-xs text-emerald-600">
-                      ₹0 {farmerFinancials.netDue < 0 && (
+                      ₹0 {availableAdvance > 0 && (
                         <span className="text-[10px] text-indigo-600 font-bold ml-1">
-                          ({language === 'mr' ? 'शिल्लक अ‍ॅडव्हान्स:' : 'Advance Balance:'} ₹{Math.abs(farmerFinancials.netDue).toLocaleString('en-IN')})
+                          ({language === 'mr' ? 'शिल्लक अ‍ॅडव्हान्स:' : 'Advance Balance:'} ₹{availableAdvance.toLocaleString('en-IN')})
                         </span>
                       )}
                     </span>
                   )}
                 </div>
-                {farmerFinancials.netDue > 0 ? (
+                {runningNetDue > 0 ? (
                   <button
                     type="button"
                     onClick={() => {
-                      const selectedBill = farmerPurchases.find((p: any) => p.id === formData.purchaseId || p.purchaseNo === formData.purchaseId);
                       if (selectedBill) {
-                        const billGross = Number(selectedBill.totalAmount ?? selectedBill.amount ?? 0);
-                        const billPaid = Number(selectedBill.paidAmount || 0);
-                        const billDue = selectedBill.dueAmount !== undefined ? Number(selectedBill.dueAmount) : Math.max(0, billGross - billPaid);
-                        const netPayable = Math.max(0, billDue - totalDeductionsApplied);
+                        const sBillGross = Number(selectedBill.totalAmount ?? selectedBill.amount ?? 0);
+                        const sBillPaid = Number(selectedBill.paidAmount || 0);
+                        const sBillDue = selectedBill.dueAmount !== undefined ? Number(selectedBill.dueAmount) : Math.max(0, sBillGross - sBillPaid);
+                        const netPayable = Math.max(0, sBillDue - totalDeductionsApplied);
                         setFormData(prev => ({ ...prev, amount: String(netPayable) }));
                       } else {
-                        const fillVal = Math.max(0, farmerFinancials.netDue - totalDeductionsApplied);
+                        const fillVal = Math.max(0, runningNetDue - totalDeductionsApplied);
                         setFormData(prev => ({ ...prev, amount: String(fillVal > 0 ? fillVal : '0') }));
                       }
                     }}
@@ -542,11 +559,11 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
               value={formData.purchaseId}
               onChange={(e) => {
                 const pId = e.target.value;
-                const selectedBill = farmerPurchases.find((p: any) => p.id === pId || p.purchaseNo === pId);
-                if (selectedBill) {
-                  const billGross = Number(selectedBill.totalAmount ?? selectedBill.amount ?? 0);
-                  const billPaid = Number(selectedBill.paidAmount || 0);
-                  const billDue = selectedBill.dueAmount !== undefined ? Number(selectedBill.dueAmount) : Math.max(0, billGross - billPaid);
+                const billChoice = farmerPurchases.find((p: any) => p.id === pId || p.purchaseNo === pId);
+                if (billChoice) {
+                  const billGross = Number(billChoice.totalAmount ?? billChoice.amount ?? 0);
+                  const billPaid = Number(billChoice.paidAmount || 0);
+                  const billDue = billChoice.dueAmount !== undefined ? Number(billChoice.dueAmount) : Math.max(0, billGross - billPaid);
                   
                   // Calculate net payout taking into account current deduction mode
                   let activeAdvDeduction = 0;
@@ -572,7 +589,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
                   setFormData(prev => ({ 
                     ...prev, 
                     purchaseId: '',
-                    amount: farmerFinancials.netDue > 0 ? String(farmerFinancials.netDue) : '0'
+                    amount: runningNetDue > 0 ? String(runningNetDue) : '0'
                   }));
                 }
               }}
@@ -580,18 +597,19 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
             >
               <option value="">
                 {language === 'mr' 
-                  ? `✨ सर्व शिल्लक बिले (एकत्रित सर्व बिle क्लिअर करा) - एकूण बाकी: ₹${Math.max(0, farmerFinancials.netDue).toLocaleString('en-IN')}` 
-                  : `✨ All Pending Bills (Auto-Clear All Dues) - Total Due: ₹${Math.max(0, farmerFinancials.netDue).toLocaleString('en-IN')}`}
+                  ? `✨ सर्व शिल्लक बिले (एकत्रित सर्व बिले क्लिअर करा) - निव्वळ बाकी: ₹${runningNetDue.toLocaleString('en-IN')}` 
+                  : `✨ All Pending Bills (Auto-Clear All Dues) - Net Due: ₹${runningNetDue.toLocaleString('en-IN')}`}
               </option>
               {farmerPurchases.map((p: any) => {
-                const billGross = Number(p.totalAmount ?? p.amount ?? p.netAmount ?? 0);
-                const billPaid = Number(p.paidAmount || 0);
-                const billDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, billGross - billPaid);
-                const netWithAdv = Math.max(0, billDue - availableAdvance);
-                const hasAdvanceDiscount = availableAdvance > 0 && billDue > netWithAdv;
+                const bGross = Number(p.totalAmount ?? p.amount ?? p.netAmount ?? 0);
+                const bPaid = Number(p.paidAmount || 0);
+                const bDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, bGross - bPaid);
+                const bAdvDeduct = Math.min(availableAdvance, bDue);
+                const netWithAdv = Math.max(0, bDue - bAdvDeduct);
+                const hasAdvanceDiscount = availableAdvance > 0 && bAdvDeduct > 0;
                 return (
                   <option key={p.id} value={p.id}>
-                    📄 {language === 'mr' ? 'फक्त बिल' : 'Specific Bill'} #{p.purchaseNo || p.id} ({p.crop || 'Crop'} - {language === 'mr' ? 'बिल बाकी' : 'Bill Due'}: ₹{billDue.toLocaleString('en-IN')}{hasAdvanceDiscount ? ` | ${language === 'mr' ? 'निव्वळ देणे' : 'Net Due'}: ₹${netWithAdv.toLocaleString('en-IN')}` : ''})
+                    📄 {language === 'mr' ? 'फक्त बिल' : 'Specific Bill'} #{p.purchaseNo || p.id} ({p.crop || 'Crop'} - {language === 'mr' ? 'एकूण बाकी' : 'Gross Due'}: ₹{bDue.toLocaleString('en-IN')}{hasAdvanceDiscount ? ` | अ‍ॅडव्हान्स: -₹${bAdvDeduct.toLocaleString('en-IN')} | ${language === 'mr' ? 'निव्वळ देय' : 'Net Due'}: ₹${netWithAdv.toLocaleString('en-IN')}` : ''})
                   </option>
                 );
               })}

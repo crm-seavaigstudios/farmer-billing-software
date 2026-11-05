@@ -318,7 +318,49 @@ export default function FarmersPage() {
 
                       // Agricultural Net Balance = Total Purchases (Credits +) - [Total Paid/Advances (Debits -) + Total Materials (Debits -)]
                       const netBalance = totalPurchases - (totalPaid + totalMaterials);
-                      const netRowDue = netBalance;
+
+                      // Running / Active amounts for unpaid/partial bills (shows ₹0 when settled)
+                      let runningPurchases = 0;
+                      let runningPaid = 0;
+                      let runningDue = 0;
+                      let activeBillsCount = 0;
+
+                      if (netBalance > 0) {
+                        let remainingSettlementPool = totalPaid + totalMaterials;
+                        // Oldest to newest
+                        const sorted = [...farmerPurchases].sort((a, b) => {
+                          const ta = new Date(a.date || a.createdAt || 0).getTime();
+                          const tb = new Date(b.date || b.createdAt || 0).getTime();
+                          return ta - tb;
+                        });
+
+                        sorted.forEach((p: any) => {
+                          const itemWeight = parseFloat(String(p.weight || p.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+                          const itemRate = parseFloat(String(p.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+                          const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
+                          const rawAmt = p.amount ?? p.totalAmount ?? p.netAmount ?? calcVal ?? 0;
+                          const parsed = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+                          const billAmt = parsed > 0 ? parsed : calcVal;
+
+                          const allocatedPaid = Math.min(billAmt, Math.max(0, remainingSettlementPool));
+                          remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaid);
+                          const allocatedDue = Math.max(0, billAmt - allocatedPaid);
+
+                          if (allocatedDue > 0) {
+                            runningPurchases += billAmt;
+                            runningPaid += allocatedPaid;
+                            activeBillsCount++;
+                          }
+                        });
+
+                        runningDue = netBalance;
+                      } else {
+                        // Farmer is fully settled (₹0) or has an advance surplus
+                        runningPurchases = 0;
+                        runningPaid = 0;
+                        runningDue = netBalance;
+                        activeBillsCount = 0;
+                      }
 
                       return (
                       <tr 
@@ -350,13 +392,13 @@ export default function FarmersPage() {
                           {(() => {
                             let label = 'ALL_SETTLED (पूर्ण हिशोब)';
                             let color = 'bg-slate-50 text-slate-700 border-slate-100';
-                            if (netRowDue > 0) {
+                            if (netBalance > 0) {
                               label = 'PENDING_DUE (बाकी देणे)';
                               color = 'bg-rose-50 text-rose-700 border-rose-100';
-                            } else if (netRowDue < 0) {
+                            } else if (netBalance < 0) {
                               label = 'ADVANCE (अ‍ॅडव्हान्स जमा)';
                               color = 'bg-indigo-50 text-indigo-700 border-indigo-100';
-                            } else if ((farmerPurchases.length > 0 || farmerPayments.length > 0 || farmerMaterials.length > 0) && netRowDue === 0) {
+                            } else if ((farmerPurchases.length > 0 || farmerPayments.length > 0 || farmerMaterials.length > 0) && netBalance === 0) {
                               label = 'FULL_PAID (पूर्ण भरणा)';
                               color = 'bg-emerald-50 text-emerald-700 border-emerald-100';
                             }
@@ -368,29 +410,29 @@ export default function FarmersPage() {
                           })()}
                         </td>
                         <td className="py-3.5 px-4 font-bold text-slate-900">
-                          ₹{farmerPurchases.length > 0 ? totalPurchases.toLocaleString('en-IN') : 0}
-                          {farmerPurchases.length > 0 && (
-                            <span className="text-[10px] text-slate-400 block font-normal">
-                              ({farmerPurchases.length} {farmerPurchases.length === 1 ? 'bill' : 'bills'})
+                          ₹{runningPurchases.toLocaleString('en-IN')}
+                          {activeBillsCount > 0 ? (
+                            <span className="text-[10px] text-amber-600 block font-normal">
+                              ({activeBillsCount} active {activeBillsCount === 1 ? 'bill' : 'bills'})
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-emerald-600 block font-normal">
+                              (0 pending)
                             </span>
                           )}
                         </td>
                         <td className="py-3.5 px-4 font-extrabold text-emerald-600">
-                          ₹{(totalPaid + totalMaterials).toLocaleString('en-IN')}
-                          {totalMaterials > 0 ? (
-                            <span className="text-[10px] text-slate-500 block font-normal">
-                              (₹{totalPaid.toLocaleString('en-IN')} + ₹{totalMaterials.toLocaleString('en-IN')} mtl)
+                          ₹{runningPaid.toLocaleString('en-IN')}
+                          {netBalance <= 0 && (farmerPurchases.length > 0 || farmerPayments.length > 0) && (
+                            <span className="text-[10px] text-emerald-600 block font-normal">
+                              (settled)
                             </span>
-                          ) : farmerPayments.length > 0 ? (
-                            <span className="text-[10px] text-slate-400 block font-normal">
-                              ({farmerPayments.length} {farmerPayments.length === 1 ? 'payout' : 'payouts'})
-                            </span>
-                          ) : null}
+                          )}
                         </td>
                         <td className="py-3.5 px-4 font-extrabold text-amber-600">
-                          {netRowDue < 0 
-                            ? `-₹${Math.abs(netRowDue).toLocaleString('en-IN')}` 
-                            : `₹${netRowDue.toLocaleString('en-IN')}`}
+                          {runningDue < 0 
+                            ? `-₹${Math.abs(runningDue).toLocaleString('en-IN')} (Adv)` 
+                            : `₹${runningDue.toLocaleString('en-IN')}`}
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
