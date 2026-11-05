@@ -42,7 +42,7 @@ export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [transferSuccess, setTransferSuccess] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'CROPS' | 'MATERIALS' | 'LOCATIONS'>('CROPS');
+  const [activeTab, setActiveTab] = useState<'CROPS' | 'MATERIALS' | 'LOCATIONS' | 'CRATES'>('CROPS');
   const [gradeFilter, setGradeFilter] = useState('ALL');
   const [roomFilter, setRoomFilter] = useState('ALL');
 
@@ -672,6 +672,14 @@ export default function InventoryPage() {
                   }`}
                 >
                   🏢 Storage Rooms / Locations ({locations.length})
+                </button>
+                <button
+                  onClick={() => setActiveTab('CRATES')}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                    activeTab === 'CRATES' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  📦 कॅरेट पासबुक (Crate Ledger)
                 </button>
               </div>
 

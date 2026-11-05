@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, ShoppingBag, Calculator, ShieldCheck, Plus, Sparkles, Search, Check, ChevronDown } from 'lucide-react';
-import { apiGetCrops, apiCreateCrop, apiGetFarmers, apiCreatePurchase, apiGetFarmerMaterials, apiGetPayments, apiGetPurchases, isFarmerMatch, apiGetLocations, getTenantId } from '@/lib/api';
+import { apiGetCrops, apiCreateCrop, apiGetFarmers, apiCreatePurchase, apiGetFarmerMaterials, apiGetPayments, apiGetPurchases, isFarmerMatch, apiGetLocations, getTenantId, apiGetCustomers, apiCreateSale } from '@/lib/api';
 interface AddPurchaseModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -45,6 +45,13 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
   const [selectedLocation, setSelectedLocation] = useState('Cold Room #1 (Satpur)');
   const [isVisibleToFarmer, setIsVisibleToFarmer] = useState<boolean>(true); // Default to true or customizable
 
+  // Cross-Dock Direct Sale to Buyer (Moderator Time-Saver)
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [isDirectSaleActive, setIsDirectSaleActive] = useState<boolean>(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [sellingRate, setSellingRate] = useState<number>(0);
+  const [dispatchVehicle, setDispatchVehicle] = useState<string>('');
+
   useEffect(() => {
     async function loadData() {
       const dbCrops = await apiGetCrops();
@@ -70,7 +77,14 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
         setSelectedLocation(locs[0].name);
       }
 
-      const dbFarmersRes = await apiGetFarmers();
+      const [dbFarmersRes, dbCustomers] = await Promise.all([
+        apiGetFarmers(),
+        apiGetCustomers()
+      ]);
+      if (dbCustomers && Array.isArray(dbCustomers) && dbCustomers.length > 0) {
+        setCustomers(dbCustomers);
+        setSelectedCustomerId(dbCustomers[0].id);
+      }
       let farmerList: any[] = cachedFarmers;
       if (dbFarmersRes) {
         const list = Array.isArray(dbFarmersRes) ? dbFarmersRes : ((dbFarmersRes as any)?.data || []);
@@ -277,6 +291,36 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
             localStorage.setItem(cacheKey, JSON.stringify(updated));
           } catch {}
         }
+      }
+    }
+
+    // Cross-Dock Direct Sale to Buyer (Moderator Time-Saver)
+    if (isDirectSaleActive && selectedCustomerId) {
+      const buyer = customers.find(c => c.id === selectedCustomerId);
+      const sRate = sellingRate > 0 ? sellingRate : ratePerUnit;
+      const sTotal = quantityOrWeight * sRate;
+      try {
+        await apiCreateSale({
+          customerId: selectedCustomerId,
+          customerName: buyer?.name || buyer?.businessName || 'B2B Buyer',
+          customerPhone: buyer?.phone || '',
+          totalAmount: sTotal,
+          totalWeight: quantityOrWeight,
+          netWeight: quantityOrWeight,
+          ratePerKg: sRate,
+          grade: 'A_GRADE',
+          deliveryStatus: 'DISPATCHED',
+          transportMode: dispatchVehicle ? `Tempo: ${dispatchVehicle}` : 'Tempo / Truck',
+          notes: `Cross-Dock Dispatch from Farmer ${selectedFarmer?.name || 'Farmer'} (Purchase: ${savedPurchase?.purchaseNo || savedPurchase?.id || ''})`,
+          items: [{
+            cropName: activeCropName,
+            weight: quantityOrWeight,
+            rate: sRate,
+            total: sTotal
+          }]
+        });
+      } catch (err) {
+        console.error('Direct Cross-Dock Sale creation error:', err);
       }
     }
 
@@ -717,6 +761,80 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
               </div>
               <span className="text-lg font-black text-blue-700">₹{dueAmount.toLocaleString('en-IN')}</span>
             </div>
+          </div>
+
+          {/* MODERATOR TIME-SAVER: DIRECT SALE / CROSS-DOCKING TO BUYER */}
+          <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-black text-emerald-900 flex items-center gap-1.5">
+                  <span>⚡</span>
+                  <span>थेट खरेदीदारास विक्री (Direct Sale / Cross-Docking)</span>
+                </span>
+                <p className="text-[11px] text-emerald-700/80 font-medium mt-0.5">
+                  शेतकऱ्याकडून आवक होताच थेट खरेदीदार व्यापाऱ्याला विक्री चलन आपोआप बनवा.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsDirectSaleActive(!isDirectSaleActive)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  isDirectSaleActive ? 'bg-emerald-600' : 'bg-slate-300'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                    isDirectSaleActive ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {isDirectSaleActive && (
+              <div className="pt-2 border-t border-emerald-200/60 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs animate-in fade-in">
+                <div className="sm:col-span-1">
+                  <label className="text-[10px] font-bold text-emerald-900 block mb-1">खरेदीदार व्यापारी (Buyer)</label>
+                  <select
+                    value={selectedCustomerId}
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    className="w-full bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
+                  >
+                    {customers.length === 0 ? (
+                      <option value="">(प्रथम ग्राहक जोडा / No Buyers)</option>
+                    ) : (
+                      customers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name || c.businessName} {c.city ? `(${c.city})` : ''}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-emerald-900 block mb-1">विक्री दर (Sale Rate ₹)</label>
+                  <input
+                    type="number"
+                    value={sellingRate || ''}
+                    placeholder={`उदा. ${ratePerUnit + 20}`}
+                    onChange={(e) => setSellingRate(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-black text-emerald-800 text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-emerald-900 block mb-1">गाडी / टेम्पो क्र. (Vehicle)</label>
+                  <input
+                    type="text"
+                    value={dispatchVehicle}
+                    placeholder="MH-12-AB-9090"
+                    onChange={(e) => setDispatchVehicle(e.target.value)}
+                    className="w-full bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500 outline-none uppercase"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* FARMER PORTAL VISIBILITY TOGGLE */}

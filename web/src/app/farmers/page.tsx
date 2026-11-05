@@ -319,52 +319,51 @@ export default function FarmersPage() {
                       // Agricultural Net Balance = Total Purchases (Credits +) - [Total Paid/Advances (Debits -) + Total Materials (Debits -)]
                       const netBalance = totalPurchases - (totalPaid + totalMaterials);
 
-                      // Running / Active amounts for unpaid/partial bills (shows ₹0 when settled)
+                      // Running / Active amounts for unpaid/partial bills (matches Payment page and Purchase Bill due)
                       let runningPurchases = 0;
                       let runningPaid = 0;
                       let runningDue = 0;
                       let activeBillsCount = 0;
 
-                      if (netBalance > 0) {
-                        const advanceAlreadyApplied = farmerPurchases.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0);
-                        const materialAlreadyDeducted = farmerPurchases.reduce((sum: number, p: any) => sum + (Number(p.materialDeducted) || 0), 0);
-                        let remainingSettlementPool = Math.max(0, totalPaid - advanceAlreadyApplied) + Math.max(0, totalMaterials - materialAlreadyDeducted);
-                        // Oldest to newest
-                        const sorted = [...farmerPurchases].sort((a, b) => {
-                          const ta = new Date(a.date || a.createdAt || 0).getTime();
-                          const tb = new Date(b.date || b.createdAt || 0).getTime();
-                          return ta - tb;
-                        });
+                      // Identify active/unpaid/partial purchase bills
+                      const activeUnpaidBills = farmerPurchases.filter((p: any) => {
+                        if (p.paymentStatus === 'PAID') return false;
+                        const itemWeight = parseFloat(String(p.weight || p.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
+                        const itemRate = parseFloat(String(p.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
+                        const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
+                        const rawAmt = p.totalAmount ?? p.amount ?? p.netAmount ?? calcVal ?? 0;
+                        const bGross = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+                        const bPaid = Number(p.paidAmount || (Number(p.advanceApplied || 0) + Number(p.materialDeducted || 0)));
+                        const bDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, bGross - bPaid);
+                        return bDue > 0;
+                      });
 
-                        sorted.forEach((p: any) => {
+                      if (activeUnpaidBills.length > 0) {
+                        activeUnpaidBills.forEach((p: any) => {
                           const itemWeight = parseFloat(String(p.weight || p.totalWeight || '0').replace(/[^0-9.-]+/g, '')) || 0;
                           const itemRate = parseFloat(String(p.rate || '0').replace(/[^0-9.-]+/g, '')) || 0;
                           const calcVal = (itemWeight > 0 && itemRate > 0) ? (itemWeight * itemRate) : 0;
-                          const rawAmt = p.amount ?? p.totalAmount ?? p.netAmount ?? calcVal ?? 0;
-                          const parsed = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
-                          const billAmt = parsed > 0 ? parsed : calcVal;
+                          const rawAmt = p.totalAmount ?? p.amount ?? p.netAmount ?? calcVal ?? 0;
+                          const bGross = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+                          const bPaid = Number(p.paidAmount || (Number(p.advanceApplied || 0) + Number(p.materialDeducted || 0)));
+                          const bDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, bGross - bPaid);
 
-                          const directDeductions = Number(p.advanceApplied || 0) + Number(p.materialDeducted || 0);
-                          const remainingBillAmt = Math.max(0, billAmt - directDeductions);
-
-                          const allocatedPaidFromPool = Math.min(remainingBillAmt, Math.max(0, remainingSettlementPool));
-                          remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaidFromPool);
-                          const allocatedPaid = directDeductions + allocatedPaidFromPool;
-                          const allocatedDue = Math.max(0, billAmt - allocatedPaid);
-
-                          if (allocatedDue > 0) {
-                            runningPurchases += billAmt;
-                            runningPaid += allocatedPaid;
-                            activeBillsCount++;
-                          }
+                          runningPurchases += bGross;
+                          runningPaid += bPaid;
+                          runningDue += bDue;
+                          activeBillsCount++;
                         });
-
-                        runningDue = netBalance;
-                      } else {
-                        // Farmer is fully settled (₹0) or has an advance surplus
+                      } else if (netBalance < 0) {
+                        // Farmer has taken advance / materials surplus without purchase bills (e.g. -₹8,000 Adv)
                         runningPurchases = 0;
                         runningPaid = 0;
                         runningDue = netBalance;
+                        activeBillsCount = 0;
+                      } else {
+                        // All bills completed / paid, shows ₹0
+                        runningPurchases = 0;
+                        runningPaid = 0;
+                        runningDue = 0;
                         activeBillsCount = 0;
                       }
 

@@ -179,6 +179,10 @@ export const sharePurchaseOnWhatsApp = (
 
   const farmerCodeDisplay = farmerCode || (matchedFarmer ? matchedFarmer.farmerUniqueCode || matchedFarmer.farmerCode || matchedFarmer.farmerIdCode : '');
 
+  const upiPayLink = (dueAmountNum > 0 || totalOutstandingVal > 0)
+    ? `\n📲 *थेट UPI द्वारे पेमेंट करण्यासाठी क्लिक करा (GPay/PhonePe):*\nupi://pay?pa=dattakrupa@upi&pn=${encodeURIComponent(tenantName)}&am=${dueAmountNum > 0 ? dueAmountNum : totalOutstandingVal}&cu=INR&tn=${encodeURIComponent('Bill ' + billNo)}\n━━━━━━━━━━━━━━━━━━━━━━━━━━`
+    : '';
+
   const message = `
 🌾 *${tenantName}* 🌾
 📄 *खरेदी पावती व ३६०° खाते हिशोब (Purchase Bill & Ledger)*
@@ -200,7 +204,7 @@ export const sharePurchaseOnWhatsApp = (
 💰 ३. रोख आगाऊ उचल (Advance Balance): *₹${totalAdvancesVal.toLocaleString('en-IN')}*
 ${totalMaterialVal > 0 ? `🌱 ४. एकूण खते / साहित्य नावे (Materials): *₹${totalMaterialVal.toLocaleString('en-IN')}*\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━${pendingBillsText ? `${pendingBillsText}\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n` : ''}
 ⚖️ *अंतिम चालू निव्वळ बाकी (Net Balance Due):* *₹${totalOutstandingVal.toLocaleString('en-IN')}*
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━${upiPayLink}
 आमच्यासोबत सहकार्य केल्याबद्दल धन्यवाद! 🙏
 हिशोबाच्या अधिक माहितीसाठी संपर्क साधा.
 `.trim();
@@ -223,6 +227,11 @@ export const shareSaleOnWhatsApp = (sale: any, tenantName: string = 'कृष�
   const paidAmount = Number(sale.paidAmount || 0).toLocaleString('en-IN');
   const dueAmount = Number(sale.dueAmount || 0).toLocaleString('en-IN');
 
+  const saleDueNum = Number(sale.dueAmount || 0);
+  const upiSaleLink = saleDueNum > 0
+    ? `\n📲 *थेट UPI द्वारे पेमेंट करण्यासाठी क्लिक करा (GPay/PhonePe):*\nupi://pay?pa=dattakrupa@upi&pn=${encodeURIComponent(tenantName)}&am=${saleDueNum}&cu=INR&tn=${encodeURIComponent('Sale ' + invoiceNo)}\n━━━━━━━━━━━━━━━━━━━━━━━━━━`
+    : '';
+
   const message = `
 🚚 *${tenantName}* 🚚
 📑 *मार्केट विक्री / डिस्पॅच पावती (Dispatch Invoice)*
@@ -236,7 +245,7 @@ export const shareSaleOnWhatsApp = (sale: any, tenantName: string = 'कृष�
 💰 *निव्वळ बिल रक्कम (Net Total):* *₹${netAmount}*
 🟢 *जमा रक्कम (Paid):* *₹${paidAmount}*
 ⏳ *बाकी रक्कम (Due):* *₹${dueAmount}*
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━${upiSaleLink}
 व्यवसायाबद्दल धन्यवाद! 🤝
 `.trim();
 

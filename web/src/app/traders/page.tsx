@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { useLanguage } from '@/context/LanguageContext';
@@ -40,11 +40,6 @@ export default function TradersPage() {
   const { tenant } = useTenant();
   const [traders, setTraders] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
-  const [summary, setSummary] = useState({
-    totalPurchased: '₹0',
-    totalPaid: '₹0',
-    dueAmount: '₹0',
-  });
   const [activeTab, setActiveTab] = useState<'PURCHASES' | 'TRADERS'>('PURCHASES');
   const [searchQuery, setSearchQuery] = useState('');
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('ALL_TIME');
@@ -113,32 +108,36 @@ export default function TradersPage() {
     return parseFloat(String(val).replace(/[^0-9.-]+/g, '')) || 0;
   };
 
-  const filteredPurchases = purchases.filter((p) => {
-    const dateMatch = isDateInTimeline(p.date || p.createdAt, timelineFilter);
+  const filteredPurchases = useMemo(() => {
+    return purchases.filter((p) => {
+      const dateMatch = isDateInTimeline(p.date || p.createdAt, timelineFilter);
 
-    const textMatch = 
-      (p.traderName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.itemName || '').toLowerCase().includes(searchQuery.toLowerCase());
-      
-    return dateMatch && textMatch;
-  });
+      const textMatch = 
+        (p.traderName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (p.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (p.itemName || '').toLowerCase().includes(searchQuery.toLowerCase());
+        
+      return dateMatch && textMatch;
+    });
+  }, [purchases, timelineFilter, searchQuery]);
 
-  const filteredTraders = traders.filter(t => 
-    (t.name || t.businessName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (t.phone || '').includes(searchQuery)
-  );
+  const filteredTraders = useMemo(() => {
+    return traders.filter(t => 
+      (t.name || t.businessName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (t.phone || '').includes(searchQuery)
+    );
+  }, [traders, searchQuery]);
 
-  useEffect(() => {
+  const summary = useMemo(() => {
     const totalPurchased = filteredPurchases.reduce((acc, p) => acc + parseNum(p.totalAmount), 0);
     const totalPaidVal = filteredPurchases.reduce((acc, p) => acc + parseNum(p.paidAmount), 0);
     const totalDue = totalPurchased - totalPaidVal;
 
-    setSummary({
+    return {
       totalPurchased: `₹${totalPurchased.toLocaleString('en-IN')}`,
       totalPaid: `₹${totalPaidVal.toLocaleString('en-IN')}`,
       dueAmount: `₹${totalDue.toLocaleString('en-IN')}`,
-    });
+    };
   }, [filteredPurchases]);
 
   useEffect(() => {
@@ -178,7 +177,6 @@ export default function TradersPage() {
       const list = Array.isArray(pRes) ? pRes : ((pRes as any)?.data || []);
       if (list && list.length > 0) {
         setPurchases(list);
-        if ((pRes as any)?.summary) setSummary((pRes as any).summary);
         if (typeof window !== 'undefined' && tenantId) {
           localStorage.setItem(`seavaig_trader_purchases_cache_${tenantId}`, JSON.stringify(list));
         }

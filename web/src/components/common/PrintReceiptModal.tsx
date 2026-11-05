@@ -676,6 +676,29 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
               </div>
             </div>
 
+            {/* Dynamic UPI QR Code for Instant Settlement (Khatabook Pro Feature) */}
+            {numDueAmt > 0 && (
+              <div className="my-2 p-2.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 avoid-page-break">
+                <div className="space-y-0.5">
+                  <div className="text-[11px] font-black text-slate-900 flex items-center gap-1.5">
+                    <span>📲</span>
+                    <span>त्वरित पेमेंटसाठी QR स्कॅन करा (Scan UPI QR)</span>
+                  </div>
+                  <p className="text-[9px] text-slate-500 font-semibold">
+                    PhonePe, Google Pay, किंवा कोणत्याही UPI ॲपवरून स्कॅन करून पैसे भरा.
+                  </p>
+                  <div className="text-[10px] font-black text-emerald-700">
+                    बाकी देय रक्कम: ₹{numDueAmt.toLocaleString('en-IN')}
+                  </div>
+                </div>
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&margin=2&data=${encodeURIComponent(`upi://pay?pa=dattakrupa@upi&pn=${encodeURIComponent(tenant?.businessName || 'Dattakrupa Agro')}&am=${numDueAmt}&cu=INR&tn=${encodeURIComponent('Bill ' + invoiceNo)}`)}`}
+                  alt="UPI QR Code" 
+                  className="w-16 h-16 rounded-xl border border-slate-300 bg-white p-0.5 shadow-2xs shrink-0" 
+                />
+              </div>
+            )}
+
             {/* Authorized Signature & Stamp */}
             <div className="pt-4 border-t border-dashed border-slate-300 flex justify-end items-end text-xs">
               <div className="text-center min-w-[170px]">
