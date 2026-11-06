@@ -180,9 +180,11 @@ export default function WorkersPage() {
     const currentHistory = Array.isArray(selectedWorker.attendanceHistory) ? selectedWorker.attendanceHistory : [];
     const newHistory = [historyItem, ...currentHistory];
 
-    const newEarned = (selectedWorker.totalEarned || 0) + earnedThisShift;
-    const newPaid = selectedWorker.totalPaid || 0;
-    const newOutstanding = Math.max(0, newEarned - newPaid);
+    const newEarned = (Number(selectedWorker.totalEarned) || 0) + earnedThisShift;
+    const newPaid = Number(selectedWorker.totalPaid) || 0;
+    const currentAdv = Number(selectedWorker.advanceBalance) || 0;
+    // Remaining amount owner needs to pay worker = Earned - Paid - Advance
+    const newOutstanding = Math.max(0, newEarned - newPaid - currentAdv);
 
     const workerUpdates = {
       totalEarned: newEarned,
@@ -227,6 +229,11 @@ export default function WorkersPage() {
     if (paymentType === 'ADVANCE_PAYOUT') {
       // Disbursing advance to worker
       const newAdvanceBalance = currentAdvBalance + payAmt;
+      const totalEarned = Number(selectedWorker.totalEarned) || 0;
+      const totalPaid = Number(selectedWorker.totalPaid) || 0;
+      // Remaining amount owner needs to pay worker decreases when advance is disbursed
+      const newOutstanding = Math.max(0, totalEarned - totalPaid - newAdvanceBalance);
+
       const paymentRecord = {
         workerId: selectedWorker.id,
         workerName: selectedWorker.name,
@@ -236,12 +243,15 @@ export default function WorkersPage() {
         advanceDeducted: 0,
         paymentType: 'ADVANCE_PAYOUT',
         paymentMode,
-        notes: paymentNotes || 'कामगारास उचल / ॲडव्हान्स वाटप',
+        notes: paymentNotes || (language === 'mr' ? 'कामगारास उचल / ॲडव्हान्स वाटप' : 'Worker Cash Advance Payout'),
         date: new Date().toISOString()
       };
 
       await apiRecordWorkerPayment(paymentRecord);
-      await apiUpdateWorker(selectedWorker.id, { advanceBalance: newAdvanceBalance });
+      await apiUpdateWorker(selectedWorker.id, { 
+        advanceBalance: newAdvanceBalance,
+        outstandingBalance: newOutstanding 
+      });
 
       const updated = workers.map((w) => {
         if (w.id === selectedWorker.id) {
@@ -249,6 +259,7 @@ export default function WorkersPage() {
           return {
             ...w,
             advanceBalance: newAdvanceBalance,
+            outstandingBalance: newOutstanding,
             paymentHistory: [paymentRecord, ...existingPayments]
           };
         }
@@ -259,6 +270,7 @@ export default function WorkersPage() {
       setSelectedWorker((prev: any) => ({
         ...prev,
         advanceBalance: newAdvanceBalance,
+        outstandingBalance: newOutstanding,
         paymentHistory: [paymentRecord, ...(prev.paymentHistory || [])]
       }));
 
@@ -279,7 +291,7 @@ export default function WorkersPage() {
       const newAdvanceBalance = Math.max(0, currentAdvBalance - advanceDeducted);
       const newTotalPaid = (Number(selectedWorker.totalPaid) || 0) + payAmt;
       const totalEarned = Number(selectedWorker.totalEarned) || 0;
-      const newOutstanding = Math.max(0, totalEarned - newTotalPaid);
+      const newOutstanding = Math.max(0, totalEarned - newTotalPaid - newAdvanceBalance);
 
       const paymentRecord = {
         workerId: selectedWorker.id,
@@ -954,7 +966,7 @@ export default function WorkersPage() {
                 </div>
                 <h2 className="text-lg font-black text-white mt-1">{selectedWorker.name}</h2>
                 <div className="text-xs text-slate-300 font-semibold mt-0.5">
-                  {selectedWorker.role} • दैनंदिन दर: ₹{selectedWorker.dailyRate}/दिवस (₹{selectedWorker.dailyRate}/day)
+                  {selectedWorker.role} • {language === 'mr' ? 'दैनंदिन दर:' : 'Daily Rate:'} ₹{selectedWorker.dailyRate}/{language === 'mr' ? 'दिवस' : 'day'}
                 </div>
               </div>
               <button 
@@ -969,35 +981,51 @@ export default function WorkersPage() {
             <div className="p-4 bg-slate-50 border-b border-slate-200 shrink-0">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className="bg-white p-2.5 rounded-2xl border border-slate-200 shadow-2xs">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">एकूण कमाई</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    {language === 'mr' ? 'एकूण कमाई' : 'Total Earned'}
+                  </span>
                   <span className="text-base font-black text-slate-900 mt-0.5 block">
                     ₹{(Number(selectedWorker.totalEarned) || 0).toLocaleString('en-IN')}
                   </span>
-                  <span className="text-[9px] text-blue-600 font-bold">हजेरी हिशोब</span>
+                  <span className="text-[9px] text-blue-600 font-bold">
+                    {language === 'mr' ? 'हजेरी हिशोब' : 'Attendance Log'}
+                  </span>
                 </div>
 
                 <div className="bg-white p-2.5 rounded-2xl border border-emerald-200/80 bg-emerald-50/20 shadow-2xs">
-                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">अदा मजुरी</span>
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
+                    {language === 'mr' ? 'अदा मजुरी' : 'Wages Paid'}
+                  </span>
                   <span className="text-base font-black text-emerald-700 mt-0.5 block">
                     ₹{(Number(selectedWorker.totalPaid) || 0).toLocaleString('en-IN')}
                   </span>
-                  <span className="text-[9px] text-emerald-600 font-bold">एकूण दिलेली</span>
+                  <span className="text-[9px] text-emerald-600 font-bold">
+                    {language === 'mr' ? 'एकूण दिलेली' : 'Total Disbursed'}
+                  </span>
                 </div>
 
                 <div className={`p-2.5 rounded-2xl border shadow-2xs ${(Number(selectedWorker.advanceBalance) || 0) > 0 ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-slate-200'}`}>
-                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">उचल शिल्लक</span>
+                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">
+                    {language === 'mr' ? 'उचल शिल्लक' : 'Advance Balance'}
+                  </span>
                   <span className="text-base font-black mt-0.5 block text-amber-800">
                     ₹{(Number(selectedWorker.advanceBalance) || 0).toLocaleString('en-IN')}
                   </span>
-                  <span className="text-[9px] text-amber-600 font-bold">कपातीस पात्र</span>
+                  <span className="text-[9px] text-amber-600 font-bold">
+                    {language === 'mr' ? 'कपातीस पात्र' : 'Deductible'}
+                  </span>
                 </div>
 
                 <div className={`p-2.5 rounded-2xl border shadow-2xs ${(Number(selectedWorker.outstandingBalance) || 0) > 0 ? 'bg-rose-50/60 border-rose-200' : 'bg-emerald-50/40 border-emerald-200'}`}>
-                  <span className="text-[10px] font-bold uppercase tracking-wider block text-rose-700">शिल्लक देय</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider block text-rose-700">
+                    {language === 'mr' ? 'शिल्लक देय' : 'Net Due Pending'}
+                  </span>
                   <span className="text-base font-black mt-0.5 block text-rose-800">
                     ₹{(Number(selectedWorker.outstandingBalance) || 0).toLocaleString('en-IN')}
                   </span>
-                  <span className="text-[9px] font-bold text-rose-600">उर्वरित देय</span>
+                  <span className="text-[9px] font-bold text-rose-600">
+                    {language === 'mr' ? 'उर्वरित देय' : 'Remaining to Pay'}
+                  </span>
                 </div>
               </div>
 
@@ -1009,7 +1037,7 @@ export default function WorkersPage() {
                   className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   <Clock className="w-3.5 h-3.5" />
-                  <span>+ हजेरी व काम</span>
+                  <span>{language === 'mr' ? '+ हजेरी व काम' : '+ Log Attendance'}</span>
                 </button>
                 <button
                   type="button"
@@ -1021,7 +1049,7 @@ export default function WorkersPage() {
                   className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   <Wallet className="w-3.5 h-3.5" />
-                  <span>+ उचल द्या (Advance)</span>
+                  <span>{language === 'mr' ? '+ उचल द्या (Advance)' : '+ Disburse Advance'}</span>
                 </button>
                 <button
                   type="button"
@@ -1033,7 +1061,7 @@ export default function WorkersPage() {
                   className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   <DollarSign className="w-3.5 h-3.5" />
-                  <span>+ मजुरी अदा (Pay)</span>
+                  <span>{language === 'mr' ? '+ मजुरी अदा (Pay)' : '+ Pay Wages'}</span>
                 </button>
               </div>
             </div>
@@ -1049,7 +1077,7 @@ export default function WorkersPage() {
                 }`}
               >
                 <Clock className="w-3.5 h-3.5 shrink-0" />
-                <span>दिनवार हजेरी व काम</span>
+                <span>{language === 'mr' ? 'दिनवार हजेरी व काम' : 'Attendance & Work'}</span>
                 <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-50 text-blue-700 font-bold">
                   {(selectedWorker.attendanceHistory || []).length}
                 </span>
@@ -1064,7 +1092,7 @@ export default function WorkersPage() {
                 }`}
               >
                 <Wallet className="w-3.5 h-3.5 shrink-0" />
-                <span>पेमेंट व उचल इतिहास</span>
+                <span>{language === 'mr' ? 'पेमेंट व उचल इतिहास' : 'Payments & Advances'}</span>
                 <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-50 text-emerald-700 font-bold">
                   {(selectedWorker.paymentHistory || []).length}
                 </span>
@@ -1079,7 +1107,7 @@ export default function WorkersPage() {
                 }`}
               >
                 <Receipt className="w-3.5 h-3.5 shrink-0" />
-                <span>पासबुक लेजर (Ledger)</span>
+                <span>{language === 'mr' ? 'पासबुक लेजर (Ledger)' : 'Passbook Ledger'}</span>
               </button>
             </div>
 
@@ -1091,8 +1119,12 @@ export default function WorkersPage() {
                   {(!selectedWorker.attendanceHistory || selectedWorker.attendanceHistory.length === 0) ? (
                     <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 border-dashed">
                       <Clock className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                      <p className="text-sm font-bold text-slate-500">कोणतीही हजेरी नोंद आढळली नाही</p>
-                      <p className="text-xs text-slate-400 mt-0.5">Click "+ हजेरी व काम" above to record daily work.</p>
+                      <p className="text-sm font-bold text-slate-500">
+                        {language === 'mr' ? 'कोणतीही हजेरी नोंद आढळली नाही' : 'No attendance records found'}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {language === 'mr' ? 'काम नोंदवण्यासाठी वरील "+ हजेरी व काम" वर क्लिक करा.' : 'Click "+ Log Attendance" above to record daily work.'}
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-2.5">
@@ -1104,27 +1136,29 @@ export default function WorkersPage() {
                                 {record.date}
                               </span>
                               <span className="text-xs font-extrabold text-slate-800">
-                                {record.shift === 'FULL_DAY' && 'Full Day (8 तास)'}
-                                {record.shift === 'HALF_DAY' && 'Half Day (4 तास)'}
-                                {record.shift === 'HOURS' && `${record.hours} तास`}
-                                {record.shift === 'OVERTIME' && `ओव्हरटाईम (${record.hours} तास)`}
+                                {record.shift === 'FULL_DAY' && (language === 'mr' ? 'Full Day (८ तास)' : 'Full Day (8 hrs)')}
+                                {record.shift === 'HALF_DAY' && (language === 'mr' ? 'Half Day (४ तास)' : 'Half Day (4 hrs)')}
+                                {record.shift === 'HOURS' && (language === 'mr' ? `${record.hours} तास` : `${record.hours} hrs`)}
+                                {record.shift === 'OVERTIME' && (language === 'mr' ? `ओव्हरटाईम (${record.hours} तास)` : `Overtime (${record.hours} hrs)`)}
                               </span>
                             </div>
 
                             <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                               <span className="text-purple-600">🔨</span>
-                              <span>{record.workDescription || record.notes || 'शेतातील सर्वसाधारण काम (Farm Labor)'}</span>
+                              <span>{record.workDescription || record.notes || (language === 'mr' ? 'शेतातील सर्वसाधारण काम' : 'General Farm Labor')}</span>
                             </div>
 
                             {record.notes && record.workDescription && record.notes !== record.workDescription && (
                               <div className="text-[10px] text-slate-400 font-medium italic">
-                                टीप: {record.notes}
+                                {language === 'mr' ? 'टीप:' : 'Note:'} {record.notes}
                               </div>
                             )}
                           </div>
 
                           <div className="text-right">
-                            <span className="text-[10px] font-extrabold text-emerald-600 uppercase block">कमाई (Earned)</span>
+                            <span className="text-[10px] font-extrabold text-emerald-600 uppercase block">
+                              {language === 'mr' ? 'कमाई (Earned)' : 'Earned'}
+                            </span>
                             <span className="text-base font-black text-slate-900 block mt-0.5">
                               +₹{(Number(record.wage) || 0).toLocaleString('en-IN')}
                             </span>
@@ -1142,8 +1176,12 @@ export default function WorkersPage() {
                   {(!selectedWorker.paymentHistory || selectedWorker.paymentHistory.length === 0) ? (
                     <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 border-dashed">
                       <Wallet className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                      <p className="text-sm font-bold text-slate-500">कोणताही पेमेंट किंवा उचल इतिहास आढळला नाही</p>
-                      <p className="text-xs text-slate-400 mt-0.5">Click "+ मजुरी अदा" or "+ उचल द्या" above.</p>
+                      <p className="text-sm font-bold text-slate-500">
+                        {language === 'mr' ? 'कोणताही पेमेंट किंवा उचल इतिहास आढळला नाही' : 'No payment or advance records found'}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {language === 'mr' ? 'मजुरी किंवा उचल देण्यासाठी वरील बटण वापरा.' : 'Click "+ Pay Wages" or "+ Disburse Advance" above.'}
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-2.5">
@@ -1158,7 +1196,9 @@ export default function WorkersPage() {
                                     ? 'bg-amber-50 text-amber-800 border-amber-200' 
                                     : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                                 }`}>
-                                  {isAdvance ? 'उचल (Advance Given)' : 'मजुरी वाटप (Wage Payout)'}
+                                  {isAdvance 
+                                    ? (language === 'mr' ? 'उचल (Advance Given)' : 'Advance Given') 
+                                    : (language === 'mr' ? 'मजुरी वाटप (Wage Payout)' : 'Wage Payout')}
                                 </span>
                                 <span className="text-[10px] font-bold text-slate-400">
                                   {p.date ? new Date(p.date).toLocaleDateString('en-IN') : 'N/A'}
@@ -1171,10 +1211,10 @@ export default function WorkersPage() {
 
                             <div className="flex justify-between items-baseline pt-1">
                               <div>
-                                <div className="text-xs font-extrabold text-slate-800">{p.notes || (isAdvance ? 'Advance Taken' : 'Wage Disbursed')}</div>
+                                <div className="text-xs font-extrabold text-slate-800">{p.notes || (isAdvance ? (language === 'mr' ? 'उचल दिली' : 'Advance Taken') : (language === 'mr' ? 'मजुरी दिली' : 'Wage Disbursed'))}</div>
                                 {p.advanceDeducted > 0 && (
                                   <div className="text-[10px] font-bold text-amber-700 mt-0.5">
-                                    कपात केलेली उचल: -₹{Number(p.advanceDeducted).toLocaleString('en-IN')}
+                                    {language === 'mr' ? 'कपात केलेली उचल:' : 'Advance Deducted:'} -₹{Number(p.advanceDeducted).toLocaleString('en-IN')}
                                   </div>
                                 )}
                               </div>
@@ -1206,7 +1246,7 @@ export default function WorkersPage() {
                       date: a.date,
                       timestamp: new Date(a.date).getTime() || 0,
                       type: 'ATTENDANCE',
-                      title: `हजेरी: ${a.workDescription || a.notes || 'काम'}`,
+                      title: language === 'mr' ? `हजेरी: ${a.workDescription || a.notes || 'काम'}` : `Attendance: ${a.workDescription || a.notes || 'Work'}`,
                       sub: `${a.shift === 'FULL_DAY' ? 'Full Day' : a.shift} (${a.hours || 8} hrs)`,
                       credit: Number(a.wage) || 0,
                       debit: 0
@@ -1217,7 +1257,9 @@ export default function WorkersPage() {
                       date: p.date ? new Date(p.date).toISOString().slice(0, 10) : 'N/A',
                       timestamp: p.date ? new Date(p.date).getTime() : 0,
                       type: p.paymentType === 'ADVANCE_PAYOUT' ? 'ADVANCE' : 'PAYOUT',
-                      title: p.paymentType === 'ADVANCE_PAYOUT' ? 'उचल दिली (Advance Given)' : 'मजुरी दिली (Wage Paid)',
+                      title: p.paymentType === 'ADVANCE_PAYOUT' 
+                        ? (language === 'mr' ? 'उचल दिली (Advance Given)' : 'Advance Given') 
+                        : (language === 'mr' ? 'मजुरी दिली (Wage Paid)' : 'Wage Paid'),
                       sub: p.notes || p.paymentMode || '',
                       credit: 0,
                       debit: Number(p.amount) || 0
@@ -1229,7 +1271,9 @@ export default function WorkersPage() {
                       return (
                         <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 border-dashed">
                           <Receipt className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                          <p className="text-sm font-bold text-slate-500">कोणतीही लेजर नोंद नाही (No Ledger Records)</p>
+                          <p className="text-sm font-bold text-slate-500">
+                            {language === 'mr' ? 'कोणतीही लेजर नोंद नाही' : 'No ledger records available'}
+                          </p>
                         </div>
                       );
                     }
@@ -1248,7 +1292,11 @@ export default function WorkersPage() {
                                     ? 'bg-amber-50 text-amber-700 border border-amber-200'
                                     : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 }`}>
-                                  {item.type === 'ATTENDANCE' ? 'काम/हजेरी' : item.type === 'ADVANCE' ? 'उचल' : 'मजुरी पेमेंट'}
+                                  {item.type === 'ATTENDANCE' 
+                                    ? (language === 'mr' ? 'काम/हजेरी' : 'Attendance') 
+                                    : item.type === 'ADVANCE' 
+                                    ? (language === 'mr' ? 'उचल' : 'Advance') 
+                                    : (language === 'mr' ? 'मजुरी पेमेंट' : 'Wage Payout')}
                                 </span>
                               </div>
                               <div className="text-xs font-black text-slate-800">{item.title}</div>
@@ -1258,12 +1306,16 @@ export default function WorkersPage() {
                             <div className="text-right">
                               {item.credit > 0 ? (
                                 <div>
-                                  <span className="text-[9px] font-bold text-blue-600 block">कमाई (+Credit)</span>
+                                  <span className="text-[9px] font-bold text-blue-600 block">
+                                    {language === 'mr' ? 'कमाई (+Credit)' : '+Credit'}
+                                  </span>
                                   <span className="text-sm font-black text-blue-700">+₹{item.credit.toLocaleString('en-IN')}</span>
                                 </div>
                               ) : (
                                 <div>
-                                  <span className="text-[9px] font-bold text-emerald-600 block">वाटप (-Debit)</span>
+                                  <span className="text-[9px] font-bold text-emerald-600 block">
+                                    {language === 'mr' ? 'वाटप (-Debit)' : '-Debit'}
+                                  </span>
                                   <span className="text-sm font-black text-emerald-700">-₹{item.debit.toLocaleString('en-IN')}</span>
                                 </div>
                               )}

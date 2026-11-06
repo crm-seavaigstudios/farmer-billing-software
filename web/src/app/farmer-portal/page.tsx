@@ -513,7 +513,8 @@ export default function FarmerPortalPage() {
       p.isAdvance
     );
     const totalAdvGivenVal = advPaymentsList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-    const netAdvRem = Math.max(0, totalAdvGivenVal - totalAdvDeductedVal);
+    const baseAdvVal = totalAdvGivenVal > 0 ? totalAdvGivenVal : Number(farmer?.advanceBalance || 0);
+    const netAdvRem = Math.max(0, baseAdvVal - totalAdvDeductedVal);
 
     const netOutstandingDisplay = activeBillsDue > 0 
       ? activeBillsDue 
@@ -583,7 +584,8 @@ export default function FarmerPortalPage() {
     }
     return sum + adv;
   }, 0) + rawPayments.reduce((sum, p) => sum + (Number(p.advanceDeducted || 0)), 0);
-  const remainingAdvance = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : Number(farmer?.advanceBalance || 0));
+  const baseAdvTotal = totalAdvGiven > 0 ? totalAdvGiven : Number(farmer?.advanceBalance || 0);
+  const remainingAdvance = Math.max(0, baseAdvTotal - totalAdvDeducted);
 
   const totalMatIssued = rawMaterials.reduce((sum, m) => {
     const qty = Number(m.quantity || 1);
@@ -601,7 +603,7 @@ export default function FarmerPortalPage() {
       if (m) mat = Number(m[1]);
     }
     return sum + mat;
-  }, 0);
+  }, 0) + rawPayments.reduce((sum, p) => sum + (Number(p.materialDeducted || 0)), 0);
 
   const remainingMatDue = Math.max(0, totalMatIssued - totalMatDeducted);
   const billPayouts = rawPayments.filter((p: any) => !advancePayments.some((adv: any) => adv.id === p.id));
@@ -1230,11 +1232,26 @@ export default function FarmerPortalPage() {
 
                         {/* Financial Sub-Details & Action Button */}
                         <div className="flex flex-wrap justify-between items-center gap-2 pt-1">
-                          <div className="flex items-center gap-4 text-xs font-bold">
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-bold">
                             <span className="text-emerald-700">जमा: ₹{displayPaid.toLocaleString('en-IN')}</span>
                             <span className={displayDue > 0 ? 'text-rose-600 font-black' : 'text-emerald-600 font-black'}>
                               बाकी: ₹{displayDue.toLocaleString('en-IN')}
                             </span>
+                            {(Number(p.advanceApplied || (p.storageLocation?.match(/DED:ADV=(\d+)/)?.[1] || 0)) > 0 ||
+                              Number(p.materialDeducted || (p.storageLocation?.match(/MTL=(\d+)/)?.[1] || 0)) > 0) && (
+                              <div className="flex flex-wrap gap-1">
+                                {Number(p.advanceApplied || (p.storageLocation?.match(/DED:ADV=(\d+)/)?.[1] || 0)) > 0 && (
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                                    ⚡ उचल कपात: -₹{Number(p.advanceApplied || p.storageLocation?.match(/DED:ADV=(\d+)/)?.[1]).toLocaleString('en-IN')}
+                                  </span>
+                                )}
+                                {Number(p.materialDeducted || (p.storageLocation?.match(/MTL=(\d+)/)?.[1] || 0)) > 0 && (
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-50 text-purple-800 border border-purple-200">
+                                    📦 साहित्य कपात: -₹{Number(p.materialDeducted || p.storageLocation?.match(/MTL=(\d+)/)?.[1]).toLocaleString('en-IN')}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           <button

@@ -51,6 +51,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   const [farmerPurchases, setFarmerPurchases] = useState<any[]>([]);
   const [farmerMaterials, setFarmerMaterials] = useState<any[]>([]);
   const [liveAdvance, setLiveAdvance] = useState<number>(0);
+  const [liveMaterialBalance, setLiveMaterialBalance] = useState<number>(0);
   const [deductionMode, setDeductionMode] = useState<'KEEP_ADVANCE' | 'CUSTOM' | 'SETTLE_MAX'>('KEEP_ADVANCE');
   const [customAdvanceInput, setCustomAdvanceInput] = useState<string>('');
   const [customMaterialInput, setCustomMaterialInput] = useState<string>('');
@@ -66,6 +67,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
       setFarmerPurchases([]);
       setFarmerMaterials([]);
       setLiveAdvance(0);
+      setLiveMaterialBalance(0);
       setFarmerFinancials({ totalPurchases: 0, totalPaid: 0, totalMaterials: 0, netDue: 0 });
       return;
     }
@@ -152,6 +154,28 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
         const computedAdvance = advanceVouchersTotal > 0 ? remainingAdvanceVouchers : Math.max(dbFarmerAdvance, overpaymentAdvance);
         setLiveAdvance(computedAdvance);
 
+        // Universal Running Material Balance across all bills and payments
+        const totalMatIssued = fmat.reduce((acc: number, m: any) => {
+          const qty = Number(m.quantity || 1);
+          const price = Number(m.unitPrice || 0);
+          const calc = qty * price;
+          const raw = m.totalAmount ?? m.totalPrice ?? m.amount ?? calc ?? 0;
+          return acc + (Number(raw) || calc || 0);
+        }, 0);
+
+        const totalMatDeductedInBills = fp.reduce((sum: number, p: any) => {
+          let mat = Number(p.materialDeducted || 0);
+          if (!mat && p.storageLocation) {
+            const m = String(p.storageLocation).match(/MTL=(\d+)/);
+            if (m) mat = Number(m[1]);
+          }
+          return sum + mat;
+        }, 0);
+
+        const totalMatDeductedInPayments = fpay.reduce((sum: number, pay: any) => sum + (Number(pay.materialDeducted || 0)), 0);
+        const computedMaterialBalance = Math.max(0, totalMatIssued - totalMatDeductedInBills - totalMatDeductedInPayments);
+        setLiveMaterialBalance(computedMaterialBalance);
+
         // Auto pre-fill amount if not explicitly provided
         if (initialAmount === undefined) {
           if (formData.purchaseId) {
@@ -227,9 +251,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
 
   const selectedFarmer = farmersList.find((f) => isFarmerMatch(f, { id: formData.farmerId })) || farmersList.find((f) => f.id === formData.farmerId);
   const availableAdvance = Math.max(liveAdvance, Math.max(0, Number(selectedFarmer?.advanceBalance || 0)));
-  const availableMaterials = farmerMaterials
-    .filter((m) => !m.isDeductedFromBill)
-    .reduce((acc, m) => acc + Number(m.totalAmount || m.totalPrice || 0), 0);
+  const availableMaterials = liveMaterialBalance;
 
   const runningPurchasesDue = farmerPurchases.reduce((sum, p) => {
     const bAmt = Number(p.totalAmount ?? p.amount ?? 0);

@@ -2281,10 +2281,13 @@ export const apiGetWorkers = async () => {
         const advancesGiven = workerPay.filter((p: any) => p.paymentType === 'ADVANCE_PAYOUT').reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
         const advancesDeducted = workerPay.reduce((s: number, p: any) => s + (Number(p.advanceDeducted) || 0), 0);
         const calculatedAdvanceBalance = Math.max(0, advancesGiven - advancesDeducted);
+        const effectiveAdvance = w.advanceBalance !== undefined ? Number(w.advanceBalance) : calculatedAdvanceBalance;
+        const netDueRemaining = Math.max(0, (Number(w.totalEarned) || 0) - (Number(w.totalPaid) || 0) - effectiveAdvance);
 
         return {
           ...w,
-          advanceBalance: w.advanceBalance !== undefined ? w.advanceBalance : calculatedAdvanceBalance,
+          advanceBalance: effectiveAdvance,
+          outstandingBalance: w.outstandingBalance !== undefined ? Math.min(Number(w.outstandingBalance), netDueRemaining) : netDueRemaining,
           attendanceHistory: workerAtt.length > 0 ? workerAtt : (w.attendanceHistory || []),
           paymentHistory: workerPay.length > 0 ? workerPay : (w.paymentHistory || [])
         };

@@ -575,7 +575,23 @@ export default function PurchasesPage() {
                         <td className="py-3.5 px-4 font-bold text-slate-900">{row.weight}</td>
                         <td className="py-3.5 px-4 text-slate-500">{row.rate}</td>
                         <td className="py-3.5 px-4 font-black text-slate-900">₹{Number(row.amount || 0).toLocaleString('en-IN')}</td>
-                        <td className="py-3.5 px-4 font-bold text-amber-600">₹{Number(row.dueAmount || 0).toLocaleString('en-IN')}</td>
+                        <td className="py-3.5 px-4 font-bold text-amber-600">
+                          <div>₹{Number(row.dueAmount || 0).toLocaleString('en-IN')}</div>
+                          {(Number(row.advanceApplied) > 0 || Number(row.materialDeducted) > 0) && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {Number(row.advanceApplied) > 0 && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                  ⚡ उचल: -₹{Number(row.advanceApplied).toLocaleString('en-IN')}
+                                </span>
+                              )}
+                              {Number(row.materialDeducted) > 0 && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                                  📦 साहित्य: -₹{Number(row.materialDeducted).toLocaleString('en-IN')}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
                         <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
