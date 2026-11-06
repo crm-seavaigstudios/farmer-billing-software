@@ -34,6 +34,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   initialPurchaseId,
   initialAmount,
 }) => {
+  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
   const { language } = useLanguage();
   const [farmersList, setFarmersList] = useState<any[]>([]);
   const [formData, setFormData] = useState({
@@ -263,7 +264,6 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   const totalDeductionsApplied = actualAdvanceDeducted + actualMaterialDeducted;
   const suggestedNetPayout = Math.max(0, grossAmountToSettle - totalDeductionsApplied);
 
-  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -392,6 +392,8 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
       setLoading(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 font-sans animate-in fade-in duration-150">

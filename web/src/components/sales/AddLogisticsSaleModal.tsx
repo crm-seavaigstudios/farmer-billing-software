@@ -12,6 +12,7 @@ interface AddLogisticsSaleModalProps {
 }
 
 export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisticsSaleModalProps) {
+  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
   const [customers, setCustomers] = useState<any[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [recentPurchases, setRecentPurchases] = useState<any[]>([]);
@@ -174,8 +175,6 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
 
   const totalBillAmount = items.reduce((acc, item) => acc + (Number(item.weightKg) * Number(item.ratePerKg)), 0);
   const totalBillWeight = items.reduce((acc, item) => acc + Number(item.weightKg), 0);
-
-  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

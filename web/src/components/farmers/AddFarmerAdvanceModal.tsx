@@ -20,6 +20,7 @@ export function AddFarmerAdvanceModal({
   farmerName = 'Farmer',
   onSuccess,
 }: AddFarmerAdvanceModalProps) {
+  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
   const [advanceAmount, setAdvanceAmount] = useState('5000');
   const [paymentMode, setPaymentMode] = useState('CASH');
   const [notes, setNotes] = useState('Pre-Harvest Crop Cash Advance');
@@ -27,7 +28,6 @@ export function AddFarmerAdvanceModal({
 
   if (!isOpen || !farmerId) return null;
 
-  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

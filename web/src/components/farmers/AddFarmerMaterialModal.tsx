@@ -14,6 +14,7 @@ interface AddFarmerMaterialModalProps {
 }
 
 export function AddFarmerMaterialModal({ isOpen, onClose, farmerId, onSuccess }: AddFarmerMaterialModalProps) {
+  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
   const [itemName, setItemName] = useState('Empty Crates (कॅरेट)');
   const [quantity, setQuantity] = useState('10');
   const [unit, setUnit] = useState('QTY');
@@ -30,7 +31,6 @@ export function AddFarmerMaterialModal({ isOpen, onClose, farmerId, onSuccess }:
 
   if (!isOpen || !farmerId) return null;
 
-  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

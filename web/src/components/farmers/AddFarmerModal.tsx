@@ -14,6 +14,7 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
   onClose,
   onAddFarmer,
 }) => {
+  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -76,7 +77,6 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
     }
   };
 
-  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

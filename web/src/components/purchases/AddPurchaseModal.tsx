@@ -17,6 +17,7 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
   onClose,
   onAddPurchase,
 }) => {
+  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
   const [farmers, setFarmers] = useState<any[]>([]);
   const [farmerSearch, setFarmerSearch] = useState('');
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
@@ -216,7 +217,6 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
   };
 
 
-  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
