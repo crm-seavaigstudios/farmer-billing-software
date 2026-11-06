@@ -1179,16 +1179,11 @@ export const apiCreatePurchase = async (purchaseData: any) => {
         purchaseDate: purchaseObj.date,
         date: purchaseObj.date,
         storageLocation: purchaseObj.storageLocation,
-        isVisibleToFarmer: purchaseObj.isVisibleToFarmer,
-        advanceApplied: advApplied,
-        materialDeducted: matDeducted
+        advanceApplied: advApplied
       };
       
       const { error } = await supabase.from('Purchase').insert([insertPayload]);
-      if (error && error.message.includes('isVisibleToFarmer')) {
-        delete insertPayload.isVisibleToFarmer;
-        await supabase.from('Purchase').insert([insertPayload]).throwOnError();
-      } else if (error) {
+      if (error) {
         throw error;
       }
       success = true;
