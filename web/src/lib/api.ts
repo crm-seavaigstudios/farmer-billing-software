@@ -242,12 +242,25 @@ export const apiGetFarmers = async () => {
         // Pure cash/bank advance: payments made minus purchases (never add materials here!)
         const advancePayments = farmerPayments.filter((p: any) => p.paymentType === 'ADVANCE_PAYOUT' || p.paymentType === 'ADVANCE' || String(p.notes || '').toLowerCase().includes('advance') || p.isAdvance);
         const totalAdvGiven = advancePayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-        const totalAdvDeducted = farmerPurchases.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0) + farmerPayments.reduce((sum: number, p: any) => sum + (Number(p.advanceDeducted) || 0), 0);
-        const advanceBal = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : (computedPaid - computedPurchases));
-        const due = Math.max(0, netBalance);
+        const totalAdvDeducted = farmerPurchases.reduce((sum: number, p: any) => {
+          let adv = Number(p.advanceApplied || 0);
+          if (!adv && p.storageLocation) {
+            const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
+            if (m) adv = Number(m[1]);
+          }
+          return sum + adv;
+        }, 0) + farmerPayments.reduce((sum: number, p: any) => sum + (Number(p.advanceDeducted) || 0), 0);
+        const advanceBal = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : Math.max(0, computedPaid - computedPurchases));
+        
+        const activeUnpaidDue = farmerPurchases.reduce((sum: number, p: any) => {
+          if (p.paymentStatus === 'PAID') return sum;
+          const bDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, (Number(p.totalAmount || p.amount || 0) - Number(p.paidAmount || 0)));
+          return sum + bDue;
+        }, 0);
+        const due = activeUnpaidDue > 0 ? activeUnpaidDue : (advanceBal > 0 ? 0 : Math.max(0, netBalance));
 
         // Auto-heal Supabase record asynchronously if out of sync
-        if (computedPurchases !== Number(f.totalPurchase || 0) || computedPaid !== Number(f.totalPaid || 0) || advanceBal !== Number(f.advanceBalance || 0)) {
+        if (computedPurchases !== Number(f.totalPurchase || 0) || computedPaid !== Number(f.totalPaid || 0) || advanceBal !== Number(f.advanceBalance || 0) || due !== Number(f.outstandingAmount || 0)) {
           supabase.from('Farmer').update({
             totalPurchase,
             totalPaid,
@@ -1009,9 +1022,22 @@ export const apiUpdateFarmerBalance = async (
       // Pure cash/bank advance: payments made minus purchases (never add materials here!)
       const advancePayments = farmerPayments.filter((p: any) => p.paymentType === 'ADVANCE_PAYOUT' || p.paymentType === 'ADVANCE' || String(p.notes || '').toLowerCase().includes('advance') || p.isAdvance);
       const totalAdvGiven = advancePayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-      const totalAdvDeducted = farmerPurchases.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0) + farmerPayments.reduce((sum: number, p: any) => sum + (Number(p.advanceDeducted) || 0), 0);
-      const advanceBal = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : (computedPaid - computedPurchases));
-      const due = Math.max(0, netBalance);
+      const totalAdvDeducted = farmerPurchases.reduce((sum: number, p: any) => {
+        let adv = Number(p.advanceApplied || 0);
+        if (!adv && p.storageLocation) {
+          const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
+          if (m) adv = Number(m[1]);
+        }
+        return sum + adv;
+      }, 0) + farmerPayments.reduce((sum: number, p: any) => sum + (Number(p.advanceDeducted) || 0), 0);
+      const advanceBal = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : Math.max(0, computedPaid - computedPurchases));
+      
+      const activeUnpaidDue = farmerPurchases.reduce((sum: number, p: any) => {
+        if (p.paymentStatus === 'PAID') return sum;
+        const bDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, (Number(p.totalAmount || p.amount || 0) - Number(p.paidAmount || 0)));
+        return sum + bDue;
+      }, 0);
+      const due = activeUnpaidDue > 0 ? activeUnpaidDue : (advanceBal > 0 ? 0 : Math.max(0, netBalance));
 
       // Update Supabase
       await supabase.from('Farmer').update({
@@ -1153,7 +1179,9 @@ export const apiCreatePurchase = async (purchaseData: any) => {
         purchaseDate: purchaseObj.date,
         date: purchaseObj.date,
         storageLocation: purchaseObj.storageLocation,
-        isVisibleToFarmer: purchaseObj.isVisibleToFarmer
+        isVisibleToFarmer: purchaseObj.isVisibleToFarmer,
+        advanceApplied: advApplied,
+        materialDeducted: matDeducted
       };
       
       const { error } = await supabase.from('Purchase').insert([insertPayload]);
