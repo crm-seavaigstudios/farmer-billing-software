@@ -24,7 +24,8 @@ import {
   CheckCircle2,
   Clock,
   Eye,
-  TrendingUp
+  TrendingUp,
+  Zap
 } from 'lucide-react';
 import { PrintStatementModal, StatementData } from '@/components/common/PrintStatementModal';
 
@@ -45,7 +46,7 @@ export default function FarmerPortalPage() {
   const [kpiViewMode, setKpiViewMode] = useState<'ACTIVE' | 'LIFETIME'>('ACTIVE');
   const [loading, setLoading] = useState(true);
   
-  const [activeTab, setActiveTab] = useState<'LEDGER' | 'PURCHASES' | 'PAYMENTS' | 'MATERIALS' | 'PROFILE'>('LEDGER');
+  const [activeTab, setActiveTab] = useState<'LEDGER' | 'PURCHASES' | 'ADVANCES' | 'PAYMENTS' | 'MATERIALS' | 'PROFILE'>('LEDGER');
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState(false);
@@ -314,46 +315,86 @@ export default function FarmerPortalPage() {
       return 0;
     };
 
+    // 1. Purchases (Produce credit and bill deductions)
     rawPurchases.forEach((x: any) => {
       const d = parseCustomDate(x.date || x.purchaseDate || x.createdAt);
       if(!isDateInRange(d)) return;
       const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.netAmount || x.totalAmount || x.amount || '0').replace(/[^0-9.-]+/g, '')) || 0;
       totalPurchase += amt;
+
+      let advDeducted = Number(x.advanceApplied || 0);
+      let matDeducted = Number(x.materialDeducted || 0);
+      if ((!advDeducted || !matDeducted) && x.storageLocation) {
+        const advMatch = String(x.storageLocation).match(/DED:ADV=(\d+)/);
+        if (advMatch && !advDeducted) advDeducted = Number(advMatch[1]);
+        const matMatch = String(x.storageLocation).match(/MTL=(\d+)/);
+        if (matMatch && !matDeducted) matDeducted = Number(matMatch[1]);
+      }
+      const totalBillDeductions = advDeducted + matDeducted;
+
       allItems.push({
          dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
          timestamp: getPreciseTimestamp(x) || d.getTime(),
          orderIdx: ++orderIdx,
          refNo: x.billNo || x.purchaseNo || x.id,
          type: 'PURCHASE',
-         description: x.crop || 'Crop Purchase',
+         description: x.crop || 'शेतमाल खरेदी (Produce Bill)',
          weightOrQty: `${x.weight || x.netWeight || '-'} @ ${x.rate || '-'}`,
          debitVal: 0,
          creditVal: amt,
          notes: x.notes,
          raw: x
       });
+
+      if (totalBillDeductions > 0) {
+        const dedNotes: string[] = [];
+        if (advDeducted > 0) dedNotes.push(`उचल वजावट: ₹${advDeducted.toLocaleString('en-IN')}`);
+        if (matDeducted > 0) dedNotes.push(`साहित्य वजावट: ₹${matDeducted.toLocaleString('en-IN')}`);
+        allItems.push({
+           dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+           timestamp: (getPreciseTimestamp(x) || d.getTime()) + 1,
+           orderIdx: ++orderIdx,
+           refNo: `${x.billNo || x.purchaseNo || x.id}-DED`,
+           type: 'DEDUCTION',
+           description: `बिलातून कपात (${dedNotes.join(', ')})`,
+           weightOrQty: '-',
+           debitVal: totalBillDeductions,
+           creditVal: 0,
+           notes: `Deduction applied on bill ${x.billNo || x.purchaseNo || x.id}`,
+           raw: { ...x, deductionAmount: totalBillDeductions }
+        });
+      }
     });
     
+    // 2. Payments (Bill payouts disbursed to farmer)
     rawPayments.forEach((x: any) => {
       const d = parseCustomDate(x.date || x.paymentDate || x.createdAt);
       if(!isDateInRange(d)) return;
       const amt = typeof x.amount === 'number' ? x.amount : parseFloat(String(x.amount || '0').replace(/[^0-9.-]+/g, '')) || 0;
       totalPaid += amt;
-      allItems.push({
-         dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-         timestamp: getPreciseTimestamp(x) || d.getTime(),
-         orderIdx: ++orderIdx,
-         refNo: x.paymentNo || x.paymentId || x.id,
-         type: 'PAYMENT',
-         description: `Payment (${x.paymentMode || x.method || x.paymentMethod || "Cash"})`,
-         weightOrQty: '-',
-         debitVal: amt,
-         creditVal: 0,
-         notes: x.notes || x.paymentMode || x.method,
-         raw: x
-      });
+      const isAdvance = x.paymentType === 'ADVANCE' || 
+                        x.paymentType === 'ADVANCE_PAYOUT' || 
+                        String(x.notes || '').toLowerCase().includes('advance') || 
+                        x.isAdvance;
+
+      if (!isAdvance || rawPurchases.length === 0) {
+        allItems.push({
+           dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+           timestamp: getPreciseTimestamp(x) || d.getTime(),
+           orderIdx: ++orderIdx,
+           refNo: x.paymentNo || x.paymentId || x.id,
+           type: 'PAYMENT',
+           description: isAdvance ? `रोख उचल (Advance Payout)` : `पेमेंट भरणा (${x.paymentMode || x.method || x.paymentMethod || "Cash"})`,
+           weightOrQty: '-',
+           debitVal: amt,
+           creditVal: 0,
+           notes: x.notes || x.paymentMode || x.method,
+           raw: x
+        });
+      }
     });
 
+    // 3. Materials
     rawMaterials.forEach((x: any) => {
       const d = parseCustomDate(x.date || x.createdAt);
       if(!isDateInRange(d)) return;
@@ -364,19 +405,22 @@ export default function FarmerPortalPage() {
       const parsedAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
       const amt = parsedAmt > 0 ? parsedAmt : calcVal;
       totalMaterial += amt;
-      allItems.push({
-         dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-         timestamp: getPreciseTimestamp(x) || d.getTime(),
-         orderIdx: ++orderIdx,
-         refNo: x.id,
-         type: 'MATERIAL',
-         description: `Material Issue: ${x.itemName || 'Agricultural Inputs'}`,
-         weightOrQty: `${qty} ${x.unit || 'Qty'} @ ₹${price}`,
-         debitVal: amt,
-         creditVal: 0,
-         notes: x.notes,
-         raw: { ...x, quantity: qty, unitPrice: price, totalAmount: amt, totalPrice: amt }
-      });
+
+      if (rawPurchases.length === 0) {
+        allItems.push({
+           dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+           timestamp: getPreciseTimestamp(x) || d.getTime(),
+           orderIdx: ++orderIdx,
+           refNo: x.id,
+           type: 'MATERIAL',
+           description: `साहित्य वाटप: ${x.itemName || 'Agricultural Inputs'}`,
+           weightOrQty: `${qty} ${x.unit || 'Qty'} @ ₹${price}`,
+           debitVal: amt,
+           creditVal: 0,
+           notes: x.notes,
+           raw: { ...x, quantity: qty, unitPrice: price, totalAmount: amt, totalPrice: amt }
+        });
+      }
     });
     
     // Exact Time-Sequence Chronological Sorting
@@ -403,19 +447,9 @@ export default function FarmerPortalPage() {
           raw: item.raw
        };
     });
-    
-    const netOutstanding = totalPurchase - (totalPaid + totalMaterial);
 
-    setLifetimeTotals({ 
-      purchase: totalPurchase, 
-      paid: totalPaid, 
-      material: totalMaterial,
-      outstanding: netOutstanding
-    });
-
-    // FIFO Bill Settlement: Allocate total debits (Cash + Materials) across bills from oldest to newest
+    // Bill-Wise Settlement Mapping (Same as Owner Drawer)
     const sortedPurchasesOldest = [...rawPurchases].sort((a, b) => getPreciseTimestamp(a) - getPreciseTimestamp(b));
-    let remainingSettlementPool = totalPaid + totalMaterial;
     const calculatedFifoMap: Record<string, { allocatedPaid: number; allocatedDue: number; status: 'PAID' | 'PARTIAL' | 'UNPAID' }> = {};
     let activePurchasesSum = 0;
     let activePaidSum = 0;
@@ -424,9 +458,25 @@ export default function FarmerPortalPage() {
     sortedPurchasesOldest.forEach((p) => {
       const pId = p.billNo || p.purchaseNo || p.id;
       const amt = typeof p.amount === 'number' ? p.amount : parseFloat(String(p.netAmount || p.totalAmount || p.amount || '0').replace(/[^0-9.-]+/g, '')) || 0;
-      const allocatedPaid = Math.min(amt, Math.max(0, remainingSettlementPool));
-      remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaid);
-      const allocatedDue = Math.max(0, amt - allocatedPaid);
+      
+      let advDeducted = Number(p.advanceApplied || 0);
+      let matDeducted = Number(p.materialDeducted || 0);
+      if ((!advDeducted || !matDeducted) && p.storageLocation) {
+        const advMatch = String(p.storageLocation).match(/DED:ADV=(\d+)/);
+        if (advMatch && !advDeducted) advDeducted = Number(advMatch[1]);
+        const matMatch = String(p.storageLocation).match(/MTL=(\d+)/);
+        if (matMatch && !matDeducted) matDeducted = Number(matMatch[1]);
+      }
+      const directDeductions = advDeducted + matDeducted;
+
+      const linkedPayments = rawPayments
+        .filter((pay: any) => pay.purchaseId === p.id || pay.purchaseId === p.purchaseNo || pay.purchaseId === p.billNo)
+        .reduce((sum: number, pay: any) => sum + (Number(pay.amount) || 0), 0);
+
+      const allocatedPaid = directDeductions + linkedPayments + Number(p.paidAmount && !linkedPayments ? p.paidAmount - directDeductions : 0);
+      let allocatedDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, amt - allocatedPaid);
+      if (p.paymentStatus === 'PAID') allocatedDue = 0;
+
       const status: 'PAID' | 'PARTIAL' | 'UNPAID' = allocatedDue <= 0 ? 'PAID' : (allocatedPaid > 0 ? 'PARTIAL' : 'UNPAID');
 
       calculatedFifoMap[pId] = { allocatedPaid, allocatedDue, status };
@@ -443,23 +493,55 @@ export default function FarmerPortalPage() {
 
     setFifoMap(calculatedFifoMap);
 
-    if (netOutstanding <= 0) {
+    const activeBillsDue = sortedPurchasesOldest.reduce((sum, p) => {
+      const fifo = calculatedFifoMap[p.billNo || p.purchaseNo || p.id];
+      return sum + (fifo?.allocatedDue || 0);
+    }, 0);
+
+    const totalAdvDeductedVal = sortedPurchasesOldest.reduce((sum, p) => {
+      let adv = Number(p.advanceApplied || 0);
+      if (!adv && p.storageLocation) {
+        const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
+        if (m) adv = Number(m[1]);
+      }
+      return sum + adv;
+    }, 0);
+    const advPaymentsList = rawPayments.filter((p: any) => 
+      p.paymentType === 'ADVANCE' || 
+      p.paymentType === 'ADVANCE_PAYOUT' || 
+      String(p.notes || '').toLowerCase().includes('advance') || 
+      p.isAdvance
+    );
+    const totalAdvGivenVal = advPaymentsList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const netAdvRem = Math.max(0, totalAdvGivenVal - totalAdvDeductedVal);
+
+    const netOutstandingDisplay = activeBillsDue > 0 
+      ? activeBillsDue 
+      : (netAdvRem > 0 ? -netAdvRem : 0);
+
+    setLifetimeTotals({ 
+      purchase: totalPurchase, 
+      paid: totalPaid, 
+      material: totalMaterial, 
+      outstanding: netOutstandingDisplay
+    });
+
+    if (netOutstandingDisplay <= 0) {
       setActiveTotals({
         purchase: 0,
         paid: 0,
         material: 0,
-        outstanding: netOutstanding
+        outstanding: netOutstandingDisplay
       });
     } else {
       setActiveTotals({
         purchase: activePurchasesSum > 0 ? activePurchasesSum : totalPurchase,
         paid: activePaidSum,
         material: totalMaterial,
-        outstanding: netOutstanding
+        outstanding: netOutstandingDisplay
       });
     }
 
-    // Latest-First Passbook Ledger: Latest entries appear at top (Row 1) without scrolling
     const reversedLedger = [...computed].reverse().map((item, idx) => ({
       ...item,
       displaySrNo: idx + 1,
@@ -484,6 +566,46 @@ export default function FarmerPortalPage() {
   }
 
   const totals = kpiViewMode === 'ACTIVE' ? activeTotals : lifetimeTotals;
+
+  const advancePayments = rawPayments.filter((p: any) => 
+    p.paymentType === 'ADVANCE' || 
+    p.paymentType === 'ADVANCE_PAYOUT' || 
+    String(p.notes || '').toLowerCase().includes('advance') || 
+    String(p.method || '').toLowerCase().includes('advance') ||
+    p.isAdvance
+  );
+  const totalAdvGiven = advancePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const totalAdvDeducted = rawPurchases.reduce((sum, p) => {
+    let adv = Number(p.advanceApplied || p.advanceDeducted || 0);
+    if (!adv && p.storageLocation) {
+      const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
+      if (m) adv = Number(m[1]);
+    }
+    return sum + adv;
+  }, 0) + rawPayments.reduce((sum, p) => sum + (Number(p.advanceDeducted || 0)), 0);
+  const remainingAdvance = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : Number(farmer?.advanceBalance || 0));
+
+  const totalMatIssued = rawMaterials.reduce((sum, m) => {
+    const qty = Number(m.quantity || 1);
+    const price = Number(m.unitPrice || 0);
+    const calcVal = qty * price;
+    const rawAmt = m.totalAmount ?? m.totalPrice ?? m.amount ?? calcVal ?? 0;
+    const parsedAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+    return sum + (parsedAmt > 0 ? parsedAmt : calcVal);
+  }, 0);
+
+  const totalMatDeducted = rawPurchases.reduce((sum, p) => {
+    let mat = Number(p.materialDeducted || 0);
+    if (!mat && p.storageLocation) {
+      const m = String(p.storageLocation).match(/MTL=(\d+)/);
+      if (m) mat = Number(m[1]);
+    }
+    return sum + mat;
+  }, 0);
+
+  const remainingMatDue = Math.max(0, totalMatIssued - totalMatDeducted);
+  const billPayouts = rawPayments.filter((p: any) => !advancePayments.some((adv: any) => adv.id === p.id));
+  const totalBillPayouts = billPayouts.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
   const statementData: StatementData = {
     farmerId: farmer.id || 'FAR-10001',
@@ -646,7 +768,7 @@ export default function FarmerPortalPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs">
             {/* 1. Total Purchases */}
             <div className="bg-blue-50/80 border border-blue-100 rounded-2xl p-3 shadow-2xs">
               <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider block">
@@ -667,35 +789,48 @@ export default function FarmerPortalPage() {
             {/* 2. Total Paid */}
             <div className="bg-emerald-50/80 border border-emerald-100 rounded-2xl p-3 shadow-2xs">
               <span className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider block">
-                {kpiViewMode === 'ACTIVE' ? 'भरणा / जमा (Paid Amount)' : 'एकूण भरणा (Total Paid Out)'}
+                {kpiViewMode === 'ACTIVE' ? 'बिलांचा भरणा (Bill Payouts)' : 'एकूण भरणा (Total Paid Out)'}
               </span>
               <span className="text-base font-black text-emerald-700 mt-1 block">
-                ₹{totals.paid.toLocaleString('en-IN')}
+                ₹{totalBillPayouts.toLocaleString('en-IN')}
               </span>
               <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
                 {kpiViewMode === 'ACTIVE' && lifetimeTotals.outstanding <= 0 ? (
                   <span className="text-emerald-600 font-bold">Settled</span>
                 ) : (
-                  `${rawPayments.length} पेमेंट्स`
+                  `${billPayouts.length} पेमेंट्स`
                 )}
               </span>
             </div>
 
-            {/* 3. Material Supplies */}
-            <div className="bg-purple-50/80 border border-purple-100 rounded-2xl p-3 shadow-2xs">
-              <span className="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider block">
-                साहित्य पुरवठा (Materials Given)
+            {/* 3. Pure Advance */}
+            <div className="bg-indigo-50/80 border border-indigo-100 rounded-2xl p-3 shadow-2xs">
+              <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block">
+                रोख अ‍ॅडव्हान्स (Cash Advance)
               </span>
-              <span className="text-base font-black text-purple-700 mt-1 block">
-                ₹{totals.material.toLocaleString('en-IN')}
+              <span className="text-base font-black text-indigo-700 mt-1 block">
+                ₹{totalAdvGiven.toLocaleString('en-IN')}
               </span>
-              <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
-                {rawMaterials.length} साहित्य नोंदी
+              <span className="text-[10px] text-indigo-600 font-semibold mt-0.5 block">
+                शिल्लक: ₹{remainingAdvance.toLocaleString('en-IN')}
               </span>
             </div>
 
-            {/* 4. Net Outstanding / Advance */}
-            <div className={`rounded-2xl p-3 shadow-2xs border ${
+            {/* 4. Material Supplies */}
+            <div className="bg-purple-50/80 border border-purple-100 rounded-2xl p-3 shadow-2xs">
+              <span className="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider block">
+                साहित्य पुरवठा (Materials)
+              </span>
+              <span className="text-base font-black text-purple-700 mt-1 block">
+                ₹{totalMatIssued.toLocaleString('en-IN')}
+              </span>
+              <span className="text-[10px] text-purple-600 font-semibold mt-0.5 block">
+                कपात बाकी: ₹{remainingMatDue.toLocaleString('en-IN')}
+              </span>
+            </div>
+
+            {/* 5. Net Outstanding / Due */}
+            <div className={`col-span-2 sm:col-span-1 rounded-2xl p-3 shadow-2xs border ${
               lifetimeTotals.outstanding > 0 
                 ? 'bg-rose-50/80 border-rose-100' 
                 : lifetimeTotals.outstanding < 0 
@@ -755,6 +890,16 @@ export default function FarmerPortalPage() {
           >
             <ArrowDownCircle className="w-3.5 h-3.5" />
             <span>💵 भरणा ({rawPayments.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ADVANCES')}
+            className={`flex-1 min-w-[120px] py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === 'ADVANCES' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            <span>⚡ उचल ({advancePayments.length})</span>
           </button>
 
           <button
@@ -852,6 +997,15 @@ export default function FarmerPortalPage() {
                               <tr className="bg-slate-50/70">
                                 <td colSpan={6} className="py-3 px-4 border-b border-slate-100">
                                   <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm text-xs cursor-default">
+                                    {tx.type === 'DEDUCTION' && (
+                                      <div className="space-y-1">
+                                        <div className="font-bold text-slate-800 flex items-center justify-between">
+                                          <span>बिलातून कपात तपशील (Bill Deduction Breakdown)</span>
+                                          <span className="text-xs font-black text-rose-600">-₹{Number(tx.raw.deductionAmount || 0).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <p className="text-slate-500 text-[11px]">{tx.notes}</p>
+                                      </div>
+                                    )}
                                     {tx.type === 'PURCHASE' && (
                                       <div className="space-y-2">
                                         <div className="flex justify-between items-center border-b border-slate-100 pb-2">
@@ -1131,24 +1285,86 @@ export default function FarmerPortalPage() {
             </div>
           )}
 
+          {/* TAB: ADVANCES */}
+          {activeTab === 'ADVANCES' && (
+            <div className="space-y-4 text-xs">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-2.5">
+                  <span className="text-[10px] font-semibold text-indigo-500 uppercase block">
+                    एकूण उचल मिळाली
+                  </span>
+                  <span className="text-sm font-black text-indigo-700 mt-0.5 block">₹{totalAdvGiven.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="bg-amber-50/70 border border-amber-100 rounded-xl p-2.5">
+                  <span className="text-[10px] font-semibold text-amber-600 uppercase block">
+                    बिलांतून कपात
+                  </span>
+                  <span className="text-sm font-black text-amber-700 mt-0.5 block">₹{totalAdvDeducted.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-2.5">
+                  <span className="text-[10px] font-semibold text-emerald-600 uppercase block">
+                    शिल्लक अ‍ॅडव्हान्स
+                  </span>
+                  <span className="text-sm font-black text-emerald-700 mt-0.5 block">₹{remainingAdvance.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {advancePayments.length === 0 ? (
+                  <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-sm">
+                    <p className="font-extrabold text-slate-700">कोणत्याही उचलीची नोंद नाही</p>
+                    <p className="text-xs text-slate-400 mt-1">No advance payouts recorded.</p>
+                  </div>
+                ) : (
+                  advancePayments.map((pay: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="bg-white border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between shadow-2xs hover:border-indigo-200 transition-colors"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-indigo-600">{pay.paymentNo || pay.id}</span>
+                          <span className="px-2 py-0.5 rounded text-[9px] font-black bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            ADVANCE (उचल)
+                          </span>
+                        </div>
+                        <p className="font-bold text-slate-800 flex items-center gap-2">
+                          <span>{pay.paymentMode || pay.method || 'CASH'}</span>
+                          {pay.notes && <span className="text-slate-400 font-normal">• {pay.notes}</span>}
+                        </p>
+                        <p className="text-[10px] text-slate-400">📅 {pay.date || pay.paymentDate}</p>
+                      </div>
+                      <span className="text-sm font-black text-indigo-600">
+                        ₹{Number(String(pay.amount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
           {/* TAB: MATERIALS SUPPLIES */}
           {activeTab === 'MATERIALS' && (
             <div className="space-y-3 text-xs">
-              <div className="flex justify-between items-center bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-purple-100 flex items-center justify-center text-purple-700">
-                    <Sprout className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-slate-800 text-sm">
-                      साहित्य पुरवठा नोंदी (Material Supplies Issued)
-                    </h3>
-                    <p className="text-[11px] text-slate-500 font-medium">बियाणे, खते, क्रेट्स व इतर पुरवठा</p>
-                  </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-purple-50/70 border border-purple-100 rounded-xl p-2.5">
+                  <span className="text-[10px] font-semibold text-purple-600 uppercase block">
+                    एकूण साहित्य दिले
+                  </span>
+                  <span className="text-sm font-black text-purple-700 mt-0.5 block">₹{totalMatIssued.toLocaleString('en-IN')}</span>
                 </div>
-                <div className="text-right">
-                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">एकूण नावे (Total Debit)</span>
-                  <span className="text-base font-black text-purple-700">₹{totals.material.toLocaleString('en-IN')}</span>
+                <div className="bg-amber-50/70 border border-amber-100 rounded-xl p-2.5">
+                  <span className="text-[10px] font-semibold text-amber-600 uppercase block">
+                    बिलांतून कपात
+                  </span>
+                  <span className="text-sm font-black text-amber-700 mt-0.5 block">₹{totalMatDeducted.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="bg-rose-50/70 border border-rose-100 rounded-xl p-2.5">
+                  <span className="text-[10px] font-semibold text-rose-600 uppercase block">
+                    कपात शिल्लक बाकी
+                  </span>
+                  <span className="text-sm font-black text-rose-700 mt-0.5 block">₹{remainingMatDue.toLocaleString('en-IN')}</span>
                 </div>
               </div>
 

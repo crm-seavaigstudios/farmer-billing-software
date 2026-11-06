@@ -1,3 +1,4 @@
+import { useActionCooldown } from '@/hooks/useActionCooldown';
 import React, { useState } from 'react';
 import { X, UserPlus, Phone, MapPin, Building, CreditCard, ShieldCheck, Sparkles, CheckCircle2, Sprout } from 'lucide-react';
 import { apiCreateFarmer, apiCheckFarmerNetwork, apiImportFarmerFromNetwork } from '@/lib/api';
@@ -75,8 +76,12 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
     }
   };
 
+  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) return;
+    startCooldown();
     
     const newFarmer = {
       name: formData.name,
@@ -384,9 +389,17 @@ export const AddFarmerModal: React.FC<AddFarmerModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20"
+              disabled={isLocked}
+              className={`px-5 py-2 text-white rounded-xl text-xs font-bold shadow-md transition-all ${isLocked ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'}`}
             >
-              Save Farmer Record
+              {isLocked ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 border-2 border-white/60 border-t-white rounded-full animate-spin inline-block" />
+                  <span>कृपया प्रतीक्षा करा... ({cooldown}s)</span>
+                </span>
+              ) : (
+                'Save Farmer Record'
+              )}
             </button>
           </div>
         </form>

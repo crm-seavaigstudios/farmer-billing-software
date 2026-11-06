@@ -1,3 +1,4 @@
+import { useActionCooldown } from '@/hooks/useActionCooldown';
 import React, { useState, useEffect } from 'react';
 import { X, ShieldCheck, Receipt, Calculator, ArrowRight, Wallet, CheckCircle } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -262,9 +263,12 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   const totalDeductionsApplied = actualAdvanceDeducted + actualMaterialDeducted;
   const suggestedNetPayout = Math.max(0, grossAmountToSettle - totalDeductionsApplied);
 
+  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading) return;
+    if (isLocked || loading) return;
+    startCooldown();
     setLoading(true);
     const numericDisbursed = Number(formData.amount) || 0;
     const isAdvancePayout = formData.paymentType === 'ADVANCE_PAYOUT';
@@ -899,10 +903,15 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className={`px-5 py-2 text-white rounded-xl text-xs font-bold shadow-md transition-all ${loading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 active:scale-95'}`}
+              disabled={loading || isLocked}
+              className={`px-5 py-2 text-white rounded-xl text-xs font-bold shadow-md transition-all ${loading || isLocked ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 active:scale-95'}`}
             >
-              {loading ? 'Processing...' : 'Save & Settle Bill'}
+              {isLocked ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 border-2 border-white/60 border-t-white rounded-full animate-spin inline-block" />
+                  <span>कृपया प्रतीक्षा करा... ({cooldown}s)</span>
+                </span>
+              ) : (loading ? 'Processing...' : 'Save & Settle Bill')}
             </button>
           </div>
         </form>

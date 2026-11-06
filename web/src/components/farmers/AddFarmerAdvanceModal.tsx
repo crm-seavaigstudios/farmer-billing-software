@@ -1,4 +1,5 @@
 "use client";
+import { useActionCooldown } from '@/hooks/useActionCooldown';
 
 import React, { useState } from 'react';
 import { X, DollarSign, Calendar, FileText, CheckCircle2 } from 'lucide-react';
@@ -26,8 +27,12 @@ export function AddFarmerAdvanceModal({
 
   if (!isOpen || !farmerId) return null;
 
+  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked || loading) return;
+    startCooldown();
     setLoading(true);
     const amountNum = Number(advanceAmount) || 0;
 
@@ -117,10 +122,15 @@ export function AddFarmerAdvanceModal({
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 font-extrabold rounded-xl text-white shadow-lg shadow-emerald-600/20"
+              disabled={loading || isLocked}
+              className={`flex-1 py-2.5 font-extrabold rounded-xl text-white shadow-lg transition-all ${loading || isLocked ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'}`}
             >
-              {loading ? 'Recording...' : 'Disburse Cash Advance'}
+              {isLocked ? (
+                <span className="flex items-center justify-center gap-1.5">
+                  <span className="w-3 h-3 border-2 border-white/60 border-t-white rounded-full animate-spin inline-block" />
+                  <span>कृपया प्रतीक्षा करा... ({cooldown}s)</span>
+                </span>
+              ) : (loading ? 'Recording...' : 'Disburse Cash Advance')}
             </button>
           </div>
         </form>

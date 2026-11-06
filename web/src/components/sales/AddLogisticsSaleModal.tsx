@@ -1,4 +1,5 @@
 "use client";
+import { useActionCooldown } from '@/hooks/useActionCooldown';
 
 import React, { useState, useEffect } from 'react';
 import { X, Truck, Calendar, Clock, Download, Plus, Search, CheckCircle2, Factory, Trash2, ShieldCheck, Camera, PenTool, Scale, IndianRupee } from 'lucide-react';
@@ -174,8 +175,12 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
   const totalBillAmount = items.reduce((acc, item) => acc + (Number(item.weightKg) * Number(item.ratePerKg)), 0);
   const totalBillWeight = items.reduce((acc, item) => acc + Number(item.weightKg), 0);
 
+  const { isLocked, cooldown, startCooldown } = useActionCooldown(5);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked || loading) return;
+    startCooldown();
     setLoading(true);
     try {
       const targetCust = customers.find((c) => c.id === selectedCustomerId) || customers[0];
@@ -795,10 +800,15 @@ export function AddLogisticsSaleModal({ isOpen, onClose, onSuccess }: AddLogisti
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 font-extrabold rounded-xl text-white shadow-lg shadow-blue-600/20"
+              disabled={loading || isLocked}
+              className={`flex-1 py-3 font-extrabold rounded-xl text-white shadow-lg transition-all ${loading || isLocked ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'}`}
             >
-              {loading ? 'Creating Manifest Invoice...' : 'Generate Invoice & Print Waybill'}
+              {isLocked ? (
+                <span className="flex items-center justify-center gap-1.5">
+                  <span className="w-3 h-3 border-2 border-white/60 border-t-white rounded-full animate-spin inline-block" />
+                  <span>कृपया प्रतीक्षा करा... ({cooldown}s)</span>
+                </span>
+              ) : (loading ? 'Creating Manifest Invoice...' : 'Generate Invoice & Print Waybill')}
             </button>
           </div>
         </form>
