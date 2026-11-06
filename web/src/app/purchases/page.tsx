@@ -161,115 +161,47 @@ export default function PurchasesPage() {
           };
         });
 
-        // Group purchases by farmer and compute FIFO allocation
-        const farmerGroups: Record<string, any[]> = {};
-        cleaned.forEach((p: any) => {
-          const key = p.farmerId || p.phone || p.farmerName || 'UNKNOWN';
-          if (!farmerGroups[key]) farmerGroups[key] = [];
-          farmerGroups[key].push(p);
-        });
-
-        const fifoResultMap: Record<string, { paidAmount: number; dueAmount: number; paymentStatus: string }> = {};
-
-        Object.entries(farmerGroups).forEach(([key, fPurchases]) => {
-          const firstP = fPurchases[0];
-          const matchedFarmer = farmersList.find((f: any) => isFarmerMatch(firstP, f)) || { id: firstP.farmerId, phone: firstP.phone, name: firstP.farmerName };
-
-          const fPayments = paymentsList.filter((pay: any) => isFarmerMatch(pay, matchedFarmer));
-          const fMaterials = materialsList.filter((mat: any) => isFarmerMatch(mat, matchedFarmer));
-
-          const totalPaid = fPayments.reduce((sum: number, pay: any) => sum + (Number(pay.amount) || 0), 0);
-          const totalMaterial = fMaterials.reduce((sum: number, m: any) => {
-            const qty = Number(m.quantity || 1);
-            const price = Number(m.unitPrice || 0);
-            return sum + Number(m.totalAmount || m.totalPrice || m.amount || (qty * price) || 0);
-          }, 0);
-
-          const advanceAlreadyAppliedOnBills = fPurchases.reduce((sum: number, p: any) => {
-            let adv = Number(p.advanceApplied || 0);
-            if (!adv && p.storageLocation) {
-              const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
-              if (m) adv = Number(m[1]);
-            }
-            return sum + adv;
-          }, 0);
-
-          const materialAlreadyDeductedOnBills = fPurchases.reduce((sum: number, p: any) => {
-            let mat = Number(p.materialDeducted || 0);
-            if (!mat && p.storageLocation) {
-              const m = String(p.storageLocation).match(/MTL=(\d+)/);
-              if (m) mat = Number(m[1]);
-            }
-            return sum + mat;
-          }, 0);
-
-          const unallocatedPayments = Math.max(0, totalPaid - advanceAlreadyAppliedOnBills);
-          const unallocatedMaterials = Math.max(0, totalMaterial - materialAlreadyDeductedOnBills);
-          let remainingSettlementPool = unallocatedPayments + unallocatedMaterials;
-          const sorted = [...fPurchases].sort((a, b) => getTimestamp(a) - getTimestamp(b));
-
-          sorted.forEach((p) => {
-            const billAmt = Number(p.amount || 0);
-            let billAdv = Number(p.advanceApplied || 0);
-            let billMat = Number(p.materialDeducted || 0);
-            if ((!billAdv || !billMat) && p.storageLocation) {
-              const mAdv = String(p.storageLocation).match(/DED:ADV=(\d+)/);
-              if (mAdv && !billAdv) billAdv = Number(mAdv[1]);
-              const mMat = String(p.storageLocation).match(/MTL=(\d+)/);
-              if (mMat && !billMat) billMat = Number(mMat[1]);
-            }
-            const directDeductions = billAdv + billMat;
-            const remainingBillAmt = Math.max(0, billAmt - directDeductions);
-
-            const allocatedPaid = Math.min(remainingBillAmt, Math.max(0, remainingSettlementPool));
-            remainingSettlementPool = Math.max(0, remainingSettlementPool - allocatedPaid);
-            const totalAllocatedPaid = directDeductions + allocatedPaid;
-            const allocatedDue = Math.max(0, billAmt - totalAllocatedPaid);
-            const status = allocatedDue <= 0 ? 'PAID' : (totalAllocatedPaid > 0 ? 'PARTIAL' : 'UNPAID');
-
-            fifoResultMap[p.id] = {
-              paidAmount: totalAllocatedPaid,
-              dueAmount: allocatedDue,
-              paymentStatus: status,
-            };
-          });
-        });
-
+        // Direct Owner-Controlled Settlement (No automatic FIFO deduction of materials or advances)
         const finalPurchases = cleaned.map((p: any) => {
-          const fifo = fifoResultMap[p.id];
-          const hasExplicitDue = p.dueAmount !== undefined && p.dueAmount !== null && !isNaN(Number(p.dueAmount));
-          const hasExplicitPaid = p.paidAmount !== undefined && p.paidAmount !== null && !isNaN(Number(p.paidAmount));
-          
-          if (fifo) {
-            // Reconcile with actual payments: never allow bill to claim PAID if payments are missing
-            const reconciledPaid = Math.max(Number(p.paidAmount || 0), fifo.paidAmount);
-            const reconciledDue = Math.max(0, Number(p.amount || 0) - reconciledPaid);
-            const status = reconciledDue <= 0 ? 'PAID' : (reconciledPaid > 0 ? 'PARTIAL' : 'UNPAID');
-            return {
-              ...p,
-              paidAmount: reconciledPaid,
-              dueAmount: reconciledDue,
-              paymentStatus: status,
-            };
-          }
+          const rawAmt = p.totalAmount ?? p.amount ?? p.netAmount ?? 0;
+          const billAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
 
-          if (hasExplicitDue && hasExplicitPaid) {
-            const cleanDue = Math.max(0, Number(p.dueAmount));
-            const cleanPaid = Math.max(0, Number(p.paidAmount));
-            const status = p.paymentStatus || (cleanDue <= 0 ? 'PAID' : (cleanPaid > 0 ? 'PARTIAL' : 'UNPAID'));
-            return {
-              ...p,
-              paidAmount: cleanPaid,
-              dueAmount: cleanDue,
-              paymentStatus: status,
-            };
+          let billAdv = Number(p.advanceApplied || 0);
+          let billMat = Number(p.materialDeducted || 0);
+          if ((!billAdv || !billMat) && p.storageLocation) {
+            const mAdv = String(p.storageLocation).match(/DED:ADV=(\d+)/);
+            if (mAdv && !billAdv) billAdv = Number(mAdv[1]);
+            const mMat = String(p.storageLocation).match(/MTL=(\d+)/);
+            if (mMat && !billMat) billMat = Number(mMat[1]);
           }
-          const cleanDue = typeof p.dueAmount === 'number' ? p.dueAmount : parseFloat(String(p.dueAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+          const directDeductions = billAdv + billMat;
+
+          // Find cash/bank payments specifically linked to this purchase
+          const linkedPayments = paymentsList.filter((pay: any) => 
+            pay.purchaseId === p.id || pay.purchaseId === p.purchaseNo || pay.purchaseId === p.billNo
+          );
+          const linkedCashPaid = linkedPayments.reduce((sum: number, pay: any) => sum + (Number(pay.amount) || 0), 0);
+
+          // If paidAmount was explicitly saved on the bill in DB:
+          const explicitPaid = Number(p.paidAmount || 0);
+          const cashDisbursed = Math.max(linkedCashPaid, Math.max(0, explicitPaid - directDeductions));
+
+          const totalPaidOnBill = directDeductions + cashDisbursed;
+          const calculatedDue = Math.max(0, billAmt - totalPaidOnBill);
+          const status = calculatedDue <= 0 ? 'PAID' : (totalPaidOnBill > 0 ? 'PARTIAL' : 'UNPAID');
+
           return {
             ...p,
-            dueAmount: cleanDue,
+            amount: billAmt,
+            advanceApplied: billAdv,
+            materialDeducted: billMat,
+            paidAmount: totalPaidOnBill,
+            dueAmount: calculatedDue,
+            paymentStatus: status,
           };
         });
+
+        // Skip legacy mapper
 
         setPurchases(finalPurchases);
         setIsLiveSynced(true);
