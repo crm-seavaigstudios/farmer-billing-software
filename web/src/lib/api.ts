@@ -1173,6 +1173,7 @@ export const apiCreatePurchase = async (purchaseData: any) => {
         farmerId: purchaseObj.farmerId,
         totalWeight: Number(item?.weightKg || 0),
         totalAmount: Number(purchaseObj.amount),
+        amount: Number(purchaseObj.amount),
         paidAmount: Number(purchaseObj.paidAmount),
         dueAmount: Number(purchaseObj.dueAmount),
         paymentStatus: purchaseObj.paymentStatus,
@@ -1252,6 +1253,7 @@ export const apiUpdatePurchase = async (purchaseId: string, updateData: any) => 
     await supabase.from('Purchase').update({
       totalWeight: parsedWeight,
       totalAmount: parsedAmount,
+      amount: parsedAmount,
       dueAmount: parsedDue,
       paidAmount: parsedPaid,
       paymentStatus: updateData.paymentStatus || (parsedDue <= 0 ? 'PAID' : parsedPaid > 0 ? 'PARTIAL' : 'UNPAID'),

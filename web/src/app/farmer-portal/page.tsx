@@ -474,8 +474,8 @@ export default function FarmerPortalPage() {
         .reduce((sum: number, pay: any) => sum + (Number(pay.amount) || 0), 0);
 
       const allocatedPaid = directDeductions + linkedPayments + Number(p.paidAmount && !linkedPayments ? p.paidAmount - directDeductions : 0);
-      let allocatedDue = p.dueAmount !== undefined ? Number(p.dueAmount) : Math.max(0, amt - allocatedPaid);
-      if (p.paymentStatus === 'PAID') allocatedDue = 0;
+      let allocatedDue = Math.max(0, amt - allocatedPaid);
+      if (p.paymentStatus === 'PAID' && allocatedPaid >= amt) allocatedDue = 0;
 
       const status: 'PAID' | 'PARTIAL' | 'UNPAID' = allocatedDue <= 0 ? 'PAID' : (allocatedPaid > 0 ? 'PARTIAL' : 'UNPAID');
 

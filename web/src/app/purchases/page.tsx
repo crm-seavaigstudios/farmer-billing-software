@@ -214,9 +214,23 @@ export default function PurchasesPage() {
         });
 
         const finalPurchases = cleaned.map((p: any) => {
-          // If the bill has explicit paidAmount and dueAmount recorded in DB, preserve them!
+          const fifo = fifoResultMap[p.id];
           const hasExplicitDue = p.dueAmount !== undefined && p.dueAmount !== null && !isNaN(Number(p.dueAmount));
           const hasExplicitPaid = p.paidAmount !== undefined && p.paidAmount !== null && !isNaN(Number(p.paidAmount));
+          
+          if (fifo) {
+            // Reconcile with actual payments: never allow bill to claim PAID if payments are missing
+            const reconciledPaid = Math.max(Number(p.paidAmount || 0), fifo.paidAmount);
+            const reconciledDue = Math.max(0, Number(p.amount || 0) - reconciledPaid);
+            const status = reconciledDue <= 0 ? 'PAID' : (reconciledPaid > 0 ? 'PARTIAL' : 'UNPAID');
+            return {
+              ...p,
+              paidAmount: reconciledPaid,
+              dueAmount: reconciledDue,
+              paymentStatus: status,
+            };
+          }
+
           if (hasExplicitDue && hasExplicitPaid) {
             const cleanDue = Math.max(0, Number(p.dueAmount));
             const cleanPaid = Math.max(0, Number(p.paidAmount));
@@ -226,16 +240,6 @@ export default function PurchasesPage() {
               paidAmount: cleanPaid,
               dueAmount: cleanDue,
               paymentStatus: status,
-            };
-          }
-
-          const fifo = fifoResultMap[p.id];
-          if (fifo) {
-            return {
-              ...p,
-              paidAmount: fifo.paidAmount,
-              dueAmount: fifo.dueAmount,
-              paymentStatus: fifo.paymentStatus,
             };
           }
           const cleanDue = typeof p.dueAmount === 'number' ? p.dueAmount : parseFloat(String(p.dueAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
