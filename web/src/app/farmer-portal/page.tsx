@@ -422,6 +422,34 @@ export default function FarmerPortalPage() {
         });
       }
     });
+
+    const totalMatDeductedInPurchases = rawPurchases.reduce((sum: number, p: any) => {
+      let mat = Number(p.materialDeducted || 0);
+      if (!mat && p.storageLocation) {
+        const m = String(p.storageLocation).match(/MTL=(\d+)/);
+        if (m) mat = Number(m[1]);
+      }
+      return sum + mat;
+    }, 0);
+
+    if (rawPurchases.length > 0) {
+      const remMatBalance = Math.max(0, totalMaterial - totalMatDeductedInPurchases);
+      if (remMatBalance > 0) {
+        allItems.push({
+           dateStr: 'चालू बाकी',
+           timestamp: Date.now() + 10,
+           orderIdx: ++orderIdx,
+           refNo: 'MAT-DUE',
+           type: 'MATERIAL',
+           description: `साहित्य कपात बाकी (Remaining Material Due)`,
+           weightOrQty: '-',
+           debitVal: remMatBalance,
+           creditVal: 0,
+           notes: 'Un-deducted material balance from bills',
+           raw: { type: 'MATERIAL_DUE', amount: remMatBalance }
+        });
+      }
+    }
     
     // Exact Time-Sequence Chronological Sorting
     allItems.sort((a, b) => {
@@ -516,9 +544,29 @@ export default function FarmerPortalPage() {
     const baseAdvVal = totalAdvGivenVal > 0 ? totalAdvGivenVal : Number(farmer?.advanceBalance || 0);
     const netAdvRem = Math.max(0, baseAdvVal - totalAdvDeductedVal);
 
+    const totalMatIssuedVal = rawMaterials.reduce((sum, m) => {
+      const qty = Number(m.quantity || 1);
+      const price = Number(m.unitPrice || 0);
+      const calcVal = qty * price;
+      const rawAmt = m.totalAmount ?? m.totalPrice ?? m.amount ?? calcVal ?? 0;
+      const parsedAmt = typeof rawAmt === 'number' ? rawAmt : (parseFloat(String(rawAmt).replace(/[^0-9.-]+/g, '')) || 0);
+      return sum + (parsedAmt > 0 ? parsedAmt : calcVal);
+    }, 0);
+
+    const totalMatDeductedVal = sortedPurchasesOldest.reduce((sum, p) => {
+      let mat = Number(p.materialDeducted || 0);
+      if (!mat && p.storageLocation) {
+        const m = String(p.storageLocation).match(/MTL=(\d+)/);
+        if (m) mat = Number(m[1]);
+      }
+      return sum + mat;
+    }, 0);
+
+    const netMatRem = Math.max(0, totalMatIssuedVal - totalMatDeductedVal);
+
     const netOutstandingDisplay = activeBillsDue > 0 
       ? activeBillsDue 
-      : (netAdvRem > 0 ? -netAdvRem : 0);
+      : (netMatRem > 0 ? netMatRem : (netAdvRem > 0 ? -netAdvRem : 0));
 
     setLifetimeTotals({ 
       purchase: totalPurchase, 
@@ -814,7 +862,11 @@ export default function FarmerPortalPage() {
                 ₹{totalAdvGiven.toLocaleString('en-IN')}
               </span>
               <span className="text-[10px] text-indigo-600 font-semibold mt-0.5 block">
-                शिल्लक: ₹{remainingAdvance.toLocaleString('en-IN')}
+                {remainingAdvance <= 0 ? (
+                  <span className="text-emerald-600 font-bold">✓ शिल्लक: ₹0 (पूर्ण वजावट)</span>
+                ) : (
+                  `शिल्लक: ₹${remainingAdvance.toLocaleString('en-IN')}`
+                )}
               </span>
             </div>
 
@@ -827,36 +879,52 @@ export default function FarmerPortalPage() {
                 ₹{totalMatIssued.toLocaleString('en-IN')}
               </span>
               <span className="text-[10px] text-purple-600 font-semibold mt-0.5 block">
-                कपात बाकी: ₹{remainingMatDue.toLocaleString('en-IN')}
+                {remainingMatDue <= 0 ? (
+                  <span className="text-emerald-600 font-bold">✓ पूर्ण कपात (₹0 बाकी)</span>
+                ) : (
+                  <span className="text-purple-700 font-black">कपात बाकी: ₹{remainingMatDue.toLocaleString('en-IN')}</span>
+                )}
               </span>
             </div>
 
             {/* 5. Net Outstanding / Due */}
             <div className={`col-span-2 sm:col-span-1 rounded-2xl p-3 shadow-2xs border ${
-              lifetimeTotals.outstanding > 0 
-                ? 'bg-rose-50/80 border-rose-100' 
-                : lifetimeTotals.outstanding < 0 
+              totals.outstanding > 0 
+                ? (remainingMatDue > 0 && totals.outstanding === remainingMatDue ? 'bg-purple-50/80 border-purple-100' : 'bg-rose-50/80 border-rose-100')
+                : totals.outstanding < 0 
                   ? 'bg-indigo-50/80 border-indigo-100' 
-                  : 'bg-slate-100 border-slate-200'
+                  : 'bg-emerald-50/80 border-emerald-100'
             }`}>
               <span className={`text-[10px] font-extrabold uppercase tracking-wider block ${
-                lifetimeTotals.outstanding > 0 ? 'text-rose-600' : lifetimeTotals.outstanding < 0 ? 'text-indigo-600' : 'text-slate-600'
+                totals.outstanding > 0 
+                  ? (remainingMatDue > 0 && totals.outstanding === remainingMatDue ? 'text-purple-600' : 'text-rose-600')
+                  : totals.outstanding < 0 
+                    ? 'text-indigo-600' 
+                    : 'text-emerald-600'
               }`}>
-                {lifetimeTotals.outstanding > 0 
-                  ? 'बाकी देणे (Net Due)' 
-                  : lifetimeTotals.outstanding < 0 
+                {totals.outstanding > 0 
+                  ? (remainingMatDue > 0 && totals.outstanding === remainingMatDue ? 'साहित्य कपात बाकी (Material Due)' : 'बाकी देणे (Net Due)')
+                  : totals.outstanding < 0 
                     ? 'अ‍ॅडव्हान्स शिल्लक (Advance)' 
                     : 'हिशोब पूर्ण (Fully Settled)'}
               </span>
               <span className={`text-base font-black mt-1 block ${
-                lifetimeTotals.outstanding > 0 ? 'text-rose-700' : lifetimeTotals.outstanding < 0 ? 'text-indigo-700' : 'text-slate-800'
+                totals.outstanding > 0 
+                  ? (remainingMatDue > 0 && totals.outstanding === remainingMatDue ? 'text-purple-700' : 'text-rose-700')
+                  : totals.outstanding < 0 
+                    ? 'text-indigo-700' 
+                    : 'text-emerald-700'
               }`}>
-                {lifetimeTotals.outstanding < 0 
-                  ? `-₹${Math.abs(lifetimeTotals.outstanding).toLocaleString('en-IN')}`
-                  : `₹${lifetimeTotals.outstanding.toLocaleString('en-IN')}`}
+                {totals.outstanding < 0 
+                  ? `-₹${Math.abs(totals.outstanding).toLocaleString('en-IN')}`
+                  : `₹${totals.outstanding.toLocaleString('en-IN')}`}
               </span>
               <span className="text-[10px] text-slate-500 font-semibold mt-0.5 block">
-                {lifetimeTotals.outstanding > 0 ? 'Pending' : lifetimeTotals.outstanding < 0 ? 'Advance' : 'Nil (पूर्ण)'}
+                {totals.outstanding > 0 
+                  ? (remainingMatDue > 0 && totals.outstanding === remainingMatDue ? 'पुढील बिलातून वजा होणार' : 'शेतकऱ्याला देय रक्कम')
+                  : totals.outstanding < 0 
+                    ? 'शेतकऱ्याकडे शिल्लक उचल' 
+                    : 'सर्व देणी-घेणी पूर्ण'}
               </span>
             </div>
           </div>
@@ -1333,29 +1401,54 @@ export default function FarmerPortalPage() {
                     <p className="text-xs text-slate-400 mt-1">No advance payouts recorded.</p>
                   </div>
                 ) : (
-                  advancePayments.map((pay: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="bg-white border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between shadow-2xs hover:border-indigo-200 transition-colors"
-                    >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-indigo-600">{pay.paymentNo || pay.id}</span>
-                          <span className="px-2 py-0.5 rounded text-[9px] font-black bg-indigo-50 text-indigo-700 border border-indigo-100">
-                            ADVANCE (उचल)
+                  advancePayments.map((pay: any, idx: number) => {
+                    const payAmt = Number(String(pay.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+                    const isFullySettled = remainingAdvance === 0 && totalAdvDeducted >= payAmt;
+                    const deductedFromThis = Math.min(payAmt, totalAdvDeducted);
+                    const remainingOnThis = Math.max(0, payAmt - deductedFromThis);
+                    return (
+                      <div
+                        key={idx}
+                        className="bg-white border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between shadow-2xs hover:border-indigo-200 transition-colors"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-indigo-600">{pay.paymentNo || pay.id}</span>
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black bg-indigo-50 text-indigo-700 border border-indigo-100">
+                              ADVANCE (उचल)
+                            </span>
+                            {isFullySettled ? (
+                              <span className="px-2 py-0.5 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                ✓ पूर्ण वजावट (Fully Deducted)
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-50 text-amber-700 border border-amber-200">
+                                शिल्लक: ₹{remainingOnThis.toLocaleString('en-IN')}
+                              </span>
+                            )}
+                          </div>
+                          <p className="font-bold text-slate-800 flex items-center gap-2 text-xs">
+                            <span>{pay.paymentMode || pay.method || 'CASH'}</span>
+                            {pay.notes && <span className="text-slate-400 font-normal">• {pay.notes}</span>}
+                          </p>
+                          <p className="text-[10px] text-slate-400">📅 {pay.date || pay.paymentDate}</p>
+                          {deductedFromThis > 0 && (
+                            <p className="text-[10px] font-semibold text-emerald-600">
+                              बिलांतून वजावट: -₹{deductedFromThis.toLocaleString('en-IN')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <span className="text-base font-black text-indigo-700 block">
+                            ₹{payAmt.toLocaleString('en-IN')}
+                          </span>
+                          <span className="text-[10px] font-bold block text-slate-500">
+                            {isFullySettled ? 'शिल्लक: ₹0' : `शिल्लक बाकी: ₹${remainingOnThis.toLocaleString('en-IN')}`}
                           </span>
                         </div>
-                        <p className="font-bold text-slate-800 flex items-center gap-2">
-                          <span>{pay.paymentMode || pay.method || 'CASH'}</span>
-                          {pay.notes && <span className="text-slate-400 font-normal">• {pay.notes}</span>}
-                        </p>
-                        <p className="text-[10px] text-slate-400">📅 {pay.date || pay.paymentDate}</p>
                       </div>
-                      <span className="text-sm font-black text-indigo-600">
-                        ₹{Number(String(pay.amount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}
-                      </span>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -1405,6 +1498,10 @@ export default function FarmerPortalPage() {
                       ? new Date(dateVal).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
                       : 'Unknown';
 
+                    const itemDeducted = Math.min(amt, totalMatDeducted);
+                    const itemRemaining = Math.max(0, amt - itemDeducted);
+                    const isFullyDeducted = itemRemaining === 0 && totalMatDeducted >= amt;
+
                     return (
                       <div
                         key={idx}
@@ -1416,18 +1513,34 @@ export default function FarmerPortalPage() {
                             <span className="px-2 py-0.5 rounded text-[9px] font-black bg-purple-50 text-purple-700 border border-purple-100">
                               {qty} {m.unit || 'QTY'}
                             </span>
+                            {isFullyDeducted ? (
+                              <span className="px-2 py-0.5 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                ✓ पूर्ण वजावट (Settled)
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[9px] font-black bg-rose-50 text-rose-700 border border-rose-200">
+                                कपात बाकी: ₹{itemRemaining.toLocaleString('en-IN')}
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-slate-600">
                             दर: ₹{price.toLocaleString('en-IN')} / {m.unit || 'QTY'}
                             {m.notes && <span className="text-slate-400 font-normal"> • {m.notes}</span>}
                           </p>
                           <p className="text-[10px] text-slate-400">📅 {dateFormatted}</p>
+                          {itemDeducted > 0 && (
+                            <p className="text-[10px] font-semibold text-purple-600">
+                              बिलांतून कपात: -₹{itemDeducted.toLocaleString('en-IN')} {m.purchaseBillId ? `(${m.purchaseBillId})` : ''}
+                            </p>
+                          )}
                         </div>
                         <div className="text-right">
                           <span className="text-base font-black text-purple-700 block">
                             ₹{amt.toLocaleString('en-IN')}
                           </span>
-                          <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wide">नावे (Debit)</span>
+                          <span className="text-[10px] font-bold block text-rose-600">
+                            {isFullyDeducted ? 'पूर्ण वजा' : `कपात बाकी: ₹${itemRemaining.toLocaleString('en-IN')}`}
+                          </span>
                         </div>
                       </div>
                     );
@@ -1559,26 +1672,56 @@ export default function FarmerPortalPage() {
               </div>
 
               {/* Totals Breakdown */}
-              <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4 space-y-2">
-                <div className="flex justify-between items-center text-xs font-bold text-slate-700">
-                  <span>एकूण रक्कम (Gross Total):</span>
-                  <span>₹{Number(String(selectedPurchaseForReceipt.netAmount || selectedPurchaseForReceipt.totalAmount || selectedPurchaseForReceipt.amount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}</span>
-                </div>
-                {selectedPurchaseForReceipt.deductions && (
-                  <div className="flex justify-between items-center text-xs font-bold text-rose-600">
-                    <span>कपात (Deductions):</span>
-                    <span>-₹{Number(String(selectedPurchaseForReceipt.deductions).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}</span>
+              {(() => {
+                const recGross = Number(String(selectedPurchaseForReceipt.netAmount || selectedPurchaseForReceipt.totalAmount || selectedPurchaseForReceipt.amount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+                let recAdv = Number(selectedPurchaseForReceipt.advanceApplied || 0);
+                let recMat = Number(selectedPurchaseForReceipt.materialDeducted || 0);
+                if ((!recAdv || !recMat) && selectedPurchaseForReceipt.storageLocation) {
+                  const mAdv = String(selectedPurchaseForReceipt.storageLocation).match(/DED:ADV=(\d+)/);
+                  if (mAdv && !recAdv) recAdv = Number(mAdv[1]);
+                  const mMat = String(selectedPurchaseForReceipt.storageLocation).match(/MTL=(\d+)/);
+                  if (mMat && !recMat) recMat = Number(mMat[1]);
+                }
+                const recDedTotal = recAdv + recMat;
+                const recPaid = Number(String(selectedPurchaseForReceipt.paidAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+                const recCashPaid = Math.max(0, recPaid - recDedTotal);
+                const recDue = Number(String(selectedPurchaseForReceipt.dueAmount || 0).replace(/[^0-9.-]+/g, '')) || 0;
+
+                return (
+                  <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4 space-y-2">
+                    <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                      <span>एकूण शेतमाल रक्कम (Gross Total):</span>
+                      <span>₹{recGross.toLocaleString('en-IN')}</span>
+                    </div>
+
+                    {recAdv > 0 && (
+                      <div className="flex justify-between items-center text-xs font-bold text-amber-700">
+                        <span>(-) उचल कपात (Advance Deducted):</span>
+                        <span>-₹{recAdv.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+
+                    {recMat > 0 && (
+                      <div className="flex justify-between items-center text-xs font-bold text-purple-700">
+                        <span>(-) साहित्य कपात (Material Deducted):</span>
+                        <span>-₹{recMat.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+
+                    {recCashPaid > 0 && (
+                      <div className="flex justify-between items-center text-xs font-bold text-emerald-700">
+                        <span>(✓) रोख/बँक भरणा (Cash/UPI Payout):</span>
+                        <span>₹{recCashPaid.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+
+                    <div className="border-t border-emerald-200 pt-2 flex justify-between items-center text-sm font-black text-emerald-950">
+                      <span>शिल्लक बाकी (Balance Due):</span>
+                      <span>₹{recDue.toLocaleString('en-IN')}</span>
+                    </div>
                   </div>
-                )}
-                <div className="flex justify-between items-center text-xs font-bold text-emerald-700">
-                  <span>जमा रक्कम (Paid Amount):</span>
-                  <span>₹{Number(String(selectedPurchaseForReceipt.paidAmount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}</span>
-                </div>
-                <div className="border-t border-emerald-200 pt-2 flex justify-between items-center text-sm font-black text-emerald-950">
-                  <span>शिल्लक बाकी (Balance Due):</span>
-                  <span>₹{Number(String(selectedPurchaseForReceipt.dueAmount || 0).replace(/[^0-9.-]+/g, '')).toLocaleString('en-IN')}</span>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Signatures */}
               <div className="pt-6 border-t border-slate-200 flex justify-end items-end text-center">

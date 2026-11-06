@@ -185,8 +185,24 @@ export default function PurchasesPage() {
             return sum + Number(m.totalAmount || m.totalPrice || m.amount || (qty * price) || 0);
           }, 0);
 
-          const advanceAlreadyAppliedOnBills = fPurchases.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0);
-          const materialAlreadyDeductedOnBills = fPurchases.reduce((sum: number, p: any) => sum + (Number(p.materialDeducted) || 0), 0);
+          const advanceAlreadyAppliedOnBills = fPurchases.reduce((sum: number, p: any) => {
+            let adv = Number(p.advanceApplied || 0);
+            if (!adv && p.storageLocation) {
+              const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
+              if (m) adv = Number(m[1]);
+            }
+            return sum + adv;
+          }, 0);
+
+          const materialAlreadyDeductedOnBills = fPurchases.reduce((sum: number, p: any) => {
+            let mat = Number(p.materialDeducted || 0);
+            if (!mat && p.storageLocation) {
+              const m = String(p.storageLocation).match(/MTL=(\d+)/);
+              if (m) mat = Number(m[1]);
+            }
+            return sum + mat;
+          }, 0);
+
           const unallocatedPayments = Math.max(0, totalPaid - advanceAlreadyAppliedOnBills);
           const unallocatedMaterials = Math.max(0, totalMaterial - materialAlreadyDeductedOnBills);
           let remainingSettlementPool = unallocatedPayments + unallocatedMaterials;
@@ -194,8 +210,14 @@ export default function PurchasesPage() {
 
           sorted.forEach((p) => {
             const billAmt = Number(p.amount || 0);
-            const billAdv = Number(p.advanceApplied || 0);
-            const billMat = Number(p.materialDeducted || 0);
+            let billAdv = Number(p.advanceApplied || 0);
+            let billMat = Number(p.materialDeducted || 0);
+            if ((!billAdv || !billMat) && p.storageLocation) {
+              const mAdv = String(p.storageLocation).match(/DED:ADV=(\d+)/);
+              if (mAdv && !billAdv) billAdv = Number(mAdv[1]);
+              const mMat = String(p.storageLocation).match(/MTL=(\d+)/);
+              if (mMat && !billMat) billMat = Number(mMat[1]);
+            }
             const directDeductions = billAdv + billMat;
             const remainingBillAmt = Math.max(0, billAmt - directDeductions);
 
@@ -539,6 +561,7 @@ export default function PurchasesPage() {
                     <th className="py-3.5 px-4">Weight / Qty</th>
                     <th className="py-3.5 px-4">Rate</th>
                     <th className="py-3.5 px-4">Total Amount</th>
+                    <th className="py-3.5 px-4">कपात तपशील (Deductions)</th>
                     <th className="py-3.5 px-4">Remaining Due</th>
                     <th className="py-3.5 px-4">Farmer View</th>
                     <th className="py-3.5 px-4">Status</th>
@@ -548,7 +571,7 @@ export default function PurchasesPage() {
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                   {filteredPurchases.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-12 text-center">
+                      <td colSpan={11} className="py-12 text-center">
                         <Inbox className="w-10 h-10 text-slate-400 mx-auto mb-2" />
                         <p className="text-sm font-bold text-slate-800">No Harvest Purchases Recorded Yet</p>
                         <p className="text-xs text-slate-500 mt-1">Click "Record Crop Purchase" above to add your first entry.</p>
@@ -579,22 +602,58 @@ export default function PurchasesPage() {
                         <td className="py-3.5 px-4 font-bold text-slate-900">{row.weight}</td>
                         <td className="py-3.5 px-4 text-slate-500">{row.rate}</td>
                         <td className="py-3.5 px-4 font-black text-slate-900">₹{Number(row.amount || 0).toLocaleString('en-IN')}</td>
+                        {/* Separate Deductions Column */}
+                        <td className="py-3.5 px-4">
+                          {(() => {
+                            let adv = Number(row.advanceApplied || 0);
+                            let mat = Number(row.materialDeducted || 0);
+                            if ((!adv || !mat) && row.storageLocation) {
+                              const mAdv = String(row.storageLocation).match(/DED:ADV=(\d+)/);
+                              if (mAdv && !adv) adv = Number(mAdv[1]);
+                              const mMat = String(row.storageLocation).match(/MTL=(\d+)/);
+                              if (mMat && !mat) mat = Number(mMat[1]);
+                            }
+                            if (adv === 0 && mat === 0) {
+                              return <span className="text-[11px] text-slate-400 font-semibold">— (कपात नाही)</span>;
+                            }
+                            return (
+                              <div className="flex flex-col gap-1 text-[10px]">
+                                {adv > 0 && (
+                                  <span className="font-black px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 inline-block w-fit">
+                                    ⚡ उचल: -₹{adv.toLocaleString('en-IN')}
+                                  </span>
+                                )}
+                                {mat > 0 && (
+                                  <span className="font-black px-2 py-0.5 rounded-md bg-purple-50 text-purple-800 border border-purple-200 inline-block w-fit">
+                                    📦 साहित्य: -₹{mat.toLocaleString('en-IN')}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </td>
                         <td className="py-3.5 px-4 font-bold text-amber-600">
                           <div>₹{Number(row.dueAmount || 0).toLocaleString('en-IN')}</div>
-                          {(Number(row.advanceApplied) > 0 || Number(row.materialDeducted) > 0) && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {Number(row.advanceApplied) > 0 && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                                  ⚡ उचल: -₹{Number(row.advanceApplied).toLocaleString('en-IN')}
+                          {(() => {
+                            let adv = Number(row.advanceApplied || 0);
+                            let mat = Number(row.materialDeducted || 0);
+                            if ((!adv || !mat) && row.storageLocation) {
+                              const mAdv = String(row.storageLocation).match(/DED:ADV=(\d+)/);
+                              if (mAdv && !adv) adv = Number(mAdv[1]);
+                              const mMat = String(row.storageLocation).match(/MTL=(\d+)/);
+                              if (mMat && !mat) mat = Number(mMat[1]);
+                            }
+                            const totalPaid = Number(row.paidAmount || 0);
+                            const cashPayout = Math.max(0, totalPaid - (adv + mat));
+                            if (cashPayout > 0) {
+                              return (
+                                <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">
+                                  रोख भरणा: ₹{cashPayout.toLocaleString('en-IN')}
                                 </span>
-                              )}
-                              {Number(row.materialDeducted) > 0 && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200">
-                                  📦 साहित्य: -₹{Number(row.materialDeducted).toLocaleString('en-IN')}
-                                </span>
-                              )}
-                            </div>
-                          )}
+                              );
+                            }
+                            return null;
+                          })()}
                         </td>
                         <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
                           <button

@@ -663,12 +663,49 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
                 <span className="font-extrabold text-slate-800">{numberToWordsINR(numTotAmt)}</span>
               </div>
 
-              {numPaidAmt > 0 && (
-                <div className="flex justify-between text-emerald-700 font-bold text-xs pt-1">
-                  <span>जमा रक्कम / वजावट (Paid / Deductions):</span>
-                  <span>- ₹{numPaidAmt.toLocaleString('en-IN')}</span>
-                </div>
-              )}
+              {(() => {
+                let printAdvDed = Number((data as any).advanceApplied || 0);
+                let printMatDed = Number((data as any).materialDeducted || 0);
+                if ((!printAdvDed || !printMatDed) && (data as any).storageLocation) {
+                  const mAdv = String((data as any).storageLocation).match(/DED:ADV=(\d+)/);
+                  if (mAdv && !printAdvDed) printAdvDed = Number(mAdv[1]);
+                  const mMat = String((data as any).storageLocation).match(/MTL=(\d+)/);
+                  if (mMat && !printMatDed) printMatDed = Number(mMat[1]);
+                }
+                const printCashPaid = Math.max(0, numPaidAmt - (printAdvDed + printMatDed));
+
+                return (
+                  <>
+                    {printAdvDed > 0 && (
+                      <div className="flex justify-between text-amber-700 font-bold text-xs pt-1">
+                        <span>(-) उचल वजावट (Advance Deducted):</span>
+                        <span>- ₹{printAdvDed.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+
+                    {printMatDed > 0 && (
+                      <div className="flex justify-between text-purple-700 font-bold text-xs pt-0.5">
+                        <span>(-) साहित्य कपात (Material Deducted):</span>
+                        <span>- ₹{printMatDed.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+
+                    {printCashPaid > 0 && (
+                      <div className="flex justify-between text-emerald-700 font-bold text-xs pt-0.5">
+                        <span>(✓) रोख/बँक भरणा (Cash/UPI Paid):</span>
+                        <span>₹{printCashPaid.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+
+                    {printAdvDed === 0 && printMatDed === 0 && numPaidAmt > 0 && (
+                      <div className="flex justify-between text-emerald-700 font-bold text-xs pt-1">
+                        <span>जमा रक्कम (Paid Amount):</span>
+                        <span>- ₹{numPaidAmt.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               <div className="flex justify-between font-black text-rose-600 text-sm pt-1.5 border-t border-slate-200">
                 <span>शिल्लक बाकी येणे (Remaining Balance Due):</span>

@@ -856,23 +856,52 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                             <p className="text-[10px] text-slate-400 mt-1">📅 {p.date || p.purchaseDate}</p>
                           </div>
 
-                          <div className="text-right">
-                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Bill Amount</span>
+                          <div className="text-right space-y-0.5">
+                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">
+                              {language === 'mr' ? 'एकूण बिल' : 'Bill Amount'}
+                            </span>
                             <span className="text-base font-black text-slate-900 block">
                               ₹{billTotalAmt.toLocaleString('en-IN')}
                             </span>
+                            {(() => {
+                              let adv = Number(p.advanceApplied || 0);
+                              let mat = Number(p.materialDeducted || 0);
+                              if ((!adv || !mat) && p.storageLocation) {
+                                const mAdv = String(p.storageLocation).match(/DED:ADV=(\d+)/);
+                                if (mAdv && !adv) adv = Number(mAdv[1]);
+                                const mMat = String(p.storageLocation).match(/MTL=(\d+)/);
+                                if (mMat && !mat) mat = Number(mMat[1]);
+                              }
+                              if (adv > 0 || mat > 0) {
+                                return (
+                                  <div className="flex flex-col items-end gap-0.5 my-1">
+                                    {adv > 0 && (
+                                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                                        ⚡ {language === 'mr' ? 'उचल वजा' : 'Adv Ded'}: -₹{adv.toLocaleString('en-IN')}
+                                      </span>
+                                    )}
+                                    {mat > 0 && (
+                                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-200">
+                                        📦 {language === 'mr' ? 'साहित्य वजा' : 'Mat Ded'}: -₹{mat.toLocaleString('en-IN')}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                             {displayPaid > 0 && (
                               <span className="text-[10px] text-emerald-600 font-bold block mt-0.5">
-                                Paid: ₹{displayPaid.toLocaleString('en-IN')}
+                                {language === 'mr' ? 'भरणा' : 'Paid'}: ₹{displayPaid.toLocaleString('en-IN')}
                               </span>
                             )}
                             {displayDue > 0 ? (
                               <span className="text-[10px] text-rose-600 font-bold block">
-                                Due: ₹{displayDue.toLocaleString('en-IN')}
+                                {language === 'mr' ? 'बाकी' : 'Due'}: ₹{displayDue.toLocaleString('en-IN')}
                               </span>
                             ) : (
                               <span className="text-[10px] text-emerald-600 font-bold block">
-                                Due: ₹0 (Nil)
+                                {language === 'mr' ? 'बाकी: ₹० (पूर्ण)' : 'Due: ₹0 (Nil)'}
                               </span>
                             )}
                           </div>

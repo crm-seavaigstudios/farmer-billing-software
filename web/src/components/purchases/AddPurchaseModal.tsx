@@ -139,14 +139,28 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
 
       const fp = (allPurs || []).filter((p: any) => isFarmerMatch(p, selectedFarmer));
       const totalAdvGiven = advs.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-      const totalAdvDeductedInBills = fp.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied) || 0), 0);
+      const totalAdvDeductedInBills = fp.reduce((sum: number, p: any) => {
+        let adv = Number(p.advanceApplied || 0);
+        if (!adv && p.storageLocation) {
+          const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
+          if (m) adv = Number(m[1]);
+        }
+        return sum + adv;
+      }, 0);
       const remAdv = totalAdvGiven > 0 
         ? Math.max(0, totalAdvGiven - totalAdvDeductedInBills)
         : Math.max(0, Number(selectedFarmer?.advanceBalance || 0));
       setRunningAdvance(remAdv);
 
       const totalMatIssued = activeMats.reduce((sum: number, m: any) => sum + Number(m.totalAmount || m.totalPrice || 0), 0);
-      const totalMatDeductedInBills = fp.reduce((sum: number, p: any) => sum + (Number(p.materialDeducted) || 0), 0);
+      const totalMatDeductedInBills = fp.reduce((sum: number, p: any) => {
+        let mat = Number(p.materialDeducted || 0);
+        if (!mat && p.storageLocation) {
+          const m = String(p.storageLocation).match(/MTL=(\d+)/);
+          if (m) mat = Number(m[1]);
+        }
+        return sum + mat;
+      }, 0);
       const remMat = totalMatIssued > 0 
         ? Math.max(0, totalMatIssued - totalMatDeductedInBills)
         : 0;
