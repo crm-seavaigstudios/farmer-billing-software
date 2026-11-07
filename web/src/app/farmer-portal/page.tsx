@@ -330,7 +330,14 @@ export default function FarmerPortalPage() {
         const matMatch = String(x.storageLocation).match(/MTL=(\d+)/);
         if (matMatch && !matDeducted) matDeducted = Number(matMatch[1]);
       }
-      const totalBillDeductions = advDeducted + matDeducted;
+
+      let billDedDesc = '';
+      if (advDeducted > 0 || matDeducted > 0) {
+        const dedParts: string[] = [];
+        if (advDeducted > 0) dedParts.push('उचल वजा: ₹' + advDeducted.toLocaleString('en-IN'));
+        if (matDeducted > 0) dedParts.push('साहित्य वजा: ₹' + matDeducted.toLocaleString('en-IN'));
+        billDedDesc = ' [' + dedParts.join(', ') + ']';
+      }
 
       allItems.push({
          dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
@@ -338,32 +345,13 @@ export default function FarmerPortalPage() {
          orderIdx: ++orderIdx,
          refNo: x.billNo || x.purchaseNo || x.id,
          type: 'PURCHASE',
-         description: x.crop || 'शेतमाल खरेदी (Produce Bill)',
-         weightOrQty: `${x.weight || x.netWeight || '-'} @ ${x.rate || '-'}`,
+         description: (x.crop || 'शेतमाल खरेदी (Produce Bill)') + billDedDesc,
+         weightOrQty: (x.weight || x.netWeight || '-') + ' @ ' + (x.rate || '-'),
          debitVal: 0,
          creditVal: amt,
          notes: x.notes,
          raw: x
       });
-
-      if (totalBillDeductions > 0) {
-        const dedNotes: string[] = [];
-        if (advDeducted > 0) dedNotes.push(`उचल वजावट: ₹${advDeducted.toLocaleString('en-IN')}`);
-        if (matDeducted > 0) dedNotes.push(`साहित्य वजावट: ₹${matDeducted.toLocaleString('en-IN')}`);
-        allItems.push({
-           dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-           timestamp: (getPreciseTimestamp(x) || d.getTime()) + 1,
-           orderIdx: ++orderIdx,
-           refNo: `${x.billNo || x.purchaseNo || x.id}-DED`,
-           type: 'DEDUCTION',
-           description: `बिलातून कपात (${dedNotes.join(', ')})`,
-           weightOrQty: '-',
-           debitVal: totalBillDeductions,
-           creditVal: 0,
-           notes: `Deduction applied on bill ${x.billNo || x.purchaseNo || x.id}`,
-           raw: { ...x, deductionAmount: totalBillDeductions }
-        });
-      }
     });
     
     // 2. Payments (Bill payouts disbursed to farmer)
@@ -377,23 +365,31 @@ export default function FarmerPortalPage() {
                         String(x.notes || '').toLowerCase().includes('advance') || 
                         x.isAdvance;
 
-      if (!isAdvance || rawPurchases.length === 0) {
-        allItems.push({
-           dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-           timestamp: getPreciseTimestamp(x) || d.getTime(),
-           orderIdx: ++orderIdx,
-           refNo: x.paymentNo || x.paymentId || x.id,
-           type: 'PAYMENT',
-           description: isAdvance ? `रोख उचल (Advance Payout)` : `पेमेंट भरणा (${x.paymentMode || x.method || x.paymentMethod || "Cash"})`,
-           weightOrQty: '-',
-           debitVal: amt,
-           creditVal: 0,
-           notes: x.notes || x.paymentMode || x.method,
-           raw: x
-        });
-
-// Deductions are already debited on the purchase bills (PB-...-DED)
+      let dedDesc = '';
+      const advDed = Number(x.advanceDeducted || 0) || Number(String(x.notes || '').match(/DED:ADV=(\d+)/)?.[1] || 0);
+      const matDed = Number(x.materialDeducted || 0) || Number(String(x.notes || '').match(/MTL=(\d+)/)?.[1] || 0);
+      if (advDed > 0 || matDed > 0) {
+        const parts: string[] = [];
+        if (advDed > 0) parts.push('उचल वजा: ₹' + advDed.toLocaleString('en-IN'));
+        if (matDed > 0) parts.push('साहित्य वजा: ₹' + matDed.toLocaleString('en-IN'));
+        dedDesc = ' [' + parts.join(', ') + ']';
       }
+
+      allItems.push({
+         dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+         timestamp: getPreciseTimestamp(x) || d.getTime(),
+         orderIdx: ++orderIdx,
+         refNo: x.paymentNo || x.paymentId || x.id,
+         type: isAdvance ? 'ADVANCE' : 'PAYMENT',
+         description: isAdvance 
+           ? ('रोख उचल (Advance Payout - ' + (x.paymentMode || x.method || x.paymentMethod || 'Cash') + ')') 
+           : ('पेमेंट भरणा (' + (x.paymentMode || x.method || x.paymentMethod || 'Cash') + ')' + dedDesc),
+         weightOrQty: '-',
+         debitVal: amt,
+         creditVal: 0,
+         notes: x.notes || x.paymentMode || x.method,
+         raw: x
+      });
     });
 
     // 3. Materials
@@ -408,51 +404,61 @@ export default function FarmerPortalPage() {
       const amt = parsedAmt > 0 ? parsedAmt : calcVal;
       totalMaterial += amt;
 
-      if (rawPurchases.length === 0) {
-        allItems.push({
-           dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-           timestamp: getPreciseTimestamp(x) || d.getTime(),
-           orderIdx: ++orderIdx,
-           refNo: x.id,
-           type: 'MATERIAL',
-           description: `साहित्य वाटप: ${x.itemName || 'Agricultural Inputs'}`,
-           weightOrQty: `${qty} ${x.unit || 'Qty'} @ ₹${price}`,
-           debitVal: amt,
-           creditVal: 0,
-           notes: x.notes,
-           raw: { ...x, quantity: qty, unitPrice: price, totalAmount: amt, totalPrice: amt }
-        });
-      }
+      allItems.push({
+         dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+         timestamp: getPreciseTimestamp(x) || d.getTime(),
+         orderIdx: ++orderIdx,
+         refNo: x.id,
+         type: 'MATERIAL',
+         description: 'साहित्य वाटप: ' + (x.itemName || 'Agricultural Inputs'),
+         weightOrQty: qty + ' ' + (x.unit || 'Qty') + ' @ ₹' + price,
+         debitVal: amt,
+         creditVal: 0,
+         notes: x.notes,
+         raw: { ...x, quantity: qty, unitPrice: price, totalAmount: amt, totalPrice: amt }
+      });
     });
 
-    const totalMatDeductedInPurchases = rawPurchases.reduce((sum: number, p: any) => {
-      let mat = Number(p.materialDeducted || 0);
-      if (!mat && p.storageLocation) {
-        const m = String(p.storageLocation).match(/MTL=(\d+)/);
-        if (m) mat = Number(m[1]);
-      }
-      return sum + mat;
-    }, 0);
+    const hasAdvanceRecords = rawPayments.some((x: any) => 
+      x.paymentType === 'ADVANCE' || 
+      x.paymentType === 'ADVANCE_PAYOUT' || 
+      String(x.notes || '').toLowerCase().includes('advance') || 
+      x.isAdvance
+    );
+    const hasMaterialRecords = rawMaterials.length > 0;
 
-    if (rawPurchases.length > 0) {
-      const remMatBalance = Math.max(0, totalMaterial - totalMatDeductedInPurchases);
-      if (remMatBalance > 0) {
-        allItems.push({
-           dateStr: 'चालू बाकी',
-           timestamp: Date.now() + 10,
-           orderIdx: ++orderIdx,
-           refNo: 'MAT-DUE',
-           type: 'MATERIAL',
-           description: `साहित्य कपात बाकी (Remaining Material Due)`,
-           weightOrQty: '-',
-           debitVal: remMatBalance,
-           creditVal: 0,
-           notes: 'Un-deducted material balance from bills',
-           raw: { type: 'MATERIAL_DUE', amount: remMatBalance }
-        });
-      }
+    if (!hasAdvanceRecords || !hasMaterialRecords) {
+      rawPurchases.forEach((x: any) => {
+        let advDeducted = Number(x.advanceApplied || 0);
+        let matDeducted = Number(x.materialDeducted || 0);
+        if ((!advDeducted || !matDeducted) && x.storageLocation) {
+          const advMatch = String(x.storageLocation).match(/DED:ADV=(\d+)/);
+          if (advMatch && !advDeducted) advDeducted = Number(advMatch[1]);
+          const matMatch = String(x.storageLocation).match(/MTL=(\d+)/);
+          if (matMatch && !matDeducted) matDeducted = Number(matMatch[1]);
+        }
+        const orphanDeductions = (!hasAdvanceRecords ? advDeducted : 0) + (!hasMaterialRecords ? matDeducted : 0);
+        if (orphanDeductions > 0) {
+          const dedNotes: string[] = [];
+          if (!hasAdvanceRecords && advDeducted > 0) dedNotes.push('उचल वजावट: ₹' + advDeducted.toLocaleString('en-IN'));
+          if (!hasMaterialRecords && matDeducted > 0) dedNotes.push('साहित्य वजावट: ₹' + matDeducted.toLocaleString('en-IN'));
+          allItems.push({
+             dateStr: parseCustomDate(x.date || x.purchaseDate || x.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+             timestamp: (getPreciseTimestamp(x) || 0) + 1,
+             orderIdx: ++orderIdx,
+             refNo: (x.billNo || x.purchaseNo || x.id) + '-DED',
+             type: 'DEDUCTION',
+             description: 'बिलातून कपात (' + dedNotes.join(', ') + ')',
+             weightOrQty: '-',
+             debitVal: orphanDeductions,
+             creditVal: 0,
+             notes: 'Deduction applied on bill ' + (x.billNo || x.purchaseNo || x.id),
+             raw: { ...x, deductionAmount: orphanDeductions }
+          });
+        }
+      });
     }
-    
+
     // Exact Time-Sequence Chronological Sorting
     allItems.sort((a, b) => {
       if (a.timestamp !== b.timestamp) {
@@ -528,17 +534,20 @@ export default function FarmerPortalPage() {
       return sum + (fifo?.allocatedDue || 0);
     }, 0);
 
-    const totalAdvDeductedVal = sortedPurchasesOldest.reduce((sum, p) => {
+    const purchasesAdvVal = sortedPurchasesOldest.reduce((sum, p) => {
       let adv = Number(p.advanceApplied || 0);
       if (!adv && p.storageLocation) {
         const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
         if (m) adv = Number(m[1]);
       }
       return sum + adv;
-    }, 0) + rawPayments.reduce((sum: number, pay: any) => {
-      if (pay.purchaseId && sortedPurchasesOldest.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId) && (Number(p.advanceApplied || 0) > 0 || String(p.storageLocation || '').includes('DED:ADV')))) {
-        return sum;
-      }
+    }, 0);
+
+    const unlinkedPayAdvVal = rawPayments.reduce((sum: number, pay: any) => {
+      const isLinked = pay.purchaseId && sortedPurchasesOldest.some((p: any) => 
+        (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
+      );
+      if (isLinked) return sum;
       let adv = Number(pay.advanceDeducted || 0);
       if (!adv && pay.notes) {
         const m = String(pay.notes).match(/DED:ADV=(\d+)/);
@@ -546,6 +555,7 @@ export default function FarmerPortalPage() {
       }
       return sum + adv;
     }, 0);
+
     const advPaymentsList = rawPayments.filter((p: any) => 
       p.paymentType === 'ADVANCE' || 
       p.paymentType === 'ADVANCE_PAYOUT' || 
@@ -554,6 +564,9 @@ export default function FarmerPortalPage() {
     );
     const totalAdvGivenVal = advPaymentsList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const baseAdvVal = totalAdvGivenVal > 0 ? totalAdvGivenVal : Number(farmer?.advanceBalance || 0);
+    const totalAdvDeductedVal = baseAdvVal > 0 
+      ? Math.min(baseAdvVal, purchasesAdvVal + unlinkedPayAdvVal)
+      : (purchasesAdvVal + unlinkedPayAdvVal);
     const netAdvRem = Math.max(0, baseAdvVal - totalAdvDeductedVal);
 
     const totalMatIssuedVal = rawMaterials.reduce((sum, m) => {
@@ -565,17 +578,20 @@ export default function FarmerPortalPage() {
       return sum + (parsedAmt > 0 ? parsedAmt : calcVal);
     }, 0);
 
-    const totalMatDeductedVal = sortedPurchasesOldest.reduce((sum, p) => {
+    const purchasesMatVal = sortedPurchasesOldest.reduce((sum, p) => {
       let mat = Number(p.materialDeducted || 0);
       if (!mat && p.storageLocation) {
         const m = String(p.storageLocation).match(/MTL=(\d+)/);
         if (m) mat = Number(m[1]);
       }
       return sum + mat;
-    }, 0) + rawPayments.reduce((sum: number, pay: any) => {
-      if (pay.purchaseId && sortedPurchasesOldest.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId) && (Number(p.materialDeducted || 0) > 0 || String(p.storageLocation || '').includes('MTL=')))) {
-        return sum;
-      }
+    }, 0);
+
+    const unlinkedPayMatVal = rawPayments.reduce((sum: number, pay: any) => {
+      const isLinked = pay.purchaseId && sortedPurchasesOldest.some((p: any) => 
+        (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
+      );
+      if (isLinked) return sum;
       let mat = Number(pay.materialDeducted || 0);
       if (!mat && pay.notes) {
         const m = String(pay.notes).match(/MTL=(\d+)/);
@@ -584,8 +600,12 @@ export default function FarmerPortalPage() {
       return sum + mat;
     }, 0);
 
+    const totalMatDeductedVal = totalMatIssuedVal > 0 
+      ? Math.min(totalMatIssuedVal, purchasesMatVal + unlinkedPayMatVal)
+      : (purchasesMatVal + unlinkedPayMatVal);
     const netMatRem = Math.max(0, totalMatIssuedVal - totalMatDeductedVal);
 
+    const netAdvanceAndMatRem = netAdvRem + netMatRem;
     const netOutstandingDisplay = activeBillsDue > 0 
       ? activeBillsDue 
       : (netMatRem > 0 ? netMatRem : (netAdvRem > 0 ? -netAdvRem : 0));
@@ -646,17 +666,21 @@ export default function FarmerPortalPage() {
     p.isAdvance
   );
   const totalAdvGiven = advancePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-  const totalAdvDeducted = rawPurchases.reduce((sum, p) => {
+
+  const purchasesAdvDeducted = rawPurchases.reduce((sum, p) => {
     let adv = Number(p.advanceApplied || p.advanceDeducted || 0);
     if (!adv && p.storageLocation) {
       const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
       if (m) adv = Number(m[1]);
     }
     return sum + adv;
-  }, 0) + rawPayments.reduce((sum, pay) => {
-    if (pay.purchaseId && rawPurchases.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId) && (Number(p.advanceApplied || 0) > 0 || String(p.storageLocation || '').includes('DED:ADV')))) {
-      return sum;
-    }
+  }, 0);
+
+  const unlinkedPaymentsAdvDeducted = rawPayments.reduce((sum, pay) => {
+    const isLinked = pay.purchaseId && rawPurchases.some((p: any) => 
+      (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
+    );
+    if (isLinked) return sum;
     let adv = Number(pay.advanceDeducted || 0);
     if (!adv && pay.notes) {
       const m = String(pay.notes).match(/DED:ADV=(\d+)/);
@@ -664,7 +688,10 @@ export default function FarmerPortalPage() {
     }
     return sum + adv;
   }, 0);
+
   const baseAdvTotal = totalAdvGiven > 0 ? totalAdvGiven : Number(farmer?.advanceBalance || 0);
+  const rawAdvDeducted = purchasesAdvDeducted + unlinkedPaymentsAdvDeducted;
+  const totalAdvDeducted = baseAdvTotal > 0 ? Math.min(baseAdvTotal, rawAdvDeducted) : rawAdvDeducted;
   const remainingAdvance = Math.max(0, baseAdvTotal - totalAdvDeducted);
 
   const totalMatIssued = rawMaterials.reduce((sum, m) => {
@@ -676,17 +703,20 @@ export default function FarmerPortalPage() {
     return sum + (parsedAmt > 0 ? parsedAmt : calcVal);
   }, 0);
 
-  const totalMatDeducted = rawPurchases.reduce((sum, p) => {
+  const purchasesMatDeducted = rawPurchases.reduce((sum, p) => {
     let mat = Number(p.materialDeducted || 0);
     if (!mat && p.storageLocation) {
       const m = String(p.storageLocation).match(/MTL=(\d+)/);
       if (m) mat = Number(m[1]);
     }
     return sum + mat;
-  }, 0) + rawPayments.reduce((sum, pay) => {
-    if (pay.purchaseId && rawPurchases.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId) && (Number(p.materialDeducted || 0) > 0 || String(p.storageLocation || '').includes('MTL=')))) {
-      return sum;
-    }
+  }, 0);
+
+  const unlinkedPaymentsMatDeducted = rawPayments.reduce((sum, pay) => {
+    const isLinked = pay.purchaseId && rawPurchases.some((p: any) => 
+      (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
+    );
+    if (isLinked) return sum;
     let mat = Number(pay.materialDeducted || 0);
     if (!mat && pay.notes) {
       const m = String(pay.notes).match(/MTL=(\d+)/);
@@ -695,7 +725,10 @@ export default function FarmerPortalPage() {
     return sum + mat;
   }, 0);
 
+  const rawMatDeducted = purchasesMatDeducted + unlinkedPaymentsMatDeducted;
+  const totalMatDeducted = totalMatIssued > 0 ? Math.min(totalMatIssued, rawMatDeducted) : rawMatDeducted;
   const remainingMatDue = Math.max(0, totalMatIssued - totalMatDeducted);
+
   const billPayouts = rawPayments.filter((p: any) => !advancePayments.some((adv: any) => adv.id === p.id));
   const totalBillPayouts = billPayouts.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 

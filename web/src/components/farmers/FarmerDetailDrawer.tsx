@@ -175,7 +175,14 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
             const matMatch = String(x.storageLocation).match(/MTL=(\d+)/);
             if (matMatch && !matDeducted) matDeducted = Number(matMatch[1]);
           }
-          const totalBillDeductions = advDeducted + matDeducted;
+
+          let billDedDesc = '';
+          if (advDeducted > 0 || matDeducted > 0) {
+            const dedParts: string[] = [];
+            if (advDeducted > 0) dedParts.push('उचल वजा: ₹' + advDeducted.toLocaleString('en-IN'));
+            if (matDeducted > 0) dedParts.push('साहित्य वजा: ₹' + matDeducted.toLocaleString('en-IN'));
+            billDedDesc = ' [' + dedParts.join(', ') + ']';
+          }
 
           // Produce Credit
           allItems.push({
@@ -184,33 +191,13 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
              orderIdx: ++orderIdx,
              refNo: x.purchaseNo || x.id,
              type: 'PURCHASE',
-             description: x.crop || 'शेतमाल खरेदी (Produce Bill)',
-             weightOrQty: `${x.weight || itemWeight} @ ${x.rate || itemRate}`,
+             description: (x.crop || 'शेतमाल खरेदी (Produce Bill)') + billDedDesc,
+             weightOrQty: (x.weight || itemWeight) + ' @ ' + (x.rate || itemRate),
              debitVal: 0,
              creditVal: amt,
              notes: x.notes,
              raw: { ...x, amount: amt, totalAmount: amt }
           });
-
-          // Bill Deduction Debit
-          if (totalBillDeductions > 0) {
-            const dedNotes: string[] = [];
-            if (advDeducted > 0) dedNotes.push(`उचल वजावट: ₹${advDeducted.toLocaleString('en-IN')}`);
-            if (matDeducted > 0) dedNotes.push(`साहित्य वजावट: ₹${matDeducted.toLocaleString('en-IN')}`);
-            allItems.push({
-               dateStr: formatDate(x.date || x.purchaseDate || x.createdAt),
-               timestamp: getPreciseTimestamp(x) + 1,
-               orderIdx: ++orderIdx,
-               refNo: `${x.purchaseNo || x.id}-DED`,
-               type: 'DEDUCTION',
-               description: `बिलातून कपात (${dedNotes.join(', ')})`,
-               weightOrQty: '-',
-               debitVal: totalBillDeductions,
-               creditVal: 0,
-               notes: `Deduction applied on bill ${x.purchaseNo || x.id}`,
-               raw: { ...x, deductionAmount: totalBillDeductions }
-            });
-          }
         });
         
         fpay.forEach((x: any) => {
@@ -221,24 +208,31 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                             String(x.notes || '').toLowerCase().includes('advance') || 
                             x.isAdvance;
 
-          // Only add bill disbursals to the billing passbook (advances are accounted via bill deductions or standalone when no bills)
-          if (!isAdvance || fp.length === 0) {
-            allItems.push({
-               dateStr: formatDate(x.date || x.paymentDate || x.createdAt),
-               timestamp: getPreciseTimestamp(x),
-               orderIdx: ++orderIdx,
-               refNo: x.paymentNo || x.id,
-               type: 'PAYMENT',
-               description: isAdvance ? `रोख उचल (Advance Payout)` : `पेमेंट भरणा (${x.method || x.paymentMode || 'Cash'})`,
-               weightOrQty: '-',
-               debitVal: amt,
-               creditVal: 0,
-               notes: x.notes || x.method,
-               raw: x
-            });
-
-// Deductions are already debited on the purchase bills (PB-...-DED)
+          let dedDesc = '';
+          const advDed = Number(x.advanceDeducted || 0) || Number(String(x.notes || '').match(/DED:ADV=(\d+)/)?.[1] || 0);
+          const matDed = Number(x.materialDeducted || 0) || Number(String(x.notes || '').match(/MTL=(\d+)/)?.[1] || 0);
+          if (advDed > 0 || matDed > 0) {
+            const parts: string[] = [];
+            if (advDed > 0) parts.push('उचल वजा: ₹' + advDed.toLocaleString('en-IN'));
+            if (matDed > 0) parts.push('साहित्य वजा: ₹' + matDed.toLocaleString('en-IN'));
+            dedDesc = ' [' + parts.join(', ') + ']';
           }
+
+          allItems.push({
+             dateStr: formatDate(x.date || x.paymentDate || x.createdAt),
+             timestamp: getPreciseTimestamp(x),
+             orderIdx: ++orderIdx,
+             refNo: x.paymentNo || x.id,
+             type: isAdvance ? 'ADVANCE' : 'PAYMENT',
+             description: isAdvance 
+               ? ('रोख उचल (Advance Payout - ' + (x.method || x.paymentMode || 'Cash') + ')') 
+               : ('पेमेंट भरणा (' + (x.method || x.paymentMode || 'Cash') + ')' + dedDesc),
+             weightOrQty: '-',
+             debitVal: amt,
+             creditVal: 0,
+             notes: x.notes || x.method,
+             raw: x
+          });
         });
 
         fmat.forEach((x: any) => {
@@ -250,24 +244,63 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           const amt = parsedAmt > 0 ? parsedAmt : calcVal;
           totalMaterial += amt;
 
-          // When no purchase bills exist yet, show raw material issue in passbook
-          if (fp.length === 0) {
-            allItems.push({
-               dateStr: formatDate(x.date || x.createdAt),
-               timestamp: getPreciseTimestamp(x),
-               orderIdx: ++orderIdx,
-               refNo: x.id,
-               type: 'MATERIAL',
-               description: `साहित्य वाटप: ${x.itemName}`,
-               weightOrQty: `${qty} ${x.unit || 'QTY'} @ ₹${price}`,
-               debitVal: amt,
-               creditVal: 0,
-               notes: x.notes,
-               raw: { ...x, quantity: qty, unitPrice: price, totalAmount: amt, totalPrice: amt }
-            });
-          }
+          allItems.push({
+             dateStr: formatDate(x.date || x.createdAt),
+             timestamp: getPreciseTimestamp(x),
+             orderIdx: ++orderIdx,
+             refNo: x.id,
+             type: 'MATERIAL',
+             description: 'साहित्य वाटप: ' + (x.itemName || 'Agricultural Input'),
+             weightOrQty: qty + ' ' + (x.unit || 'QTY') + ' @ ₹' + price,
+             debitVal: amt,
+             creditVal: 0,
+             notes: x.notes,
+             raw: { ...x, quantity: qty, unitPrice: price, totalAmount: amt, totalPrice: amt }
+          });
         });
-        
+
+        const hasAdvanceRecords = fpay.some((x: any) => 
+          x.paymentType === 'ADVANCE' || 
+          x.paymentType === 'ADVANCE_PAYOUT' || 
+          String(x.notes || '').toLowerCase().includes('advance') || 
+          x.isAdvance
+        );
+        const hasMaterialRecords = fmat.length > 0;
+
+        // Legacy fallback: If bill has deductions but NO initial advance/material was ever recorded as an issue entry,
+        // add the deduction debit so balance remains historically consistent
+        if (!hasAdvanceRecords || !hasMaterialRecords) {
+          fp.forEach((x: any) => {
+            let advDeducted = Number(x.advanceApplied || 0);
+            let matDeducted = Number(x.materialDeducted || 0);
+            if ((!advDeducted || !matDeducted) && x.storageLocation) {
+              const advMatch = String(x.storageLocation).match(/DED:ADV=(\d+)/);
+              if (advMatch && !advDeducted) advDeducted = Number(advMatch[1]);
+              const matMatch = String(x.storageLocation).match(/MTL=(\d+)/);
+              if (matMatch && !matDeducted) matDeducted = Number(matMatch[1]);
+            }
+            const orphanDeductions = (!hasAdvanceRecords ? advDeducted : 0) + (!hasMaterialRecords ? matDeducted : 0);
+            if (orphanDeductions > 0) {
+              const dedNotes: string[] = [];
+              if (!hasAdvanceRecords && advDeducted > 0) dedNotes.push('उचल वजावट: ₹' + advDeducted.toLocaleString('en-IN'));
+              if (!hasMaterialRecords && matDeducted > 0) dedNotes.push('साहित्य वजावट: ₹' + matDeducted.toLocaleString('en-IN'));
+              allItems.push({
+                 dateStr: formatDate(x.date || x.purchaseDate || x.createdAt),
+                 timestamp: getPreciseTimestamp(x) + 1,
+                 orderIdx: ++orderIdx,
+                 refNo: (x.purchaseNo || x.id) + '-DED',
+                 type: 'DEDUCTION',
+                 description: 'बिलातून कपात (' + dedNotes.join(', ') + ')',
+                 weightOrQty: '-',
+                 debitVal: orphanDeductions,
+                 creditVal: 0,
+                 notes: 'Deduction applied on bill ' + (x.purchaseNo || x.id),
+                 raw: { ...x, deductionAmount: orphanDeductions }
+              });
+            }
+          });
+        }
+
         // Exact Time-Sequence Chronological Sorting: Sort by exact event timestamp
         allItems.sort((a, b) => {
           if (a.timestamp !== b.timestamp) {
@@ -350,17 +383,20 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
         }, 0);
 
         // Advance deductions & remaining advance calculation
-        const totalAdvDeductedVal = sortedPurchasesOldest.reduce((sum, p) => {
+        const purchasesAdvVal = sortedPurchasesOldest.reduce((sum, p) => {
           let adv = Number(p.advanceApplied || 0);
           if (!adv && p.storageLocation) {
             const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
             if (m) adv = Number(m[1]);
           }
           return sum + adv;
-        }, 0) + fpay.reduce((sum: number, pay: any) => {
-          if (pay.purchaseId && sortedPurchasesOldest.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId) && (Number(p.advanceApplied || 0) > 0 || String(p.storageLocation || '').includes('DED:ADV')))) {
-            return sum;
-          }
+        }, 0);
+
+        const unlinkedPayAdvVal = fpay.reduce((sum: number, pay: any) => {
+          const isLinked = pay.purchaseId && sortedPurchasesOldest.some((p: any) => 
+            (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
+          );
+          if (isLinked) return sum;
           let adv = Number(pay.advanceDeducted || 0);
           if (!adv && pay.notes) {
             const m = String(pay.notes).match(/DED:ADV=(\d+)/);
@@ -368,6 +404,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           }
           return sum + adv;
         }, 0);
+
         const advPaymentsList = fpay.filter((p: any) => 
           p.paymentType === 'ADVANCE' || 
           p.paymentType === 'ADVANCE_PAYOUT' || 
@@ -375,11 +412,42 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           p.isAdvance
         );
         const totalAdvGivenVal = advPaymentsList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        const totalAdvDeductedVal = totalAdvGivenVal > 0 
+          ? Math.min(totalAdvGivenVal, purchasesAdvVal + unlinkedPayAdvVal)
+          : (purchasesAdvVal + unlinkedPayAdvVal);
         const netAdvRem = Math.max(0, totalAdvGivenVal - totalAdvDeductedVal);
 
+        const purchasesMatVal = sortedPurchasesOldest.reduce((sum, p) => {
+          let mat = Number(p.materialDeducted || 0);
+          if (!mat && p.storageLocation) {
+            const m = String(p.storageLocation).match(/MTL=(\d+)/);
+            if (m) mat = Number(m[1]);
+          }
+          return sum + mat;
+        }, 0);
+
+        const unlinkedPayMatVal = fpay.reduce((sum: number, pay: any) => {
+          const isLinked = pay.purchaseId && sortedPurchasesOldest.some((p: any) => 
+            (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
+          );
+          if (isLinked) return sum;
+          let mat = Number(pay.materialDeducted || 0);
+          if (!mat && pay.notes) {
+            const m = String(pay.notes).match(/MTL=(\d+)/);
+            if (m) mat = Number(m[1]);
+          }
+          return sum + mat;
+        }, 0);
+
+        const totalMatDeductedVal = totalMaterial > 0 
+          ? Math.min(totalMaterial, purchasesMatVal + unlinkedPayMatVal)
+          : (purchasesMatVal + unlinkedPayMatVal);
+        const netMatRem = Math.max(0, totalMaterial - totalMatDeductedVal);
+
+        const netAdvanceAndMatRem = netAdvRem + netMatRem;
         const netOutstandingDisplay = activeBillsDue > 0 
           ? activeBillsDue 
-          : (netAdvRem > 0 ? -netAdvRem : 0);
+          : (netAdvanceAndMatRem > 0 ? -netAdvanceAndMatRem : 0);
 
         setLifetimeTotals({ 
           purchase: totalPurchase, 
@@ -450,17 +518,21 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     p.isAdvance
   );
   const totalAdvGiven = advancePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-  const totalAdvDeducted = purchases.reduce((sum, p) => {
+
+  const purchasesAdvDeducted = purchases.reduce((sum, p) => {
     let adv = Number(p.advanceApplied || p.advanceDeducted || 0);
     if (!adv && p.storageLocation) {
       const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
       if (m) adv = Number(m[1]);
     }
     return sum + adv;
-  }, 0) + payments.reduce((sum, pay) => {
-    if (pay.purchaseId && purchases.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId) && (Number(p.advanceApplied || 0) > 0 || String(p.storageLocation || '').includes('DED:ADV')))) {
-      return sum;
-    }
+  }, 0);
+
+  const unlinkedPaymentsAdvDeducted = payments.reduce((sum, pay) => {
+    const isLinked = pay.purchaseId && purchases.some((p: any) => 
+      (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
+    );
+    if (isLinked) return sum;
     let adv = Number(pay.advanceDeducted || 0);
     if (!adv && pay.notes) {
       const m = String(pay.notes).match(/DED:ADV=(\d+)/);
@@ -468,6 +540,9 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     }
     return sum + adv;
   }, 0);
+
+  const rawAdvDeducted = purchasesAdvDeducted + unlinkedPaymentsAdvDeducted;
+  const totalAdvDeducted = totalAdvGiven > 0 ? Math.min(totalAdvGiven, rawAdvDeducted) : rawAdvDeducted;
   const remainingAdvance = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : Number(farmer?.advanceBalance || 0));
 
   const totalMatIssued = materials.reduce((sum, m) => {
@@ -479,18 +554,20 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     return sum + (parsedAmt > 0 ? parsedAmt : calcVal);
   }, 0);
 
-  // Deductions on Bills & Payments: Both purchase bills and payment-level deductions
-  const totalMatDeducted = purchases.reduce((sum, p) => {
+  const purchasesMatDeducted = purchases.reduce((sum, p) => {
     let mat = Number(p.materialDeducted || 0);
     if (!mat && p.storageLocation) {
       const m = String(p.storageLocation).match(/MTL=(\d+)/);
       if (m) mat = Number(m[1]);
     }
     return sum + mat;
-  }, 0) + payments.reduce((sum, pay) => {
-    if (pay.purchaseId && purchases.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId) && (Number(p.materialDeducted || 0) > 0 || String(p.storageLocation || '').includes('MTL=')))) {
-      return sum;
-    }
+  }, 0);
+
+  const unlinkedPaymentsMatDeducted = payments.reduce((sum, pay) => {
+    const isLinked = pay.purchaseId && purchases.some((p: any) => 
+      (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
+    );
+    if (isLinked) return sum;
     let mat = Number(pay.materialDeducted || 0);
     if (!mat && pay.notes) {
       const m = String(pay.notes).match(/MTL=(\d+)/);
@@ -499,6 +576,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     return sum + mat;
   }, 0);
 
+  const rawMatDeducted = purchasesMatDeducted + unlinkedPaymentsMatDeducted;
+  const totalMatDeducted = totalMatIssued > 0 ? Math.min(totalMatIssued, rawMatDeducted) : rawMatDeducted;
   const remainingMatDue = Math.max(0, totalMatIssued - totalMatDeducted);
 
   const billPayouts = payments.filter((p: any) => !advancePayments.some((adv: any) => adv.id === p.id));
