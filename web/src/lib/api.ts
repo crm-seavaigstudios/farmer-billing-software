@@ -1250,7 +1250,7 @@ export const apiUpdatePurchase = async (purchaseId: string, updateData: any) => 
 
   try {
     // 1. Update Purchase in Supabase
-    await supabase.from('Purchase').update({
+    const purchaseUpdateObj: any = {
       totalWeight: parsedWeight,
       totalAmount: parsedAmount,
       amount: parsedAmount,
@@ -1258,7 +1258,11 @@ export const apiUpdatePurchase = async (purchaseId: string, updateData: any) => 
       paidAmount: parsedPaid,
       paymentStatus: updateData.paymentStatus || (parsedDue <= 0 ? 'PAID' : parsedPaid > 0 ? 'PARTIAL' : 'UNPAID'),
       storageLocation: updateData.storageLocation || oldPurchase?.storageLocation || ''
-    }).or(`id.eq.${targetId},purchaseNo.eq.${purchaseId}`).throwOnError();
+    };
+    if (updateData.advanceApplied !== undefined) {
+      purchaseUpdateObj.advanceApplied = Number(updateData.advanceApplied || 0);
+    }
+    await supabase.from('Purchase').update(purchaseUpdateObj).or(`id.eq.${targetId},purchaseNo.eq.${purchaseId}`).throwOnError();
 
     // 2. Update or Upsert PurchaseItem in Supabase
     if (updateData.crop || updateData.cropName || parsedWeight > 0) {
@@ -2567,6 +2571,9 @@ export const apiCreatePayment = async (payData: any) => {
       paymentNo,
       farmerId: dbFarmerId,
       amount: cleanAmount,
+      advanceDeducted: advDeducted,
+      materialDeducted: matDeducted,
+      totalSettled: totalSettled,
       paymentMode: payData.paymentMode || payData.method || 'CASH',
       paymentDate: payData.paymentDate || payData.date || new Date().toISOString().slice(0, 10),
       notes: notesWithTags,
@@ -2582,6 +2589,12 @@ export const apiCreatePayment = async (payData: any) => {
       success = true;
     } catch (e: any) {
       const errStr = String(e?.message || e?.details || e || '');
+      // If dedicated columns do not exist yet in schema, strip them and rely on notes
+      if (errStr.includes('advanceDeducted') || errStr.includes('materialDeducted') || errStr.includes('totalSettled')) {
+        delete validPaymentDb.advanceDeducted;
+        delete validPaymentDb.materialDeducted;
+        delete validPaymentDb.totalSettled;
+      }
       // If purchaseId foreign key violates, strip it immediately and retry
       if (errStr.includes('purchaseId') || errStr.includes('Payment_purchaseId_fkey')) {
         currentPurchaseId = null;
