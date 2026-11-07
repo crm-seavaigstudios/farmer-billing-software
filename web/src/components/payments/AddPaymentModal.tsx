@@ -146,8 +146,28 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
           }
         });
 
-        const totalAdvDeductedOnBills = fp.reduce((sum: number, p: any) => sum + (Number(p.advanceApplied || p.advanceDeducted || 0)), 0) +
-          fpay.reduce((sum: number, pay: any) => sum + (Number(pay.advanceDeducted || 0)), 0);
+        const purchasesAdvDeducted = fp.reduce((sum: number, p: any) => {
+          let adv = Number(p.advanceApplied || p.advanceDeducted || 0);
+          if (!adv && p.storageLocation) {
+            const m = String(p.storageLocation).match(/DED:ADV=(\d+)/);
+            if (m) adv = Number(m[1]);
+          }
+          return sum + adv;
+        }, 0);
+
+        const paymentsAdvDeducted = fpay.reduce((sum: number, pay: any) => {
+          let adv = Number(pay.advanceDeducted || 0);
+          if (!adv && pay.notes) {
+            const m = String(pay.notes).match(/DED:ADV=(\d+)/);
+            if (m) adv = Number(m[1]);
+          }
+          return sum + adv;
+        }, 0);
+
+        const actualAdvDeducted = Math.max(purchasesAdvDeducted, paymentsAdvDeducted);
+        const totalAdvDeductedOnBills = advanceVouchersTotal > 0 
+          ? Math.min(advanceVouchersTotal, actualAdvDeducted) 
+          : actualAdvDeducted;
         const remainingAdvanceVouchers = Math.max(0, advanceVouchersTotal - totalAdvDeductedOnBills);
         const dbFarmerAdvance = Math.max(0, Number(foundFarmer?.advanceBalance || 0));
         const overpaymentAdvance = Math.max(0, totPaid - totPurchases);
@@ -172,8 +192,20 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
           return sum + mat;
         }, 0);
 
-        const totalMatDeductedInPayments = fpay.reduce((sum: number, pay: any) => sum + (Number(pay.materialDeducted || 0)), 0);
-        const computedMaterialBalance = Math.max(0, totalMatIssued - totalMatDeductedInBills - totalMatDeductedInPayments);
+        const totalMatDeductedInPayments = fpay.reduce((sum: number, pay: any) => {
+          let mat = Number(pay.materialDeducted || 0);
+          if (!mat && pay.notes) {
+            const m = String(pay.notes).match(/MTL=(\d+)/);
+            if (m) mat = Number(m[1]);
+          }
+          return sum + mat;
+        }, 0);
+
+        const actualMatDeducted = Math.max(totalMatDeductedInBills, totalMatDeductedInPayments);
+        const totalMatDeducted = totalMatIssued > 0 
+          ? Math.min(totalMatIssued, actualMatDeducted) 
+          : actualMatDeducted;
+        const computedMaterialBalance = Math.max(0, totalMatIssued - totalMatDeducted);
         setLiveMaterialBalance(computedMaterialBalance);
 
         // Auto pre-fill amount if not explicitly provided
