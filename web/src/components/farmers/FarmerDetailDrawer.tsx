@@ -237,32 +237,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                raw: x
             });
 
-            // Standalone payment deduction (if not already counted on purchase bill)
-            const payAdv = Number(x.advanceDeducted || 0) || Number(String(x.notes || '').match(/DED:ADV=(\d+)/)?.[1] || 0);
-            const payMat = Number(x.materialDeducted || 0) || Number(String(x.notes || '').match(/MTL=(\d+)/)?.[1] || 0);
-            const isEmbeddedInBill = x.purchaseId && fp.some((p: any) => 
-              (p.id === x.purchaseId || p.purchaseNo === x.purchaseId) && 
-              (Number(p.advanceApplied || 0) > 0 || String(p.storageLocation || '').includes('DED:ADV') || String(p.storageLocation || '').includes('MTL='))
-            );
-
-            if (!isEmbeddedInBill && (payAdv > 0 || payMat > 0)) {
-              const dedNotes: string[] = [];
-              if (payAdv > 0) dedNotes.push(`उचल वजावट: ₹${payAdv.toLocaleString('en-IN')}`);
-              if (payMat > 0) dedNotes.push(`साहित्य वजावट: ₹${payMat.toLocaleString('en-IN')}`);
-              allItems.push({
-                 dateStr: formatDate(x.date || x.paymentDate || x.createdAt),
-                 timestamp: getPreciseTimestamp(x) + 1,
-                 orderIdx: ++orderIdx,
-                 refNo: `${x.paymentNo || x.id}-DED`,
-                 type: 'DEDUCTION',
-                 description: `पेमेंटमधील कपात (${dedNotes.join(', ')})`,
-                 weightOrQty: '-',
-                 debitVal: payAdv + payMat,
-                 creditVal: 0,
-                 notes: `Deduction applied on payment ${x.paymentNo || x.id}`,
-                 raw: x
-              });
-            }
+// Deductions are already debited on the purchase bills (PB-...-DED)
           }
         });
 

@@ -2629,6 +2629,7 @@ export const apiCreatePayment = async (payData: any) => {
     id: paymentNo,
     dbId: globalId,
     paymentNo,
+    purchaseId: payData.purchaseId || currentPurchaseId || undefined,
     farmerId: payData.farmerId,
     farmerName: payData.farmerName || 'Farmer',
     phone: payData.phone || '',
