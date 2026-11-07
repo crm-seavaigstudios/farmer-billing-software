@@ -392,11 +392,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           return sum + adv;
         }, 0);
 
-        const unlinkedPayAdvVal = fpay.reduce((sum: number, pay: any) => {
-          const isLinked = pay.purchaseId && sortedPurchasesOldest.some((p: any) => 
-            (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
-          );
-          if (isLinked) return sum;
+        const payAdvVal = fpay.reduce((sum: number, pay: any) => {
           let adv = Number(pay.advanceDeducted || 0);
           if (!adv && pay.notes) {
             const m = String(pay.notes).match(/DED:ADV=(\d+)/);
@@ -412,9 +408,10 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           p.isAdvance
         );
         const totalAdvGivenVal = advPaymentsList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        const actualAdvVal = Math.max(purchasesAdvVal, payAdvVal);
         const totalAdvDeductedVal = totalAdvGivenVal > 0 
-          ? Math.min(totalAdvGivenVal, purchasesAdvVal + unlinkedPayAdvVal)
-          : (purchasesAdvVal + unlinkedPayAdvVal);
+          ? Math.min(totalAdvGivenVal, actualAdvVal)
+          : actualAdvVal;
         const netAdvRem = Math.max(0, totalAdvGivenVal - totalAdvDeductedVal);
 
         const purchasesMatVal = sortedPurchasesOldest.reduce((sum, p) => {
@@ -426,11 +423,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           return sum + mat;
         }, 0);
 
-        const unlinkedPayMatVal = fpay.reduce((sum: number, pay: any) => {
-          const isLinked = pay.purchaseId && sortedPurchasesOldest.some((p: any) => 
-            (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
-          );
-          if (isLinked) return sum;
+        const payMatVal = fpay.reduce((sum: number, pay: any) => {
           let mat = Number(pay.materialDeducted || 0);
           if (!mat && pay.notes) {
             const m = String(pay.notes).match(/MTL=(\d+)/);
@@ -439,9 +432,10 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
           return sum + mat;
         }, 0);
 
+        const actualMatVal = Math.max(purchasesMatVal, payMatVal);
         const totalMatDeductedVal = totalMaterial > 0 
-          ? Math.min(totalMaterial, purchasesMatVal + unlinkedPayMatVal)
-          : (purchasesMatVal + unlinkedPayMatVal);
+          ? Math.min(totalMaterial, actualMatVal)
+          : actualMatVal;
         const netMatRem = Math.max(0, totalMaterial - totalMatDeductedVal);
 
         const netAdvanceAndMatRem = netAdvRem + netMatRem;
@@ -528,11 +522,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     return sum + adv;
   }, 0);
 
-  const unlinkedPaymentsAdvDeducted = payments.reduce((sum, pay) => {
-    const isLinked = pay.purchaseId && purchases.some((p: any) => 
-      (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
-    );
-    if (isLinked) return sum;
+  const paymentsAdvDeducted = payments.reduce((sum, pay) => {
     let adv = Number(pay.advanceDeducted || 0);
     if (!adv && pay.notes) {
       const m = String(pay.notes).match(/DED:ADV=(\d+)/);
@@ -541,8 +531,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     return sum + adv;
   }, 0);
 
-  const rawAdvDeducted = purchasesAdvDeducted + unlinkedPaymentsAdvDeducted;
-  const totalAdvDeducted = totalAdvGiven > 0 ? Math.min(totalAdvGiven, rawAdvDeducted) : rawAdvDeducted;
+  const actualAdvDeducted = Math.max(purchasesAdvDeducted, paymentsAdvDeducted);
+  const totalAdvDeducted = totalAdvGiven > 0 ? Math.min(totalAdvGiven, actualAdvDeducted) : actualAdvDeducted;
   const remainingAdvance = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : Number(farmer?.advanceBalance || 0));
 
   const totalMatIssued = materials.reduce((sum, m) => {
@@ -563,11 +553,7 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     return sum + mat;
   }, 0);
 
-  const unlinkedPaymentsMatDeducted = payments.reduce((sum, pay) => {
-    const isLinked = pay.purchaseId && purchases.some((p: any) => 
-      (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
-    );
-    if (isLinked) return sum;
+  const paymentsMatDeducted = payments.reduce((sum, pay) => {
     let mat = Number(pay.materialDeducted || 0);
     if (!mat && pay.notes) {
       const m = String(pay.notes).match(/MTL=(\d+)/);
@@ -576,8 +562,8 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     return sum + mat;
   }, 0);
 
-  const rawMatDeducted = purchasesMatDeducted + unlinkedPaymentsMatDeducted;
-  const totalMatDeducted = totalMatIssued > 0 ? Math.min(totalMatIssued, rawMatDeducted) : rawMatDeducted;
+  const actualMatDeducted = Math.max(purchasesMatDeducted, paymentsMatDeducted);
+  const totalMatDeducted = totalMatIssued > 0 ? Math.min(totalMatIssued, actualMatDeducted) : actualMatDeducted;
   const remainingMatDue = Math.max(0, totalMatIssued - totalMatDeducted);
 
   const billPayouts = payments.filter((p: any) => !advancePayments.some((adv: any) => adv.id === p.id));

@@ -543,11 +543,7 @@ export default function FarmerPortalPage() {
       return sum + adv;
     }, 0);
 
-    const unlinkedPayAdvVal = rawPayments.reduce((sum: number, pay: any) => {
-      const isLinked = pay.purchaseId && sortedPurchasesOldest.some((p: any) => 
-        (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
-      );
-      if (isLinked) return sum;
+    const payAdvVal = rawPayments.reduce((sum: number, pay: any) => {
       let adv = Number(pay.advanceDeducted || 0);
       if (!adv && pay.notes) {
         const m = String(pay.notes).match(/DED:ADV=(\d+)/);
@@ -564,9 +560,10 @@ export default function FarmerPortalPage() {
     );
     const totalAdvGivenVal = advPaymentsList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const baseAdvVal = totalAdvGivenVal > 0 ? totalAdvGivenVal : Number(farmer?.advanceBalance || 0);
+    const actualAdvVal = Math.max(purchasesAdvVal, payAdvVal);
     const totalAdvDeductedVal = baseAdvVal > 0 
-      ? Math.min(baseAdvVal, purchasesAdvVal + unlinkedPayAdvVal)
-      : (purchasesAdvVal + unlinkedPayAdvVal);
+      ? Math.min(baseAdvVal, actualAdvVal)
+      : actualAdvVal;
     const netAdvRem = Math.max(0, baseAdvVal - totalAdvDeductedVal);
 
     const totalMatIssuedVal = rawMaterials.reduce((sum, m) => {
@@ -587,11 +584,7 @@ export default function FarmerPortalPage() {
       return sum + mat;
     }, 0);
 
-    const unlinkedPayMatVal = rawPayments.reduce((sum: number, pay: any) => {
-      const isLinked = pay.purchaseId && sortedPurchasesOldest.some((p: any) => 
-        (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
-      );
-      if (isLinked) return sum;
+    const payMatVal = rawPayments.reduce((sum: number, pay: any) => {
       let mat = Number(pay.materialDeducted || 0);
       if (!mat && pay.notes) {
         const m = String(pay.notes).match(/MTL=(\d+)/);
@@ -600,9 +593,10 @@ export default function FarmerPortalPage() {
       return sum + mat;
     }, 0);
 
+    const actualMatVal = Math.max(purchasesMatVal, payMatVal);
     const totalMatDeductedVal = totalMatIssuedVal > 0 
-      ? Math.min(totalMatIssuedVal, purchasesMatVal + unlinkedPayMatVal)
-      : (purchasesMatVal + unlinkedPayMatVal);
+      ? Math.min(totalMatIssuedVal, actualMatVal)
+      : actualMatVal;
     const netMatRem = Math.max(0, totalMatIssuedVal - totalMatDeductedVal);
 
     const netAdvanceAndMatRem = netAdvRem + netMatRem;
@@ -676,11 +670,7 @@ export default function FarmerPortalPage() {
     return sum + adv;
   }, 0);
 
-  const unlinkedPaymentsAdvDeducted = rawPayments.reduce((sum, pay) => {
-    const isLinked = pay.purchaseId && rawPurchases.some((p: any) => 
-      (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
-    );
-    if (isLinked) return sum;
+  const paymentsAdvDeducted = rawPayments.reduce((sum, pay) => {
     let adv = Number(pay.advanceDeducted || 0);
     if (!adv && pay.notes) {
       const m = String(pay.notes).match(/DED:ADV=(\d+)/);
@@ -690,8 +680,8 @@ export default function FarmerPortalPage() {
   }, 0);
 
   const baseAdvTotal = totalAdvGiven > 0 ? totalAdvGiven : Number(farmer?.advanceBalance || 0);
-  const rawAdvDeducted = purchasesAdvDeducted + unlinkedPaymentsAdvDeducted;
-  const totalAdvDeducted = baseAdvTotal > 0 ? Math.min(baseAdvTotal, rawAdvDeducted) : rawAdvDeducted;
+  const actualAdvDeducted = Math.max(purchasesAdvDeducted, paymentsAdvDeducted);
+  const totalAdvDeducted = baseAdvTotal > 0 ? Math.min(baseAdvTotal, actualAdvDeducted) : actualAdvDeducted;
   const remainingAdvance = Math.max(0, baseAdvTotal - totalAdvDeducted);
 
   const totalMatIssued = rawMaterials.reduce((sum, m) => {
@@ -712,11 +702,7 @@ export default function FarmerPortalPage() {
     return sum + mat;
   }, 0);
 
-  const unlinkedPaymentsMatDeducted = rawPayments.reduce((sum, pay) => {
-    const isLinked = pay.purchaseId && rawPurchases.some((p: any) => 
-      (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId)
-    );
-    if (isLinked) return sum;
+  const paymentsMatDeducted = rawPayments.reduce((sum, pay) => {
     let mat = Number(pay.materialDeducted || 0);
     if (!mat && pay.notes) {
       const m = String(pay.notes).match(/MTL=(\d+)/);
@@ -725,8 +711,8 @@ export default function FarmerPortalPage() {
     return sum + mat;
   }, 0);
 
-  const rawMatDeducted = purchasesMatDeducted + unlinkedPaymentsMatDeducted;
-  const totalMatDeducted = totalMatIssued > 0 ? Math.min(totalMatIssued, rawMatDeducted) : rawMatDeducted;
+  const actualMatDeducted = Math.max(purchasesMatDeducted, paymentsMatDeducted);
+  const totalMatDeducted = totalMatIssued > 0 ? Math.min(totalMatIssued, actualMatDeducted) : actualMatDeducted;
   const remainingMatDue = Math.max(0, totalMatIssued - totalMatDeducted);
 
   const billPayouts = rawPayments.filter((p: any) => !advancePayments.some((adv: any) => adv.id === p.id));
