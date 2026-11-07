@@ -2439,6 +2439,14 @@ export const apiGetPayments = async () => {
 
       const mapped = payData.map((p: any) => {
         const farmer = farmers.find((f: any) => f.id === p.farmerId || f.phone === p.farmerId || f.farmerIdCode === p.farmerId);
+        const mAdv = String(p.notes || '').match(/DED:ADV=(\d+)/);
+        const mMat = String(p.notes || '').match(/MTL=(\d+)/);
+        const mSet = String(p.notes || '').match(/SETTLED=(\d+)/);
+        const parsedAdv = Number(p.advanceDeducted || (mAdv ? mAdv[1] : 0));
+        const parsedMat = Number(p.materialDeducted || (mMat ? mMat[1] : 0));
+        const parsedAmount = parseFloat(p.amount || 0) || 0;
+        const parsedSet = Number(p.totalSettled || (mSet ? mSet[1] : (parsedAmount + parsedAdv + parsedMat)));
+
         return {
           ...p,
           id: p.paymentNo || p.id,
@@ -2448,7 +2456,10 @@ export const apiGetPayments = async () => {
           farmerName: p.farmerName || farmer?.name || 'Farmer',
           phone: farmer?.phone || '',
           village: farmer?.village || '',
-          amount: parseFloat(p.amount || 0) || 0,
+          amount: parsedAmount,
+          advanceDeducted: parsedAdv,
+          materialDeducted: parsedMat,
+          totalSettled: parsedSet,
           paymentMode: p.paymentMode || p.method || 'CASH',
           method: p.paymentMode || p.method || 'CASH',
           status: p.status || 'COMPLETED',
@@ -2536,6 +2547,15 @@ export const apiCreatePayment = async (payData: any) => {
     } catch {}
   }
 
+  const advDeducted = Number(payData.advanceDeducted || 0);
+  const matDeducted = Number(payData.materialDeducted || 0);
+  const totalSettled = Number(payData.totalSettled || (cleanAmount + advDeducted + matDeducted));
+
+  let notesWithTags = payData.notes || '';
+  if (advDeducted > 0 || matDeducted > 0 || totalSettled > cleanAmount) {
+    notesWithTags = (notesWithTags + " [DED:ADV=" + advDeducted + ":MTL=" + matDeducted + ":SETTLED=" + totalSettled + "]").trim();
+  }
+
   let attempts = 0;
   let success = false;
   let currentPurchaseId: string | null = dbPurchaseId;
@@ -2549,7 +2569,7 @@ export const apiCreatePayment = async (payData: any) => {
       amount: cleanAmount,
       paymentMode: payData.paymentMode || payData.method || 'CASH',
       paymentDate: payData.paymentDate || payData.date || new Date().toISOString().slice(0, 10),
-      notes: payData.notes || '',
+      notes: notesWithTags,
       tenantId,
       paymentType: payData.paymentType || 'FARMER_PAYOUT',
     };
@@ -2601,12 +2621,15 @@ export const apiCreatePayment = async (payData: any) => {
     phone: payData.phone || '',
     village: payData.village || '',
     amount: cleanAmount,
+    advanceDeducted: advDeducted,
+    materialDeducted: matDeducted,
+    totalSettled: totalSettled,
     paymentMode: payData.paymentMode || payData.method || 'CASH',
     method: payData.paymentMode || payData.method || 'CASH',
     status: 'COMPLETED',
     date: payData.paymentDate || payData.date || new Date().toISOString().slice(0, 10),
     paymentDate: payData.paymentDate || payData.date || new Date().toISOString().slice(0, 10),
-    notes: payData.notes || '',
+    notes: notesWithTags,
     tenantId,
     paymentType: payData.paymentType || 'FARMER_PAYOUT',
   };

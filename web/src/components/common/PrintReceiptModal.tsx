@@ -58,6 +58,10 @@ export type ReceiptData = {
   category?: string;
   unit?: string;
   cropVariety?: string;
+  advanceApplied?: number | string;
+  advanceDeducted?: number | string;
+  materialDeducted?: number | string;
+  totalSettled?: number | string;
   vehicleNo?: string;
   driverName?: string;
   driverPhone?: string;
@@ -664,7 +668,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
               </div>
 
               {(() => {
-                let printAdvDed = Number((data as any).advanceApplied || 0);
+                let printAdvDed = Number((data as any).advanceApplied || (data as any).advanceDeducted || 0);
                 let printMatDed = Number((data as any).materialDeducted || 0);
                 if ((!printAdvDed || !printMatDed) && (data as any).storageLocation) {
                   const mAdv = String((data as any).storageLocation).match(/DED:ADV=(\d+)/);
@@ -672,7 +676,14 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ isOpen, on
                   const mMat = String((data as any).storageLocation).match(/MTL=(\d+)/);
                   if (mMat && !printMatDed) printMatDed = Number(mMat[1]);
                 }
-                const printCashPaid = Math.max(0, numPaidAmt - (printAdvDed + printMatDed));
+                if ((!printAdvDed || !printMatDed) && (data as any).notes) {
+                  const mAdv = String((data as any).notes).match(/DED:ADV=(\d+)/);
+                  if (mAdv && !printAdvDed) printAdvDed = Number(mAdv[1]);
+                  const mMat = String((data as any).notes).match(/MTL=(\d+)/);
+                  if (mMat && !printMatDed) printMatDed = Number(mMat[1]);
+                }
+                const isFarmerPayment = data.type === 'FARMER_PAYMENT';
+                const printCashPaid = isFarmerPayment ? numPaidAmt : Math.max(0, numPaidAmt - (printAdvDed + printMatDed));
 
                 return (
                   <>

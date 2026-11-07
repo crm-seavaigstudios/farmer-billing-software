@@ -346,15 +346,33 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
         if (purchase) {
           const newPaid = (purchase.paidAmount || 0) + totalSettled;
           const newDue = Math.max(0, (purchase.dueAmount || 0) - totalSettled);
+
+          const existingAdv = Number(purchase.advanceApplied || 0) || Number(String(purchase.storageLocation || '').match(/DED:ADV=(\d+)/)?.[1] || 0);
+          const existingMat = Number(purchase.materialDeducted || 0) || Number(String(purchase.storageLocation || '').match(/MTL=(\d+)/)?.[1] || 0);
+          const updatedAdv = existingAdv + advDeducted;
+          const updatedMat = existingMat + matDeducted;
+
+          let updatedLoc = String(purchase.storageLocation || '');
+          updatedLoc = updatedLoc.replace(/\[DED:ADV=\d+(:MTL=\d+)?\]/g, '').replace(/\[DED:ADV=\d+\]/g, '').replace(/\[MTL=\d+\]/g, '').trim();
+          if (updatedAdv > 0 || updatedMat > 0) {
+            updatedLoc = (updatedLoc + " [DED:ADV=" + updatedAdv + ":MTL=" + updatedMat + "]").trim();
+          }
+
           await apiUpdatePurchase(formData.purchaseId, {
             paidAmount: newPaid,
             dueAmount: newDue,
-            paymentStatus: newDue === 0 ? 'PAID' : 'PARTIAL'
+            paymentStatus: newDue === 0 ? 'PAID' : 'PARTIAL',
+            advanceApplied: updatedAdv,
+            materialDeducted: updatedMat,
+            storageLocation: updatedLoc
           });
         }
       } else if (!isAdvancePayout && totalSettled > 0) {
         // Synchronous Multi-Bill Settlement: Clear all pending bills of the farmer sequentially
         let remainingPool = totalSettled;
+        let remainingAdvToAllocate = advDeducted;
+        let remainingMatToAllocate = matDeducted;
+
         const sortedBills = [...farmerPurchases].sort((a: any, b: any) => {
           const tA = new Date(a.createdAt || a.date || 0).getTime();
           const tB = new Date(b.createdAt || b.date || 0).getTime();
@@ -374,10 +392,29 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
             const newStatus = newDue <= 0 ? 'PAID' : 'PARTIAL';
             remainingPool -= settleThisBill;
 
+            const billAdvAlloc = Math.min(settleThisBill, remainingAdvToAllocate);
+            remainingAdvToAllocate -= billAdvAlloc;
+            const billMatAlloc = Math.min(settleThisBill - billAdvAlloc, remainingMatToAllocate);
+            remainingMatToAllocate -= billMatAlloc;
+
+            const existingAdv = Number(bill.advanceApplied || 0) || Number(String(bill.storageLocation || '').match(/DED:ADV=(\d+)/)?.[1] || 0);
+            const existingMat = Number(bill.materialDeducted || 0) || Number(String(bill.storageLocation || '').match(/MTL=(\d+)/)?.[1] || 0);
+            const updatedAdv = existingAdv + billAdvAlloc;
+            const updatedMat = existingMat + billMatAlloc;
+
+            let updatedLoc = String(bill.storageLocation || '');
+            updatedLoc = updatedLoc.replace(/\[DED:ADV=\d+(:MTL=\d+)?\]/g, '').replace(/\[DED:ADV=\d+\]/g, '').replace(/\[MTL=\d+\]/g, '').trim();
+            if (updatedAdv > 0 || updatedMat > 0) {
+              updatedLoc = (updatedLoc + " [DED:ADV=" + updatedAdv + ":MTL=" + updatedMat + "]").trim();
+            }
+
             await apiUpdatePurchase(bill.id || bill.purchaseNo, {
               paidAmount: newPaid,
               dueAmount: newDue,
-              paymentStatus: newStatus
+              paymentStatus: newStatus,
+              advanceApplied: updatedAdv,
+              materialDeducted: updatedMat,
+              storageLocation: updatedLoc
             });
           }
         }

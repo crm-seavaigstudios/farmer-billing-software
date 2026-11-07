@@ -236,6 +236,33 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
                notes: x.notes || x.method,
                raw: x
             });
+
+            // Standalone payment deduction (if not already counted on purchase bill)
+            const payAdv = Number(x.advanceDeducted || 0) || Number(String(x.notes || '').match(/DED:ADV=(\d+)/)?.[1] || 0);
+            const payMat = Number(x.materialDeducted || 0) || Number(String(x.notes || '').match(/MTL=(\d+)/)?.[1] || 0);
+            const isEmbeddedInBill = x.purchaseId && fp.some((p: any) => 
+              (p.id === x.purchaseId || p.purchaseNo === x.purchaseId) && 
+              (Number(p.advanceApplied || 0) > 0 || String(p.storageLocation || '').includes('DED:ADV') || String(p.storageLocation || '').includes('MTL='))
+            );
+
+            if (!isEmbeddedInBill && (payAdv > 0 || payMat > 0)) {
+              const dedNotes: string[] = [];
+              if (payAdv > 0) dedNotes.push(`उचल वजावट: ₹${payAdv.toLocaleString('en-IN')}`);
+              if (payMat > 0) dedNotes.push(`साहित्य वजावट: ₹${payMat.toLocaleString('en-IN')}`);
+              allItems.push({
+                 dateStr: formatDate(x.date || x.paymentDate || x.createdAt),
+                 timestamp: getPreciseTimestamp(x) + 1,
+                 orderIdx: ++orderIdx,
+                 refNo: `${x.paymentNo || x.id}-DED`,
+                 type: 'DEDUCTION',
+                 description: `पेमेंटमधील कपात (${dedNotes.join(', ')})`,
+                 weightOrQty: '-',
+                 debitVal: payAdv + payMat,
+                 creditVal: 0,
+                 notes: `Deduction applied on payment ${x.paymentNo || x.id}`,
+                 raw: x
+              });
+            }
           }
         });
 
@@ -355,6 +382,16 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
             if (m) adv = Number(m[1]);
           }
           return sum + adv;
+        }, 0) + fpay.reduce((sum: number, pay: any) => {
+          if (pay.purchaseId && sortedPurchasesOldest.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId) && (Number(p.advanceApplied || 0) > 0 || String(p.storageLocation || '').includes('DED:ADV')))) {
+            return sum;
+          }
+          let adv = Number(pay.advanceDeducted || 0);
+          if (!adv && pay.notes) {
+            const m = String(pay.notes).match(/DED:ADV=(\d+)/);
+            if (m) adv = Number(m[1]);
+          }
+          return sum + adv;
         }, 0);
         const advPaymentsList = fpay.filter((p: any) => 
           p.paymentType === 'ADVANCE' || 
@@ -445,7 +482,17 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
       if (m) adv = Number(m[1]);
     }
     return sum + adv;
-  }, 0) + payments.reduce((sum, p) => sum + (Number(p.advanceDeducted || 0)), 0);
+  }, 0) + payments.reduce((sum, pay) => {
+    if (pay.purchaseId && purchases.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId) && (Number(p.advanceApplied || 0) > 0 || String(p.storageLocation || '').includes('DED:ADV')))) {
+      return sum;
+    }
+    let adv = Number(pay.advanceDeducted || 0);
+    if (!adv && pay.notes) {
+      const m = String(pay.notes).match(/DED:ADV=(\d+)/);
+      if (m) adv = Number(m[1]);
+    }
+    return sum + adv;
+  }, 0);
   const remainingAdvance = Math.max(0, totalAdvGiven > 0 ? (totalAdvGiven - totalAdvDeducted) : Number(farmer?.advanceBalance || 0));
 
   const totalMatIssued = materials.reduce((sum, m) => {
@@ -457,11 +504,21 @@ export const FarmerDetailDrawer: React.FC<FarmerDetailDrawerProps> = ({
     return sum + (parsedAmt > 0 ? parsedAmt : calcVal);
   }, 0);
 
-  // Deductions on Bills: ONLY actual material deductions applied on purchase bills
+  // Deductions on Bills & Payments: Both purchase bills and payment-level deductions
   const totalMatDeducted = purchases.reduce((sum, p) => {
     let mat = Number(p.materialDeducted || 0);
     if (!mat && p.storageLocation) {
       const m = String(p.storageLocation).match(/MTL=(\d+)/);
+      if (m) mat = Number(m[1]);
+    }
+    return sum + mat;
+  }, 0) + payments.reduce((sum, pay) => {
+    if (pay.purchaseId && purchases.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId) && (Number(p.materialDeducted || 0) > 0 || String(p.storageLocation || '').includes('MTL=')))) {
+      return sum;
+    }
+    let mat = Number(pay.materialDeducted || 0);
+    if (!mat && pay.notes) {
+      const m = String(pay.notes).match(/MTL=(\d+)/);
       if (m) mat = Number(m[1]);
     }
     return sum + mat;

@@ -84,6 +84,11 @@ export default function PaymentsPage() {
 
     const remainingDueStr = dueNum > 0 ? `₹${dueNum.toLocaleString('en-IN')}` : '₹0';
 
+    const advDed = Number(row.advanceDeducted || 0) || Number(String(row.notes || '').match(/DED:ADV=(\d+)/)?.[1] || 0);
+    const matDed = Number(row.materialDeducted || 0) || Number(String(row.notes || '').match(/MTL=(\d+)/)?.[1] || 0);
+    const numericCash = parseAmt(row.amount);
+    const setAmt = Number(row.totalSettled || 0) || Number(String(row.notes || '').match(/SETTLED=(\d+)/)?.[1] || 0) || (numericCash + advDed + matDed);
+
     setActiveReceipt({
       type: 'FARMER_PAYMENT',
       title: 'Farmer Payment Voucher (पेमेंट पावती)',
@@ -93,7 +98,12 @@ export default function PaymentsPage() {
       partyPhone: row.phone || matchedFarmer?.phone || '',
       partyVillageOrAddress: row.village || matchedFarmer?.village || '',
       gradeOrItems: `Payout Disbursement (${row.method || 'CASH'})`,
-      totalAmount: row.amount,
+      totalAmount: setAmt > 0 ? setAmt : numericCash,
+      paidAmount: numericCash,
+      advanceDeducted: advDed,
+      advanceApplied: advDed,
+      materialDeducted: matDed,
+      totalSettled: setAmt,
       balanceAmount: remainingDueStr,
       paymentMode: row.method || 'CASH',
     });
@@ -233,6 +243,7 @@ export default function PaymentsPage() {
                     <th className="py-3 px-3">PAYMENT VOUCHER NO</th>
                     <th className="py-3 px-3">{t.farmerName}</th>
                     <th className="py-3 px-3">PAYMENT MODE</th>
+                    <th className="py-3 px-3">कपात तपशील (Deductions)</th>
                     <th className="py-3 px-3 text-right">DISBURSED AMOUNT</th>
                     <th className="py-3 px-3 text-center">STATUS</th>
                     <th className="py-3 px-3 text-right">DATE</th>
@@ -245,7 +256,41 @@ export default function PaymentsPage() {
                       <td className="py-3 px-3 font-bold text-blue-600">{row.id}</td>
                       <td className="py-3 px-3 font-bold text-slate-900">{row.farmerName}</td>
                       <td className="py-3 px-3 text-slate-600 font-medium">{row.method}</td>
-                      <td className="py-3 px-3 text-right font-black text-emerald-600">₹{parseAmt(row.amount).toLocaleString('en-IN')}</td>
+                      <td className="py-3 px-3">
+                        {(() => {
+                          const adv = Number(row.advanceDeducted || 0) || Number(String(row.notes || '').match(/DED:ADV=(\d+)/)?.[1] || 0);
+                          const mat = Number(row.materialDeducted || 0) || Number(String(row.notes || '').match(/MTL=(\d+)/)?.[1] || 0);
+                          if (!adv && !mat) {
+                            return <span className="text-[11px] text-slate-400 font-semibold">— (कपात नाही)</span>;
+                          }
+                          return (
+                            <div className="flex flex-col gap-1 text-[10px]">
+                              {adv > 0 && (
+                                <span className="font-black px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 inline-block w-fit">
+                                  ⚡ उचल: -₹{adv.toLocaleString('en-IN')}
+                                </span>
+                              )}
+                              {mat > 0 && (
+                                <span className="font-black px-2 py-0.5 rounded-md bg-purple-50 text-purple-800 border border-purple-200 inline-block w-fit">
+                                  📦 साहित्य: -₹{mat.toLocaleString('en-IN')}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="py-3 px-3 text-right font-black text-emerald-600">
+                        <div>₹{parseAmt(row.amount).toLocaleString('en-IN')}</div>
+                        {(() => {
+                          const adv = Number(row.advanceDeducted || 0) || Number(String(row.notes || '').match(/DED:ADV=(\d+)/)?.[1] || 0);
+                          const mat = Number(row.materialDeducted || 0) || Number(String(row.notes || '').match(/MTL=(\d+)/)?.[1] || 0);
+                          const tot = Number(row.totalSettled || 0) || (parseAmt(row.amount) + adv + mat);
+                          if (tot > parseAmt(row.amount)) {
+                            return <span className="text-[10px] text-slate-400 block font-normal">एकूण: ₹{tot.toLocaleString('en-IN')}</span>;
+                          }
+                          return null;
+                        })()}
+                      </td>
                       <td className="py-3 px-3 text-center">
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
                           row.status === 'COMPLETED'

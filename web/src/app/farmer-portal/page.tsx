@@ -391,6 +391,33 @@ export default function FarmerPortalPage() {
            notes: x.notes || x.paymentMode || x.method,
            raw: x
         });
+
+        // Standalone payment deductions if not already reflected on purchase bill
+        const payAdv = Number(x.advanceDeducted || 0) || Number(String(x.notes || '').match(/DED:ADV=(\d+)/)?.[1] || 0);
+        const payMat = Number(x.materialDeducted || 0) || Number(String(x.notes || '').match(/MTL=(\d+)/)?.[1] || 0);
+        const isEmbeddedInBill = x.purchaseId && rawPurchases.some((p: any) => 
+          (p.id === x.purchaseId || p.purchaseNo === x.purchaseId || p.billNo === x.purchaseId) && 
+          (Number(p.advanceApplied || 0) > 0 || String(p.storageLocation || '').includes('DED:ADV') || String(p.storageLocation || '').includes('MTL='))
+        );
+
+        if (!isEmbeddedInBill && (payAdv > 0 || payMat > 0)) {
+          const dedNotes: string[] = [];
+          if (payAdv > 0) dedNotes.push(`उचल वजावट: ₹${payAdv.toLocaleString('en-IN')}`);
+          if (payMat > 0) dedNotes.push(`साहित्य वजावट: ₹${payMat.toLocaleString('en-IN')}`);
+          allItems.push({
+             dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+             timestamp: (getPreciseTimestamp(x) || d.getTime()) + 1,
+             orderIdx: ++orderIdx,
+             refNo: `${x.paymentNo || x.paymentId || x.id}-DED`,
+             type: 'DEDUCTION',
+             description: `पेमेंटमधील कपात (${dedNotes.join(', ')})`,
+             weightOrQty: '-',
+             debitVal: payAdv + payMat,
+             creditVal: 0,
+             notes: `Deduction applied on payment ${x.paymentNo || x.paymentId || x.id}`,
+             raw: x
+          });
+        }
       }
     });
 
@@ -533,6 +560,16 @@ export default function FarmerPortalPage() {
         if (m) adv = Number(m[1]);
       }
       return sum + adv;
+    }, 0) + rawPayments.reduce((sum: number, pay: any) => {
+      if (pay.purchaseId && sortedPurchasesOldest.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId) && (Number(p.advanceApplied || 0) > 0 || String(p.storageLocation || '').includes('DED:ADV')))) {
+        return sum;
+      }
+      let adv = Number(pay.advanceDeducted || 0);
+      if (!adv && pay.notes) {
+        const m = String(pay.notes).match(/DED:ADV=(\d+)/);
+        if (m) adv = Number(m[1]);
+      }
+      return sum + adv;
     }, 0);
     const advPaymentsList = rawPayments.filter((p: any) => 
       p.paymentType === 'ADVANCE' || 
@@ -557,6 +594,16 @@ export default function FarmerPortalPage() {
       let mat = Number(p.materialDeducted || 0);
       if (!mat && p.storageLocation) {
         const m = String(p.storageLocation).match(/MTL=(\d+)/);
+        if (m) mat = Number(m[1]);
+      }
+      return sum + mat;
+    }, 0) + rawPayments.reduce((sum: number, pay: any) => {
+      if (pay.purchaseId && sortedPurchasesOldest.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId) && (Number(p.materialDeducted || 0) > 0 || String(p.storageLocation || '').includes('MTL=')))) {
+        return sum;
+      }
+      let mat = Number(pay.materialDeducted || 0);
+      if (!mat && pay.notes) {
+        const m = String(pay.notes).match(/MTL=(\d+)/);
         if (m) mat = Number(m[1]);
       }
       return sum + mat;
@@ -631,7 +678,17 @@ export default function FarmerPortalPage() {
       if (m) adv = Number(m[1]);
     }
     return sum + adv;
-  }, 0) + rawPayments.reduce((sum, p) => sum + (Number(p.advanceDeducted || 0)), 0);
+  }, 0) + rawPayments.reduce((sum, pay) => {
+    if (pay.purchaseId && rawPurchases.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId) && (Number(p.advanceApplied || 0) > 0 || String(p.storageLocation || '').includes('DED:ADV')))) {
+      return sum;
+    }
+    let adv = Number(pay.advanceDeducted || 0);
+    if (!adv && pay.notes) {
+      const m = String(pay.notes).match(/DED:ADV=(\d+)/);
+      if (m) adv = Number(m[1]);
+    }
+    return sum + adv;
+  }, 0);
   const baseAdvTotal = totalAdvGiven > 0 ? totalAdvGiven : Number(farmer?.advanceBalance || 0);
   const remainingAdvance = Math.max(0, baseAdvTotal - totalAdvDeducted);
 
@@ -651,7 +708,17 @@ export default function FarmerPortalPage() {
       if (m) mat = Number(m[1]);
     }
     return sum + mat;
-  }, 0) + rawPayments.reduce((sum, p) => sum + (Number(p.materialDeducted || 0)), 0);
+  }, 0) + rawPayments.reduce((sum, pay) => {
+    if (pay.purchaseId && rawPurchases.some((p: any) => (p.id === pay.purchaseId || p.purchaseNo === pay.purchaseId || p.billNo === pay.purchaseId) && (Number(p.materialDeducted || 0) > 0 || String(p.storageLocation || '').includes('MTL=')))) {
+      return sum;
+    }
+    let mat = Number(pay.materialDeducted || 0);
+    if (!mat && pay.notes) {
+      const m = String(pay.notes).match(/MTL=(\d+)/);
+      if (m) mat = Number(m[1]);
+    }
+    return sum + mat;
+  }, 0);
 
   const remainingMatDue = Math.max(0, totalMatIssued - totalMatDeducted);
   const billPayouts = rawPayments.filter((p: any) => !advancePayments.some((adv: any) => adv.id === p.id));
